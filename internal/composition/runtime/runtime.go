@@ -88,6 +88,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	for _, component := range []lifecycle.NamedComponent{
 		{Name: "notifier", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { runtimeBundle.Notifier.Start(ctx); return nil }, CloseFunc: runtimeBundle.Notifier.WaitContext}},
 		{Name: "account-manager", Component: lifecycle.FuncComponent{StartFunc: runtimeBundle.Manager.StartAll, CloseFunc: runtimeBundle.Manager.StopAllContext}},
+		{Name: "account-watchdog", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go runtimeBundle.Manager.RunWatchdog(ctx); return nil }, CloseFunc: runtimeBundle.Manager.WaitWatchdog}},
 		{Name: "automation-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go automationScheduler.Run(ctx); return nil }, CloseFunc: automationScheduler.WaitContext}},
 		{Name: "renewal-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go renewalScheduler.Run(ctx); return nil }, CloseFunc: renewalScheduler.StopContext}},
 	} {
