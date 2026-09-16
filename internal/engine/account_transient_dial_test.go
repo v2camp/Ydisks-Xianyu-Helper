@@ -67,6 +67,8 @@ func TestIsTransientDialErrorPrefersAuthenticationRejection(t *testing.T) {
 func TestRecordNetworkFailureDrivesBackoff(t *testing.T) {
 	// account 是仅用于验证退避阶梯的本地账号。
 	account := New(Config{CookieID: "backoff", CookieStr: "unb=1"})
+	// 退避在失败计数小于 1 时按 1 处理，因此基准必须先记录一次失败，否则两次采样落在同一档。
+	account.recordNetworkFailure()
 	// first 是首次失败后的退避时长。
 	first := account.networkRetryDelay()
 	account.recordNetworkFailure()
@@ -75,8 +77,8 @@ func TestRecordNetworkFailureDrivesBackoff(t *testing.T) {
 	if second <= first {
 		t.Fatalf("网络失败计数递增后退避应增长: first=%v second=%v", first, second)
 	}
-	if account.networkFailures != 1 {
-		t.Fatalf("networkFailures 期望 1，实际 %d", account.networkFailures)
+	if account.networkFailures != 2 {
+		t.Fatalf("networkFailures 期望 2，实际 %d", account.networkFailures)
 	}
 	// 连续递增后仍必须被上限约束，避免永久失去重连机会。
 	for i := 0; i < 20; i++ {

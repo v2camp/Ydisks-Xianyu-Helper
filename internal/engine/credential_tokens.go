@@ -180,6 +180,8 @@ func (c *credentialCoordinator) refreshTokenWithMinGap(ctx context.Context, _ bo
 		a.credentialFP = credentialFP
 		a.tokenCredentialFP = credentialFP
 		a.lastCaptchaFailure = time.Time{}
+		// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
+		a.captchaFailureStreak = 0
 		a.tokenFetchFailures = 0
 		a.tokenImmediateRefreshes = 0
 		a.lastTokenStatus = tokenRefreshSuccess
@@ -317,7 +319,24 @@ func (c *credentialCoordinator) markTokenCaptchaFailure() {
 	a := c.account
 	a.mu.Lock()
 	a.lastCaptchaFailure = time.Now()
+	// 连续失败才递增；单次偶发失败仍使用基础冷却，避免误判把自愈拖长。
+	a.captchaFailureStreak++
 	a.mu.Unlock()
+}
+
+// tokenCaptchaCooldownFor 根据连续失败次数返回本次应冷却的时长。
+// 平台风控需要冷却时间：连续失败越多次，重试越频繁只会让风控持续收紧，
+// 因此按 5/10/15…分钟递增并封顶，给账号留出恢复窗口。
+func tokenCaptchaCooldownFor(streak int) time.Duration {
+	if streak <= 1 {
+		return TokenCaptchaFailureCooldown
+	}
+	// scaled 是按连续失败次数递增后的冷却。
+	scaled := TokenCaptchaFailureCooldown + time.Duration(streak-1)*TokenCaptchaCooldownStep
+	if scaled > TokenCaptchaCooldownMax {
+		return TokenCaptchaCooldownMax
+	}
+	return scaled
 }
 
 // tokenCaptchaCooldownRemaining 封装令牌CaptchaCooldownRemaining业务协调。
@@ -327,12 +346,14 @@ func (c *credentialCoordinator) tokenCaptchaCooldownRemaining() time.Duration {
 	a.mu.Lock()
 	// lastFailure 用于本次流程后续判断的lastFailure
 	lastFailure := a.lastCaptchaFailure
+	// streak 是连续风控失败次数，决定本次冷却时长。
+	streak := a.captchaFailureStreak
 	a.mu.Unlock()
 	if lastFailure.IsZero() {
 		return 0
 	}
 	// remaining 用于本次流程后续判断的remaining
-	remaining := TokenCaptchaFailureCooldown - time.Since(lastFailure)
+	remaining := tokenCaptchaCooldownFor(streak) - time.Since(lastFailure)
 	if remaining < 0 {
 		return 0
 	}
@@ -472,6 +493,8 @@ func (c *credentialCoordinator) reloadCookieFromDB(ctx context.Context) bool {
 	a.clearTokenCache(ctx)
 	a.mu.Lock()
 	a.lastCaptchaFailure = time.Time{}
+	// 凭证被外部更新视为新的起点，连续风控失败计数同步归零。
+	a.captchaFailureStreak = 0
 	a.mu.Unlock()
 	return true
 }

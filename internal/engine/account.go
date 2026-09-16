@@ -39,10 +39,14 @@ const (
 	FrequentDisconnectLimit     = 5
 	FrequentDisconnectWindow    = 5 * time.Minute
 	TokenCaptchaFailureCooldown = 5 * time.Minute
-	WSRecordBatchSize           = 32
-	WSRecordFlushInterval       = 250 * time.Millisecond
-	WSRecordWriteTimeout        = 5 * time.Second
-	WSRecordRetention           = 7 * 24 * time.Hour
+	// TokenCaptchaCooldownStep 是连续风控失败时每次递增的冷却步长。
+	TokenCaptchaCooldownStep = 5 * time.Minute
+	// TokenCaptchaCooldownMax 是风控冷却上限；达到后不再继续拉长，避免长期无法自愈。
+	TokenCaptchaCooldownMax = 30 * time.Minute
+	WSRecordBatchSize       = 32
+	WSRecordFlushInterval   = 250 * time.Millisecond
+	WSRecordWriteTimeout    = 5 * time.Second
+	WSRecordRetention       = 7 * 24 * time.Hour
 
 	// ShortConnectionThreshold 仅用于统计频繁短连接；已经建立后的网络断线
 	// 不会清 Token 缓存。
