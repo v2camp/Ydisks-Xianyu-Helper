@@ -43,6 +43,8 @@ type Manager struct {
 	// stoppingAll 表示管理器正在执行全量关闭；关闭期间禁止新账号进入运行实例表。
 	stoppingAll bool
 	runCtx      context.Context
+	// watchdog 是账号实例看门狗的退避状态与收束信号，按账号维度跨运行实例保留。
+	watchdog *accountWatchdog
 }
 
 // managedAccount 用于本次流程后续判断的managed账号
@@ -92,6 +94,7 @@ func NewManager(store *db.Store, handler engine.Handler, logger *slog.Logger, re
 		globalBudget:   globalBudget,
 		accounts:       make(map[string]*managedAccount),
 		stopping:       make(map[string]struct{}),
+		watchdog:       newAccountWatchdog(),
 	}
 }
 

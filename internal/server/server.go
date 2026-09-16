@@ -342,9 +342,7 @@ func (s *Server) mountDirSPA(r chi.Router) {
 	// staticFiles 用于本次流程后续判断的static文件列表
 	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir(s.WebDir)))
 	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/static/" || r.URL.Path == "/static/index.html" {
-			setNoStore(w)
-		}
+		applyStaticCacheHeaders(w, r.URL.Path)
 		staticFiles.ServeHTTP(w, r)
 	}))
 
@@ -369,9 +367,7 @@ func (s *Server) mountFSSPA(r chi.Router, staticFS fs.FS) {
 	// staticFiles 用于本次流程后续判断的static文件列表
 	staticFiles := http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))
 	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/static/" || r.URL.Path == "/static/index.html" {
-			setNoStore(w)
-		}
+		applyStaticCacheHeaders(w, r.URL.Path)
 		staticFiles.ServeHTTP(w, r)
 	}))
 
@@ -397,6 +393,27 @@ func setNoStore(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+}
+
+// setImmutableCache 为文件名自带内容 hash 的构建产物下发长期不可变缓存。
+// setImmutableCache 封装setImmutableCache业务协调。
+func setImmutableCache(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+}
+
+// applyStaticCacheHeaders 按静态资源路径下发缓存策略。
+// assets/ 下的文件名由构建产出的内容 hash 组成，内容变化必然带来文件名变化，
+// 故可安全长期强缓存；index.html 是 SPA 入口，必须每次回源，
+// 否则发版后浏览器仍持有旧入口并继续引用已下线的旧资源。
+// applyStaticCacheHeaders 封装applyStaticCacheHeaders业务协调。
+func applyStaticCacheHeaders(w http.ResponseWriter, path string) {
+	if strings.HasPrefix(path, "/static/assets/") {
+		setImmutableCache(w)
+		return
+	}
+	if path == "/static/" || path == "/static/index.html" {
+		setNoStore(w)
+	}
 }
 
 // isAPIPath 判断是否为 API 路径（不应被 SPA 拦截）。
