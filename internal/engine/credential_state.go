@@ -29,6 +29,8 @@ type credentialState struct {
 	lastTokenRefresh time.Time
 	// lastCaptchaFailure 是最近一次 Token 风控验证失败时间。
 	lastCaptchaFailure time.Time
+	// captchaFailureStreak 是连续风控验证失败次数；成功后归零，用于拉长冷却。
+	captchaFailureStreak int
 	// lastTokenStatus 是最近一次 Token 刷新状态。
 	lastTokenStatus string
 	// tokenFetchFailures 是当前连接周期内 Token 获取失败次数。
