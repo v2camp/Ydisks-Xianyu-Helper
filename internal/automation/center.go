@@ -408,12 +408,9 @@ func (c *Center) handleTask(ctx context.Context, task Task) (bool, error) {
 	return false, firstErr
 }
 
-// handleBargainPending 处理砍价“待刀成”WS 阶段：仅按独立账号开关调用免拼，绝不匹配发卡或确认发货规则。
+// handleBargainPending 处理砍价“待刀成”阶段：仅按独立账号开关调用免拼，绝不匹配发卡或确认发货规则。
+// 接受 WS 即时卡片与订单同步轮询（ordersync）两种来源：前者秒级到达，后者作为 WS 卡片丢失时的分钟级兜底。
 func (c *Center) handleBargainPending(ctx context.Context, task Task) (bool, error) {
-	if task.Source != "ws" {
-		c.logger.Warn("拒绝非 WebSocket 的免拼阶段任务", "source", task.Source, "account", task.AccountID, "order_id", task.OrderID)
-		return false, nil
-	}
 	// autoBargain、settingsErr 保存独立自动免拼开关和读取错误。
 	autoBargain, settingsErr := c.store.Cookies.GetAutoBargain(ctx, task.AccountID)
 	if settingsErr != nil {

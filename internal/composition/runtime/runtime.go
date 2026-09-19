@@ -204,7 +204,6 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	serverDependencies, dependenciesErr := ServerDependencies(services, HTTPDependencies{
 		Auth: &auth.Service{Store: infrastructure.Store, Logger: infrastructure.Logger, Secure: options.SecureCookie}, WebDir: options.WebDir, Addr: options.Addr,
 		Logger: infrastructure.Logger, DatabaseHealth: databaseHealth,
-		SkipPinSettings: skipPinSettingsAdapter{repo: infrastructure.Store.SkipPinItems},
 	}, sessionRecovery)
 	if dependenciesErr != nil {
 		return Runtime{}, dependenciesErr

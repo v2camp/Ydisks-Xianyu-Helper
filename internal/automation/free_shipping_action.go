@@ -10,7 +10,17 @@ import (
 )
 
 // freeShipBargain 在砍价“待刀成”阶段调用独立免拼接口；它不发送卡密、不确认发货，也不修改订单已发货状态。
+// 免拼前按账号级安抚模板（bargain_soothe_template）尽力给买家发送一条安抚文案：发送失败只记日志不阻断免拼。
 func (e *automationActionExecutor) freeShipBargain(ctx context.Context, task Task) error {
+	// template 保存账号配置的免拼安抚模板；读取失败按未配置处理，不阻断免拼。
+	if template, readErr := e.store.Cookies.GetBargainSootheTemplate(ctx, task.AccountID); readErr == nil {
+		// sootheText 是渲染后的安抚文案；空模板或缺少会话、买家标识时不发送。
+		if sootheText := strings.TrimSpace(renderTemplate(template, task)); sootheText != "" && task.ChatID != "" && task.BuyerID != "" {
+			if sootheErr := e.sendText(ctx, task, sootheText); sootheErr != nil {
+				e.logger.Warn("免拼安抚消息发送失败，继续执行免拼", "account", task.AccountID, "order_id", task.OrderID, "err", sootheErr)
+			}
+		}
+	}
 	return e.freeShipBargainAttempt(ctx, task, true)
 }
 

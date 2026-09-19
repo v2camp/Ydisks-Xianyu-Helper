@@ -316,6 +316,8 @@ type cookieDetailResponse struct {
 	AutoConsign bool `json:"auto_consign"`
 	// AutoBargain 表示砍价“待刀成”阶段是否自动免拼。
 	AutoBargain bool `json:"auto_bargain"`
+	// BargainSootheTemplate 是砍价免拼前发送给买家的账号级安抚模板；空串表示不发送。
+	BargainSootheTemplate string `json:"bargain_soothe_template"`
 	// Remark 是账号备注。
 	Remark string `json:"remark"`
 	// PauseDuration 是暂停时长，单位为分钟。

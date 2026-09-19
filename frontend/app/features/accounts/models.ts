@@ -13,6 +13,8 @@ export interface AccountDetail {
   auto_consign: boolean;
   /** 砍价“待刀成”阶段是否自动调用免拼接口。 */
   auto_bargain: boolean;
+  /** 砍价免拼前发送给买家的账号级安抚模板；空串表示不发送。 */
+  bargain_soothe_template?: string;
   /** 用户为账号设置的备注。 */
   remark?: string;
   /** 自动回复暂停时长，单位为分钟。 */
@@ -182,6 +184,8 @@ export interface AccountSummaryResponse {
   auto_consign: boolean;
   /** 砍价“待刀成”阶段是否自动调用免拼接口。 */
   auto_bargain: boolean;
+  /** 砍价免拼前发送给买家的账号级安抚模板；空串表示不发送。 */
+  bargain_soothe_template: string;
   /** 账号备注。 */
   remark: string;
   /** 自动回复暂停时长，单位为分钟。 */

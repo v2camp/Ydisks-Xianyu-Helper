@@ -35,14 +35,8 @@ const TriggerBuyerReviewed = "buyer_reviewed"
 // TriggerReviewMissingTimeout 表示超时未评价触发器。
 const TriggerReviewMissingTimeout = "review_missing_timeout"
 
-// TriggerOrderPinPending 表示订单同步发现处于待刀成状态的拼团订单触发器。
-const TriggerOrderPinPending = "order_pin_pending"
-
 // ActionConfirmShipment 表示确认发货动作。
 const ActionConfirmShipment = "confirm_shipment"
-
-// ActionSkipPin 表示对处于待刀成状态的拼团订单调用「直接免拼」的动作。
-const ActionSkipPin = "skip_pin"
 
 // ActionSendCard 表示发送卡密动作。
 const ActionSendCard = "send_card"
@@ -385,7 +379,7 @@ func (s *RuleService) normalize(ctx context.Context, userID int64, draft RuleDra
 	draft.ItemID = strings.TrimSpace(draft.ItemID)
 	draft.Name = strings.TrimSpace(draft.Name)
 	draft.TriggerType = strings.TrimSpace(draft.TriggerType)
-	if draft.TriggerType != TriggerOrderCreated && draft.TriggerType != TriggerOrderPaid && draft.TriggerType != TriggerBuyerReviewed && draft.TriggerType != TriggerReviewMissingTimeout && draft.TriggerType != TriggerOrderPinPending {
+	if draft.TriggerType != TriggerOrderCreated && draft.TriggerType != TriggerOrderPaid && draft.TriggerType != TriggerBuyerReviewed && draft.TriggerType != TriggerReviewMissingTimeout {
 		return RuleInput{}, errors.New("不支持的触发类型")
 	}
 	// owned 表示账号是否归当前用户所有；err 表示归属查询失败。
@@ -460,8 +454,6 @@ type ruleActionFlags struct {
 	hasConfirmShipment bool
 	// hasAdjustPrice 表示是否存在启用的订单改价动作。
 	hasAdjustPrice bool
-	// hasSkipPin 表示是否存在启用的小刀免拼动作。
-	hasSkipPin bool
 }
 
 // normalizeDraftActions 逐个校验并规范化规则草稿中的动作，同时汇总启用动作类型标志。
@@ -534,12 +526,6 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 				return nil, flags, priceErr
 			}
 			flags.hasAdjustPrice = flags.hasAdjustPrice || enabled
-		case ActionSkipPin:
-			// 免拼动作无配置参数；仅限小刀待刀成触发器使用。
-			if triggerType != TriggerOrderPinPending {
-				return nil, flags, errors.New("免拼动作仅支持小刀待刀成规则")
-			}
-			flags.hasSkipPin = flags.hasSkipPin || enabled
 		default:
 			return nil, flags, errors.New("不支持的动作类型")
 		}
@@ -727,13 +713,6 @@ func validateTriggerActionCombination(triggerType string, flags ruleActionFlags)
 		}
 		if !flags.hasSendText {
 			return errors.New("求评价规则至少需要一个已启用的文本动作")
-		}
-	case TriggerOrderPinPending:
-		if flags.hasConfirmShipment || flags.hasSendCard || flags.hasSendTemplate || flags.hasSendText || flags.hasAdjustPrice {
-			return errors.New("小刀待刀成规则只能包含免拼动作")
-		}
-		if !flags.hasSkipPin {
-			return errors.New("小刀待刀成规则至少需要一个已启用的免拼动作")
 		}
 	}
 	return nil

@@ -82,8 +82,6 @@ type ClientImpl struct {
 	ConsignURL string
 	// FreeShippingURL 覆盖砍价订单免拼发货端点，仅供本地 HTTP 回归测试注入替身；空值使用官方端点。
 	FreeShippingURL string
-	// SkipPinURL 覆盖拼团小刀免拼端点，仅供测试注入本地 HTTP 服务；空值使用官方端点。
-	SkipPinURL string
 	// AdjustPriceURL 覆盖订单改价端点，仅供测试注入本地 HTTP 服务。
 	AdjustPriceURL      string
 	OrderDetailURL      string

@@ -369,12 +369,12 @@ func (r *OrderRuntime) FetchSoldOrders(ctx context.Context, detail *orderapp.Pla
 }
 
 // triggerSkipPinForBargains 对处于待刀成状态（SKIP_PIN 按钮在场）的订单发出
-// order_pin_pending 自动化事件，由自动化规则匹配决定是否执行「直接免拼」动作。
+// bargain_pending 自动化事件，由账号级自动免拼处理：先检查 auto_bargain 开关，
+// 开启时调用独立免拼接口，绝不匹配发卡或确认发货规则。
 //
-// 规则匹配天然支持两种范围：按商品登记（item_id 精确匹配）或账号全局规则
-// （不限定商品；商品不支持拼单时平台不会出现待刀成订单，事件自然不会产生，无兼容问题）。
-// 免拼接口幂等且事件处理失败只记日志：下一轮订单同步按钮仍在场会再次发事件，自然重试；
-// 免拼成功后平台回写「已成功小刀，待发货」，既有 order_paid 链路随即自动发货。
+// 它是 WS 即时卡片之外的分钟级兜底：免拼接口幂等且事件处理失败只记日志——
+// 下一轮订单同步按钮仍在场会再次发事件，自然重试；免拼成功后平台回写
+// 「已成功小刀，待发货」，既有 order_paid 链路随即自动发货。
 func (r *OrderRuntime) triggerSkipPinForBargains(ctx context.Context, cookieID string, items []mtop.SoldOrder) {
 	if r == nil || r.hooks.Automation == nil {
 		return
@@ -389,11 +389,11 @@ func (r *OrderRuntime) triggerSkipPinForBargains(ctx context.Context, cookieID s
 	}
 	// bargain 表示当前遍历过程中的待刀成订单。
 	for _, bargain := range pendingBargains {
-		// task 是交给自动化中心匹配规则的事件事实；凭证由动作执行器经仓储自取。
+		// task 是交给免拼处理的事件事实；凭证由执行器经仓储自取。
 		task := automation.Task{
 			Source:      "ordersync",
 			AccountID:   cookieID,
-			TriggerType: automation.TriggerOrderPinPending,
+			TriggerType: automation.TriggerBargainPending,
 			OrderID:     bargain.OrderID,
 			ItemID:      bargain.ItemID,
 			BuyerID:     bargain.BuyerID,

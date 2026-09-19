@@ -354,37 +354,6 @@ func (adapter testSessionRecoveryAdapter) Recover(ctx context.Context, accountID
 	return adapter.handler != nil && adapter.handler(ctx, accountID, err)
 }
 
-// testSkipPinAdapter 把名单仓储投影为 HTTP 层的小刀免拼名单端口，供契约场景覆盖。
-type testSkipPinAdapter struct {
-	// store 是当前测试数据库的 repository 聚合入口。
-	store *db.Store
-}
-
-// List 返回某账号的全部名单条目并转换为 HTTP 层投影。
-func (a testSkipPinAdapter) List(ctx context.Context, cookieID string) ([]SkipPinSetting, error) {
-	// items、err 是名单条目与读取错误。
-	items, err := a.store.SkipPinItems.List(ctx, cookieID)
-	if err != nil {
-		return nil, err
-	}
-	// out 是转换后的 HTTP 层条目。
-	out := make([]SkipPinSetting, 0, len(items))
-	for _, item := range items {
-		out = append(out, SkipPinSetting{CookieID: item.CookieID, ItemID: item.ItemID, Enabled: item.Enabled, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt})
-	}
-	return out, nil
-}
-
-// Upsert 新增或更新一条名单。
-func (a testSkipPinAdapter) Upsert(ctx context.Context, cookieID, itemID string, enabled bool) error {
-	return a.store.SkipPinItems.Upsert(ctx, cookieID, itemID, enabled)
-}
-
-// Delete 移除一条名单。
-func (a testSkipPinAdapter) Delete(ctx context.Context, cookieID, itemID string) error {
-	return a.store.SkipPinItems.Delete(ctx, cookieID, itemID)
-}
-
 // testServerDependencies 将组合层服务快照转换为 Server 测试构造所需的依赖。
 func testServerDependencies(authentication *auth.Service, databaseHealth DatabaseHealthPort, services *composition.Services, sessionRecovery adapter.SessionRecoveryHandler, store *db.Store) Dependencies {
 	// ports 是测试组合根投影的完整 transport Port 集合。
@@ -404,7 +373,6 @@ func testServerDependencies(authentication *auth.Service, databaseHealth Databas
 		DeliveryTemplates:      ports.DeliveryTemplates,
 		PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies, Keywords: ports.Keywords,
 		Settings: ports.Settings, Admin: ports.Admin,
-		SkipPinSettings: testSkipPinAdapter{store: store},
 	})}
 }
 

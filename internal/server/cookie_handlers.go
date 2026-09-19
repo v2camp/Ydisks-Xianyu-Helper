@@ -112,17 +112,19 @@ func (s *Server) updateRunningCookie(ctx context.Context, cookieID, value string
 
 // updateCookieSettingsRequest 用于本次流程后续判断的update登录凭证设置请求
 type updateCookieSettingsRequest struct {
-	Cookie        *string  `json:"cookie"`
-	Remark        *string  `json:"remark"`
-	AutoConfirm   *bool    `json:"auto_confirm"`
-	AutoConsign   *bool    `json:"auto_consign"`
-	AutoBargain   *bool    `json:"auto_bargain"`
-	PauseDuration *int     `json:"pause_duration"`
-	Username      *string  `json:"username"`
-	LoginPassword *string  `json:"login_password"`
-	ClearPassword bool     `json:"clear_password"`
-	ShowBrowser   *bool    `json:"show_browser"`
-	ChannelIDs    *[]int64 `json:"channel_ids"`
+	Cookie      *string `json:"cookie"`
+	Remark      *string `json:"remark"`
+	AutoConfirm *bool   `json:"auto_confirm"`
+	AutoConsign *bool   `json:"auto_consign"`
+	AutoBargain *bool   `json:"auto_bargain"`
+	// BargainSootheTemplate 是账号级砍价免拼前安抚模板；空串表示不发送。
+	BargainSootheTemplate *string  `json:"bargain_soothe_template"`
+	PauseDuration         *int     `json:"pause_duration"`
+	Username              *string  `json:"username"`
+	LoginPassword         *string  `json:"login_password"`
+	ClearPassword         bool     `json:"clear_password"`
+	ShowBrowser           *bool    `json:"show_browser"`
+	ChannelIDs            *[]int64 `json:"channel_ids"`
 }
 
 // longLoginSettingsRequest 是更新账号长登录开关的 HTTP 请求 DTO。
@@ -227,7 +229,8 @@ func (s *Server) updateCookieSettings(w http.ResponseWriter, r *http.Request) {
 	// settingsResult、err 保存应用服务返回的暂停截止时间、补偿错误和主写入错误。
 	settingsResult, err := s.accountSettingsApplication().UpdateSettings(r.Context(), accountapp.SettingsUpdateInput{
 		UserID: ownedDetail.UserID, AccountID: cid, Cookie: req.Cookie, Remark: req.Remark,
-		AutoConfirm: req.AutoConfirm, AutoConsign: req.AutoConsign, AutoBargain: req.AutoBargain, PauseDuration: req.PauseDuration, Username: req.Username,
+		AutoConfirm: req.AutoConfirm, AutoConsign: req.AutoConsign, AutoBargain: req.AutoBargain,
+		BargainSootheTemplate: req.BargainSootheTemplate, PauseDuration: req.PauseDuration, Username: req.Username,
 		Password: password, ShowBrowser: req.ShowBrowser, ChannelIDs: req.ChannelIDs,
 	})
 	if err != nil {
@@ -290,31 +293,32 @@ func (s *Server) listCookieDetails(w http.ResponseWriter, r *http.Request) {
 		// enabled、statusErr 保存当前账号启用状态及查询错误。
 		enabled, statusErr := s.accountSummaryApplication().StatusOwned(r.Context(), sess.UserID, summary.ID)
 		result = append(result, cookieSummaryResponse{
-			ID:                summary.ID,
-			HasCookie:         true,
-			Enabled:           statusErr == nil && enabled,
-			AutoConfirm:       summary.AutoConfirm,
-			AutoConsign:       summary.AutoConsign,
-			AutoBargain:       summary.AutoBargain,
-			Remark:            summary.Remark,
-			PauseDuration:     summary.PauseDuration,
-			PausedUntil:       summary.PausedUntil,
-			Paused:            summary.PausedUntil > time.Now().UTC().Unix(),
-			ShowBrowser:       summary.ShowBrowser,
-			Username:          summary.Username,
-			Nickname:          cachedCookieSummaryNickname(summary),
-			AvatarURL:         summary.AvatarURL,
-			LoginMethod:       summary.LoginMethod,
-			LastLoginAt:       summary.LastLoginAt,
-			ProfileError:      "",
-			AIEnabled:         false,
-			AutoRateEnabled:   tasks.AutoRateEnabled,
-			RateContent:       tasks.RateContent,
-			AutoPolishEnabled: tasks.AutoPolishEnabled,
-			PolishTime:        tasks.PolishTime,
-			LastRateScanAt:    tasks.LastRateScanAt,
-			LastPolishDate:    tasks.LastPolishDate,
-			LastPolishAt:      tasks.LastPolishAt,
+			ID:                    summary.ID,
+			HasCookie:             true,
+			Enabled:               statusErr == nil && enabled,
+			AutoConfirm:           summary.AutoConfirm,
+			AutoConsign:           summary.AutoConsign,
+			AutoBargain:           summary.AutoBargain,
+			BargainSootheTemplate: summary.BargainSootheTemplate,
+			Remark:                summary.Remark,
+			PauseDuration:         summary.PauseDuration,
+			PausedUntil:           summary.PausedUntil,
+			Paused:                summary.PausedUntil > time.Now().UTC().Unix(),
+			ShowBrowser:           summary.ShowBrowser,
+			Username:              summary.Username,
+			Nickname:              cachedCookieSummaryNickname(summary),
+			AvatarURL:             summary.AvatarURL,
+			LoginMethod:           summary.LoginMethod,
+			LastLoginAt:           summary.LastLoginAt,
+			ProfileError:          "",
+			AIEnabled:             false,
+			AutoRateEnabled:       tasks.AutoRateEnabled,
+			RateContent:           tasks.RateContent,
+			AutoPolishEnabled:     tasks.AutoPolishEnabled,
+			PolishTime:            tasks.PolishTime,
+			LastRateScanAt:        tasks.LastRateScanAt,
+			LastPolishDate:        tasks.LastPolishDate,
+			LastPolishAt:          tasks.LastPolishAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -344,8 +348,8 @@ func (s *Server) getCookieDetails(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cookieDetailResponse{
 		ID: summary.ID, Enabled: statusErr == nil && enabled, AutoConfirm: summary.AutoConfirm,
 		AutoConsign: summary.AutoConsign,
-		AutoBargain: summary.AutoBargain,
-		Remark:      summary.Remark, PauseDuration: summary.PauseDuration, PausedUntil: summary.PausedUntil,
+		AutoBargain: summary.AutoBargain, BargainSootheTemplate: summary.BargainSootheTemplate,
+		Remark: summary.Remark, PauseDuration: summary.PauseDuration, PausedUntil: summary.PausedUntil,
 		Paused: summary.PausedUntil > time.Now().UTC().Unix(), ShowBrowser: summary.ShowBrowser,
 		Username: summary.Username, Nickname: cachedCookieSummaryNickname(summary), AvatarURL: summary.AvatarURL,
 		LoginMethod: summary.LoginMethod, LastLoginAt: summary.LastLoginAt, ProfileError: "", HasCookie: true,

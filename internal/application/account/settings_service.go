@@ -30,6 +30,8 @@ type SettingsUpdateInput struct {
 	AutoConsign *bool
 	// AutoBargain 是可选的砍价“待刀成”阶段自动免拼开关。
 	AutoBargain *bool
+	// BargainSootheTemplate 是可选的砍价免拼前安抚模板；空串表示不发送。
+	BargainSootheTemplate *string
 	// PauseDuration 是可选的暂停时长，单位为分钟；零表示立即恢复。
 	PauseDuration *int
 	// Username 是可选的密码登录用户名更新值。

@@ -25,12 +25,6 @@ const (
 	TriggerBargainPending       = "bargain_pending"
 	TriggerBuyerReviewed        = "buyer_reviewed"
 	TriggerReviewMissingTimeout = "review_missing_timeout"
-	// TriggerOrderPinPending 表示拼团订单处于待刀成状态，等待免拼。
-	// 该事件由两个来源产生：买家付款后平台即时推送的「我已小刀，待刀成」系统卡片
-	// （秒级到达，经 ExtractTaskFromWS 识别），以及订单同步轮询发现 SKIP_PIN 按钮
-	// （分钟级兜底）。两者都交给自动化规则匹配：命中小刀免拼动作即自动点「直接免拼」，
-	// 支持按商品登记或账号全局规则。
-	TriggerOrderPinPending = "order_pin_pending"
 
 	ActionConfirmShipment = "confirm_shipment"
 	ActionSendCard        = "send_card"
@@ -39,9 +33,6 @@ const (
 	ActionSendText     = "send_text"
 	// ActionAdjustPrice 表示把待付款订单价格修改为动作配置中的目标价格。
 	ActionAdjustPrice = "adjust_price"
-	// ActionSkipPin 表示对处于待刀成状态的拼团订单调用「直接免拼」接口，
-	// 免拼成功后平台回写「已成功小刀，待发货」，既有付款发货链路随即接管。
-	ActionSkipPin = "skip_pin"
 )
 
 // Task 是自动化中心的统一输入。它可以来自 WS 系统事件、计划任务或手动触发。
@@ -121,10 +112,10 @@ func ExtractTaskFromWS(accountID, cookieStr string, raw map[string]any) *Task {
 	case isOrderPaidEvent(f):
 		task.TriggerType = TriggerOrderPaid
 	// 平台在买家付款后即时推送「我已小刀，待刀成」系统卡片，比订单同步轮询早数分钟。
-	// 该卡片是免拼的前置信号，进入 order_pin_pending 后由「自动直接免拼」动作免拼，
+	// 该卡片是免拼的前置信号，进入 bargain_pending 后由账号级自动免拼执行，「直接免拼」
 	// 成功后平台回写「我已成功小刀，待发货」，既有付款发货链路随即接管。
-	case isBargainPendingCard(f) && isSystemEvent(f):
-		task.TriggerType = TriggerOrderPinPending
+	case isBargainPendingCard(f):
+		task.TriggerType = TriggerBargainPending
 	case isOrderCreatedEvent(f):
 		task.TriggerType = TriggerOrderCreated
 	case isOrderCompletedEvent(f):

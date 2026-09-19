@@ -197,7 +197,7 @@ func TestExtractTaskFromWS_BargainReadyBuyerIgnored(t *testing.T) {
 }
 
 // TestExtractTaskFromWS_BargainPendingCard 验证平台即时推送的「我已小刀，待刀成」卡片
-// 被识别为待刀成事件（TriggerOrderPinPending），并携带免拼所需的订单、商品与买家事实。
+// 被识别为待刀成事件（TriggerBargainPending），并携带免拼所需的订单、商品与买家事实。
 func TestExtractTaskFromWS_BargainPendingCard(t *testing.T) {
 	// cases 覆盖待刀成卡片标题的逗号变体与普通文本误报，均须进入待刀成事件。
 	cases := []struct {
@@ -237,8 +237,8 @@ func TestExtractTaskFromWS_BargainPendingCard(t *testing.T) {
 			if (task != nil) != testCase.want {
 				t.Fatalf("task=%+v want task=%v", task, testCase.want)
 			}
-			if task != nil && task.TriggerType != TriggerOrderPinPending {
-				t.Fatalf("trigger=%q want %q", task.TriggerType, TriggerOrderPinPending)
+			if task != nil && task.TriggerType != TriggerBargainPending {
+				t.Fatalf("trigger=%q want %q", task.TriggerType, TriggerBargainPending)
 			}
 		})
 	}
@@ -253,7 +253,7 @@ func TestExtractTaskFromWS_BargainPendingCardFacts(t *testing.T) {
 	if task == nil {
 		t.Fatal("待刀成系统卡片应解析为自动化事件")
 	}
-	if task.TriggerType != TriggerOrderPinPending || task.OrderID != "3317048400029008250" ||
+	if task.TriggerType != TriggerBargainPending || task.OrderID != "3317048400029008250" ||
 		task.ItemID != "1085202656997" || task.BuyerID != "48906202" || task.ChatID != "66920123262" {
 		t.Fatalf("task=%+v", task)
 	}

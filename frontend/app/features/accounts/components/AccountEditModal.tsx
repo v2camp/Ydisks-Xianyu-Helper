@@ -1,4 +1,4 @@
-import { Bell,Check,Clock,Eye,EyeOff,Key,Loader2,X } from 'lucide-react';
+import { Bell,Check,Clock,Eye,EyeOff,Key,Loader2,MessageSquare,X } from 'lucide-react';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import type { NotificationChannel } from '../api';
@@ -50,6 +50,8 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
   const handleAutoConsignToggle = () => updateField('auto_consign', !editForm.auto_consign);
   // handleAutoBargainToggle 切换砍价“待刀成”阶段的独立自动免拼设置。
   const handleAutoBargainToggle = () => updateField('auto_bargain', !editForm.auto_bargain);
+  // handleBargainSootheChange 更新砍价免拼前安抚模板。
+  const handleBargainSootheChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => updateField('bargain_soothe_template', event.target.value);
   // handlePauseDurationChange 更新账号暂停时长。
   const handlePauseDurationChange = (event: React.ChangeEvent<HTMLInputElement>) => updateField('pause_duration', parseInt(event.target.value, 10) || 0);
   // handleRestartPause 按当前时长立即重新暂停账号。
@@ -190,6 +192,20 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
               <span className={`absolute left-1 top-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 ${editForm.auto_bargain ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
           </div>
+
+          {editForm.auto_bargain && (
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-sky-500" />免拼前安抚消息（可选）</label>
+              <textarea
+                value={editForm.bargain_soothe_template || ''}
+                onChange={handleBargainSootheChange}
+                placeholder="请检查界面上有没有【直接拼成】按钮，如果有点击这个按钮即可成单，如果没有请等我帮你操作免拼。"
+                rows={3}
+                className="w-full ios-input px-4 py-3 rounded-xl resize-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">免拼前发送给买家，安抚等待并引导其查看「直接拼成」按钮；留空则不发送。</p>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" />暂停处理时长（分钟）</label>

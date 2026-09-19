@@ -33,12 +33,14 @@ type AccountSettingsUpdate struct {
 	AutoConfirm *bool
 	AutoConsign *bool
 	// AutoBargain 是砍价“待刀成”阶段是否自动免拼的独立开关，不从自动发货开关派生。
-	AutoBargain   *bool
-	PauseDuration *int
-	Username      *string
-	Password      *string
-	ShowBrowser   *bool
-	ChannelIDs    *[]int64
+	AutoBargain *bool
+	// BargainSootheTemplate 是砍价免拼前发送给买家的账号级安抚模板；空串表示不发送。
+	BargainSootheTemplate *string
+	PauseDuration         *int
+	Username              *string
+	Password              *string
+	ShowBrowser           *bool
+	ChannelIDs            *[]int64
 }
 
 // UpdateSettings 在一个事务中更新账号字段及通知绑定，避免前端并行请求只成功一部分。
@@ -104,6 +106,10 @@ func (c *Cookies) UpdateSettings(ctx context.Context, cookieID string, input Acc
 	if input.AutoBargain != nil {
 		assignments = append(assignments, "auto_bargain=?")
 		args = append(args, boolToInt(*input.AutoBargain))
+	}
+	if input.BargainSootheTemplate != nil {
+		assignments = append(assignments, "bargain_soothe_template=?")
+		args = append(args, *input.BargainSootheTemplate)
 	}
 	// pausedUntil 用于本次流程后续判断的pausedUntil
 	pausedUntil := int64(0)
@@ -638,6 +644,21 @@ func (c *Cookies) GetAutoBargain(ctx context.Context, cookieID string) (bool, er
 		return false, err
 	}
 	return enabled != 0, nil
+}
+
+// GetBargainSootheTemplate 读取账号在砍价免拼前发送给买家的安抚模板；空串表示不发送。
+func (c *Cookies) GetBargainSootheTemplate(ctx context.Context, cookieID string) (string, error) {
+	// template 保存数据库中的账号级安抚模板文本。
+	var template string
+	// err 保存读取模板时的数据库错误；账号不存在时返回空串而不是错误，便于调用方按未配置处理。
+	err := c.DB.QueryRowContext(ctx, `SELECT bargain_soothe_template FROM cookies WHERE id=?`, cookieID).Scan(&template)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	return template, nil
 }
 
 // SetStatus 启用/禁用账号（cookie_status 表）。

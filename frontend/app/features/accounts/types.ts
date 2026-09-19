@@ -13,6 +13,8 @@ export interface AccountEditForm {
   auto_consign: boolean;
   // auto_bargain 表示砍价“待刀成”阶段是否自动免拼。
   auto_bargain: boolean;
+  // bargain_soothe_template 是砍价免拼前安抚模板；空串表示不发送。
+  bargain_soothe_template: string;
   // pause_duration 是账号订单处理暂停时长，单位为分钟。
   pause_duration: number;
   // username 是用于密码登录的闲鱼账号。

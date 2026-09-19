@@ -176,8 +176,8 @@ func TestBargainPendingRunsOnlyIndependentFreeShipping(t *testing.T) {
 	}
 }
 
-// TestBargainPendingRequiresWebSocketAndIndependentSwitch 验证二人小刀普通发货不会因待刀成消息或计划任务误触发免拼。
-func TestBargainPendingRequiresWebSocketAndIndependentSwitch(t *testing.T) {
+// TestBargainPendingRequiresIndependentSwitch 验证默认关闭自动免拼时，任一来源的待刀成消息都不会误触发免拼。
+func TestBargainPendingRequiresIndependentSwitch(t *testing.T) {
 	// store、cleanup 保存默认关闭自动免拼的测试数据库及关闭责任。
 	store, cleanup := newAutomationTestStore(t)
 	defer cleanup()
@@ -190,14 +190,39 @@ func TestBargainPendingRequiresWebSocketAndIndependentSwitch(t *testing.T) {
 	if /* handleErr 保存关闭免拼时处理待刀成消息的错误。 */ handleErr := center.HandleTask(context.Background(), wsTask); handleErr != nil {
 		t.Fatalf("关闭免拼时处理待刀成消息失败: %v", handleErr)
 	}
-	// schedulerTask 模拟兜底任务错误构造免拼阶段，中心必须在平台调用前拒绝。
-	schedulerTask := wsTask
-	schedulerTask.Source = "scheduler"
-	if /* handleErr 保存拒绝计划任务免拼阶段时的处理错误。 */ handleErr := center.HandleTask(context.Background(), schedulerTask); handleErr != nil {
-		t.Fatalf("拒绝计划任务免拼阶段不应报错: %v", handleErr)
+	// ordersyncTask 模拟订单同步轮询误构造免拼阶段，开关关闭时同样必须被拦截。
+	ordersyncTask := wsTask
+	ordersyncTask.Source = "ordersync"
+	if /* handleErr 保存关闭免拼时处理订单同步兜底消息的错误。 */ handleErr := center.HandleTask(context.Background(), ordersyncTask); handleErr != nil {
+		t.Fatalf("关闭免拼时处理订单同步兜底消息失败: %v", handleErr)
 	}
 	if client.freeShippingCalls != 0 || client.consignCalls != 0 {
 		t.Fatalf("二人小刀普通发货或兜底任务误触发免拼: free=%d consign=%d", client.freeShippingCalls, client.consignCalls)
+	}
+}
+
+// TestBargainPendingAcceptsOrdersyncWhenSwitchEnabled 验证开启自动免拼后，订单同步轮询
+// （ordersync 来源）同样允许触发免拼：这是 WS 卡片丢失时的分钟级兜底。
+func TestBargainPendingAcceptsOrdersyncWhenSwitchEnabled(t *testing.T) {
+	// store、cleanup 保存默认关闭自动免拼的测试数据库及关闭责任。
+	store, cleanup := newAutomationTestStore(t)
+	defer cleanup()
+	// enabled 是测试中显式开启的自动免拼开关值。
+	enabled := true
+	if /* settingsErr 保存开启账号自动免拼设置时的错误。 */ _, settingsErr := store.Cookies.UpdateSettings(context.Background(), "cid", db.AccountSettingsUpdate{UserID: 1, AutoBargain: &enabled}); settingsErr != nil {
+		t.Fatalf("开启自动免拼设置失败: %v", settingsErr)
+	}
+	// client 是记录免拼调用的 MTOP 替身。
+	client := &fakeMTop{freeShippingOK: true, freeShippingRet: []string{"SUCCESS::调用成功"}}
+	// center 是使用开启自动免拼账号设置的自动化中心。
+	center := NewWithDependencies(store, nil, nil, CenterDependencies{MTop: client})
+	// task 是订单同步轮询发现的待刀成订单。
+	task := Task{Source: "ordersync", AccountID: "cid", TriggerType: TriggerBargainPending, OrderID: "bargain-sync", ItemID: "item", BuyerID: "buyer", IsBargain: true}
+	if /* handleErr 保存开启免拼时处理订单同步消息的错误。 */ handleErr := center.HandleTask(context.Background(), task); handleErr != nil {
+		t.Fatalf("开启免拼时处理订单同步消息失败: %v", handleErr)
+	}
+	if client.freeShippingCalls != 1 {
+		t.Fatalf("开启免拼后订单同步兜底应触发一次免拼: free=%d", client.freeShippingCalls)
 	}
 }
 
