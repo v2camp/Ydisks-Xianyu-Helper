@@ -154,6 +154,9 @@ func (c *ClientImpl) freeShippingOnce(ctx context.Context, cookiesStr, orderID, 
 	if marshalErr != nil {
 		return false, nil, cookiesStr, fmt.Errorf("构造免拼发货请求数据失败: %w", marshalErr)
 	}
+	// 诊断日志：记录免拼请求 payload 的最终 JSON 形状（不含 Cookie 与签名），
+	// 用于核对真实平台成功报文的字段类型（itemId/buyerId 为数字还是字符串）。
+	c.logInfo("免拼发货请求参数", "order_id", orderID, "payload", string(dataBytes))
 	// dataVal 是参与签名并作为表单 data 字段提交的 JSON 文本。
 	dataVal := string(dataBytes)
 	// sign 是当前时间、签名 Token 与免拼 JSON 负载生成的 MTOP 签名，禁止记录。
@@ -195,12 +198,17 @@ func (c *ClientImpl) freeShippingOnce(ctx context.Context, cookiesStr, orderID, 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		// failure 保存非 2xx MTOP 响应的统一分类；确定业务 ret 仍按正常业务结果返回。
 		failure := c.mtopResponseFailure("免拼发货接口", resp.StatusCode, response.Ret, "HTTP 状态异常")
+		// 诊断日志：非 2xx 状态下记录状态码与 ret，供真实报文定位失败根因。
+		c.logInfo("免拼发货接口 HTTP 状态异常", "order_id", orderID, "status", resp.StatusCode, "ret", formatMTopRet(response.Ret))
 		if isMTopBusinessRet(response.Ret) {
 			return false, response.Ret, updated, nil
 		}
 		return false, response.Ret, updated, failure
 	}
-	return hasMTopSuccess(response.Ret), response.Ret, updated, nil
+	// 诊断日志：记录平台 ret 与 SUCCESS 判定结果，供真实报文确认免拼成功或业务拒绝的判定依据。
+	success := hasMTopSuccess(response.Ret)
+	c.logInfo("免拼发货接口响应", "order_id", orderID, "status", resp.StatusCode, "ret", formatMTopRet(response.Ret), "success", success)
+	return success, response.Ret, updated, nil
 }
 
 // buildFreeShippingQuery 构造砍价订单免拼发货的固定 MTOP 查询参数；timestamp 与 sign 由当前请求生成。
