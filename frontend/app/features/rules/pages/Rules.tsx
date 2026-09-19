@@ -993,10 +993,24 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                       </div>
                       <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
                         <p className="text-xs leading-5 text-sky-700">
-                          免拼动作无需额外配置：买家拍下并支付小刀单后，系统在订单同步发现待刀成状态时自动点「直接免拼」，
-                          平台回写「已成功小刀，待发货」后由付款发货规则自动发货。
+                          买家拍下并支付小刀单后，系统自动点「直接免拼」，平台回写「已成功小刀，待发货」后由付款发货规则自动发货。
                           选择「账号级规则（不限定商品）」时对账号下全部商品生效；商品不支持拼单时不会产生待刀成订单，全局规则同样安全。
                         </p>
+                      </div>
+                      <div className="mt-4">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">安抚消息（可选）</label>
+                        <p className="text-xs text-gray-500 mb-2">免拼前发送给买家，安抚等待并引导其查看「直接拼成」按钮；留空则不发送。</p>
+                        <textarea
+                          value={editingAutomationRule.actions?.find(/* 当前回调处理集合中的单个元素。 */ action => action.action_type === 'skip_pin')?.message_template || ''}
+                          onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setEditingAutomationRule({
+                            ...editingAutomationRule,
+                            actions: (editingAutomationRule.actions?.length ? editingAutomationRule.actions : cardActionsForTrigger('order_pin_pending')).map(/* 当前回调处理用户交互或异步状态变化。 */ action =>
+                              action.action_type === 'skip_pin' ? { ...action, message_template: event.target.value } : action
+                            ),
+                          })}
+                          placeholder="请检查界面上有没有【直接拼成】按钮，如果有点击这个按钮即可成单，如果没有请等我帮你操作免拼。"
+                          className="w-full ios-input px-4 py-3 rounded-xl h-24 resize-none"
+                        />
                       </div>
                     </section>
                   )}
