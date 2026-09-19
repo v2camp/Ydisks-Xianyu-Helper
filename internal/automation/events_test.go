@@ -145,11 +145,6 @@ func TestExtractTaskFromWS_OrderPaidSignalVariants(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "待刀成前置卡片不直接发货",
-			raw:  `{"1":{"7":1,"6":{"3":{"5":"{\"dxCard\":{\"item\":{\"main\":{\"exContent\":{\"title\":\"我已小刀，待刀成\"}}}}}"}}}}`,
-			want: false,
-		},
-		{
 			name: "成功小刀普通文本不触发",
 			raw:  `{"1":{"7":2,"10":{"reminderContent":"我已成功小刀，待发货"}}}`,
 			want: false,
@@ -179,6 +174,79 @@ func TestExtractTaskFromWS_BargainReadyBuyerIgnored(t *testing.T) {
 	if // task 表示买家侧卡片经卖家自动化入口解析后的结果。
 	task := ExtractTaskFromWS("acc1", "cookie", raw); task != nil {
 		t.Fatalf("买家成功小刀卡片不应触发自动发货: %+v", task)
+	}
+}
+
+// TestExtractTaskFromWS_BargainPendingCard 验证平台即时推送的「我已小刀，待刀成」卡片
+// 被识别为待刀成事件（TriggerOrderPinPending），并携带免拼所需的订单、商品与买家事实。
+func TestExtractTaskFromWS_BargainPendingCard(t *testing.T) {
+	// cases 覆盖待刀成卡片标题的逗号变体与普通文本误报，均须进入待刀成事件。
+	cases := []struct {
+		// name 表示当前待刀成信号样本的可读场景名称。
+		name string
+		// raw 表示当前样本的解密 WS 原始报文。
+		raw string
+		// want 表示当前样本是否应生成待刀成事件。
+		want bool
+	}{
+		{
+			name: "中文逗号待刀成系统卡片",
+			raw:  `{"1":{"7":1,"6":{"3":{"5":"{\"dxCard\":{\"item\":{\"main\":{\"exContent\":{\"title\":\"我已小刀，待刀成\"},\"targetUrl\":\"fleamarket://order_detail?id=5127769801050054938\"}}}}"}},"10":{"reminderUrl":"fleamarket://message_chat?itemId=1085202656997&peerUserId=3160094809&sid=66813765760"}}}`,
+			want: true,
+		},
+		{
+			name: "英文逗号待刀成系统卡片",
+			raw:  `{"1":{"7":1,"6":{"3":{"5":"{\"dxCard\":{\"item\":{\"main\":{\"exContent\":{\"title\":\"我已小刀,待刀成\"}}}}}"}}}}`,
+			want: true,
+		},
+		{
+			name: "待刀成普通文本不触发",
+			raw:  `{"1":{"7":2,"10":{"reminderContent":"我已小刀，待刀成"}}}`,
+			want: false,
+		},
+		{
+			name: "待刀成通知摘要不触发",
+			raw:  `{"1":{"7":1,"10":{"reminderNotice":"我已小刀，待刀成"}}}`,
+			want: false,
+		},
+	}
+	// testCase 表示当前待刀成信号样本及预期是否生成事件。
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// task 保存待刀成卡片经统一事件入口解析后的任务。
+			task := ExtractTaskFromWS("acc1", "cookie", mustMap(t, testCase.raw))
+			if (task != nil) != testCase.want {
+				t.Fatalf("task=%+v want task=%v", task, testCase.want)
+			}
+			if task != nil && task.TriggerType != TriggerOrderPinPending {
+				t.Fatalf("trigger=%q want %q", task.TriggerType, TriggerOrderPinPending)
+			}
+		})
+	}
+}
+
+// TestExtractTaskFromWS_BargainPendingCardFacts 验证待刀成系统卡片能提取免拼所需的全部订单事实。
+func TestExtractTaskFromWS_BargainPendingCardFacts(t *testing.T) {
+	// raw 保存与线上一致的待刀成系统卡片报文：卡片标题、订单链接与聊天链接字段齐备。
+	raw := mustMap(t, `{"1":{"2":"66920123262@goofish","7":1,"6":{"3":{"5":"{\"dxCard\":{\"item\":{\"main\":{\"exContent\":{\"title\":\"我已小刀，待刀成\"},\"targetUrl\":\"fleamarket://order_detail?id=3317048400029008250\"}}}}"}},"10":{"reminderUrl":"fleamarket://message_chat?itemId=1085202656997&peerUserId=48906202&sid=66920123262&messageId=04efa9d45800471a90b0a87c5800d63a&adv=no"}}}`)
+	// task 保存解析出的待刀成任务。
+	task := ExtractTaskFromWS("acc1", "cookie", raw)
+	if task == nil {
+		t.Fatal("待刀成系统卡片应解析为自动化事件")
+	}
+	if task.TriggerType != TriggerOrderPinPending || task.OrderID != "3317048400029008250" ||
+		task.ItemID != "1085202656997" || task.BuyerID != "48906202" || task.ChatID != "66920123262" {
+		t.Fatalf("task=%+v", task)
+	}
+}
+
+// TestExtractTaskFromWS_BargainPendingBuyerIgnored 验证待刀成卡片的买家副本不会进入卖家自动化。
+func TestExtractTaskFromWS_BargainPendingBuyerIgnored(t *testing.T) {
+	// raw 保存带有买家角色订单链接的待刀成卡片。
+	raw := mustMap(t, `{"1":{"7":1,"6":{"3":{"5":"{\"dxCard\":{\"item\":{\"main\":{\"exContent\":{\"title\":\"我已小刀，待刀成\"},\"targetUrl\":\"fleamarket://order_detail?id=3317048400029008250&role=buyer\"}}}}"}}}}`)
+	if // task 表示买家侧待刀成卡片经卖家自动化入口解析后的结果。
+	task := ExtractTaskFromWS("acc1", "cookie", raw); task != nil {
+		t.Fatalf("买家待刀成卡片不应触发卖家免拼: %+v", task)
 	}
 }
 
