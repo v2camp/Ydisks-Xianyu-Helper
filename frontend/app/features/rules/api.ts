@@ -358,7 +358,9 @@ export const updateShippingRule = async (rule: Partial<ShippingRule>): Promise<O
         priority: rule.priority || 100,
         config_json: rule.config_json || '{}',
         actions: actions.map(/* 当前回调用于处理集合元素或接口响应。 */ (action, index) => ({
-          id: action.id ? Number(action.id) : undefined,
+          // 仅模板动作携带 id 以便后端保留停用模板绑定；其余动作（免拼/文本/改价等）
+          // 由后端删除重建，携带旧 id 会在模板契约校验中误判为状态变化而保存失败。
+          id: action.action_type === 'send_template' && action.id ? Number(action.id) : undefined,
           action_type: action.action_type,
           card_id: action.card_id || 0,
           delivery_count: action.delivery_count || 1,
