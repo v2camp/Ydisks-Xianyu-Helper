@@ -7,13 +7,26 @@ import (
 	"fmt"
 	"strings"
 
+	"xianyu-go/internal/db"
 	"xianyu-go/internal/xianyu/mtop"
 )
 
 // skipPinOrder 对处于待刀成状态的拼团订单调用「直接免拼」接口。
 // 平台免拼接口幂等：对已免拼订单重复调用无副作用，因此执行失败可安全进入通用恢复重试。
-// 成功不产生买家可见消息，返回空结果数量；后续发货由既有付款发货链路接管。
-func (e *automationActionExecutor) skipPinOrder(ctx context.Context, task Task, allowCredentialRecovery bool) error {
+// 成功不产生买家可见发货，返回空结果数量；后续发货由既有付款发货链路接管。
+// action.MessageTemplate 是可选安抚文案：买家等待刀成期间尽力先发送，安抚用户并引导
+// 自行查看「直接拼成」按钮；发送失败只记日志，不阻断免拼主流程。
+func (e *automationActionExecutor) skipPinOrder(ctx context.Context, task Task, action db.AutomationAction, allowCredentialRecovery bool) error {
+	// sootheText 是渲染后的安抚文案，空值表示未配置或无需发送。
+	sootheText := strings.TrimSpace(renderTemplate(action.MessageTemplate, task))
+	if sootheText != "" && task.ChatID != "" && task.BuyerID != "" {
+		// sootheErr 保存安抚消息发送结果；买家等待安抚是尽力而为，失败不阻断免拼。
+		if sootheErr := e.sendText(ctx, task, sootheText); sootheErr != nil {
+			e.logger.Warn("小刀免拼安抚消息发送失败，继续执行免拼", "account", task.AccountID, "order_id", task.OrderID, "err", sootheErr)
+		} else {
+			e.logger.Info("小刀免拼安抚消息已发送", "account", task.AccountID, "order_id", task.OrderID, "buyer_id", task.BuyerID)
+		}
+	}
 	// session 固定本次 MTOP 请求的最小凭证视图，外部调用期间不持有账号凭证锁。
 	session, err := e.openShipmentConsignSession(ctx, task.AccountID)
 	if err != nil {
@@ -40,7 +53,7 @@ func (e *automationActionExecutor) skipPinOrder(ctx context.Context, task Task, 
 		recoverer := e.recoverer()
 		if allowCredentialRecovery && recoverer != nil && recoverer.RecoverExpiredCredential(ctx, task.AccountID) {
 			e.logger.Info("小刀免拼凭证恢复成功，重新执行免拼", "account", task.AccountID, "order_id", task.OrderID)
-			return e.skipPinOrder(ctx, task, false)
+			return e.skipPinOrder(ctx, task, action, false)
 		}
 		return fmt.Errorf("%w: 小刀免拼 %s 已失效且未能恢复: %v", errActionNotPerformed, task.OrderID, sessionErr)
 	}

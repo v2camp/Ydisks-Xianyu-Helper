@@ -205,7 +205,12 @@ export const actionSummary = (rule: ShippingRule) => {
     return target ? `拍下后改价为 ¥${target}` : '未配置目标价格';
   }
   if (rule.trigger_type === 'order_pin_pending') {
-    return '自动直接免拼';
+    // soothe 保存免拼动作配置的安抚消息。
+    const soothe = rule.actions?.find(
+      // 安抚消息匹配器只查找免拼动作的文案。
+      action => action.action_type === 'skip_pin',
+    )?.message_template;
+    return soothe?.trim() ? '自动直接免拼 + 安抚消息' : '自动直接免拼';
   }
   if (rule.trigger_type === 'review_missing_timeout') {
     return rule.actions?.find(
