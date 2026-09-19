@@ -11,6 +11,8 @@ export interface AccountDetail {
   auto_confirm: boolean;
   /** 自动发货后是否自动转已发货。 */
   auto_consign: boolean;
+  /** 砍价“待刀成”阶段是否自动调用免拼接口。 */
+  auto_bargain: boolean;
   /** 用户为账号设置的备注。 */
   remark?: string;
   /** 自动回复暂停时长，单位为分钟。 */
@@ -133,6 +135,7 @@ export type NotificationEventType =
   | 'security_verification'
   | 'token_renewal'
   | 'delivery_result'
+  | 'manual_intervention_required'
   | 'system_error';
 
 /** 由当前 feature adapter 归一后的 NotificationChannel UI 模型；不直接暴露 HTTP DTO。 */
@@ -177,6 +180,8 @@ export interface AccountSummaryResponse {
   auto_confirm: boolean;
   /** 自动发货后是否自动转已发货。 */
   auto_consign: boolean;
+  /** 砍价“待刀成”阶段是否自动调用免拼接口。 */
+  auto_bargain: boolean;
   /** 账号备注。 */
   remark: string;
   /** 自动回复暂停时长，单位为分钟。 */

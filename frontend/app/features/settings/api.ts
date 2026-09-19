@@ -90,6 +90,28 @@ export const fetchAIModels = async (baseURL: string, apiKey = '', options?: Requ
   return Array.isArray(response.models) ? response.models : [];
 };
 
+/** AI 连接测试结果。 */
+export interface AIConnectionTestResult {
+  /** 测试是否成功。 */
+  success: boolean;
+  /** 实际被测试的模型名称。 */
+  model: string;
+  /** 请求耗时毫秒数。 */
+  latency_ms: number;
+  /** 模型回复摘要。 */
+  reply: string;
+}
+
+/** 发送一次最小对话请求验证 AI API 地址、密钥和模型的组合是否可用。 */
+export const testAIConnection = async (baseURL: string, apiKey: string, model: string, options?: RequestControlOptions): Promise<AIConnectionTestResult> => {
+  // response 是由版本化 OpenAPI operation 校验后的非敏感连接诊断结果。
+  const response = await runContractRequest(/* signal 是本次长时连接测试的超时与取消控制信号。 */ signal => contractClient.POST('/api/v1/settings/ai-test', {
+    body: { base_url: baseURL, api_key: apiKey, model },
+    signal,
+  }), { timeoutMs: 60_000, ...options });
+  return response;
+};
+
 /** 在保存登录凭据前读取当前会话状态。 */
 export const verifySession = async (options?: RequestControlOptions): Promise<SettingsSessionStatusResponse> =>
   runContractRequest(/* signal 是本次设置页会话校验请求的超时与取消控制信号。 */ signal => contractClient.GET('/api/v1/session', { signal }), options);

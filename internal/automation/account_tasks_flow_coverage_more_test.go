@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +18,9 @@ type accountTaskFlowRepository struct {
 	// value、valueErr 保存 Cookie 读取结果和错误。
 	value    string
 	valueErr error
+	// dueOrderIDs、dueOrderIDsErr 保存本地买家确认收货事实筛选出的订单及读取错误。
+	dueOrderIDs    []string
+	dueOrderIDsErr error
 	// updateErr 保存外部动作返回 Cookie 的持久化错误。
 	updateErr error
 	// claimed、claimErr 保存周期任务抢占结果和错误。
@@ -43,6 +45,11 @@ type accountTaskFlowRepository struct {
 // GetValue 返回测试预置的 Cookie。
 func (repository *accountTaskFlowRepository) GetValue(context.Context, string) (string, error) {
 	return repository.value, repository.valueErr
+}
+
+// DueAutoRateOrderIDs 返回测试预置的本地买家已确认收货订单，确保评价流程不依赖远端列表扫描。
+func (repository *accountTaskFlowRepository) DueAutoRateOrderIDs(context.Context, string, int) ([]string, error) {
+	return repository.dueOrderIDs, repository.dueOrderIDsErr
 }
 
 // UpdateValueExisting 返回测试预置的 Cookie 持久化错误。
@@ -92,9 +99,6 @@ func (repository *accountTaskFlowRepository) MarkPolished(_ context.Context, _ s
 
 // accountTaskFlowClient 是账号任务平台调用的可控内存客户端。
 type accountTaskFlowClient struct {
-	// pending、pendingErr 保存待评价订单结果和错误。
-	pending    *mtop.PendingRateResult
-	pendingErr error
 	// rateResult、rateErr 保存评价动作结果和错误。
 	rateResult *mtop.AccountTaskResult
 	rateErr    error
@@ -145,17 +149,6 @@ func (recoverer accountTaskCredentialReadFailingRecoverer) RecoverExpiredCredent
 	return true
 }
 
-// FetchPendingRateOrders 返回测试预置的待评价订单。
-func (client *accountTaskFlowClient) FetchPendingRateOrders(context.Context, string, int, int) (*mtop.PendingRateResult, error) {
-	if client.pendingErr != nil {
-		return nil, client.pendingErr
-	}
-	if client.pending == nil {
-		return &mtop.PendingRateResult{}, nil
-	}
-	return client.pending, nil
-}
-
 // RateBuyer 返回测试预置的评价结果。
 func (client *accountTaskFlowClient) RateBuyer(context.Context, string, string, string) (*mtop.AccountTaskResult, error) {
 	if client.rateErr != nil {
@@ -203,7 +196,7 @@ func TestAccountTaskRateCoversFailureAndCompensationBranches(t *testing.T) {
 	// baseSettings 保存自动评价流程共用的账号任务配置。
 	baseSettings := db.AccountTaskSettings{CookieID: "account", RateContent: "感谢光临"}
 	// nilClientCoordinator 保存客户端未装配的评价协调器。
-	nilClientCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie"}, nil)
+	nilClientCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie", dueOrderIDs: []string{"trade"}}, nil)
 	// nilClientResultErr 保存客户端缺失错误。
 	if _, nilClientResultErr := nilClientCoordinator.runAutoRate(context.Background(), baseSettings); nilClientResultErr == nil {
 		t.Fatal("缺少自动评价客户端不应成功")
@@ -211,40 +204,40 @@ func TestAccountTaskRateCoversFailureAndCompensationBranches(t *testing.T) {
 	// valueErr 是 Cookie 读取失败的底层错误。
 	valueErr := errors.New("cookie read failed")
 	// valueCoordinator 保存 Cookie 读取失败的评价协调器。
-	valueCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{valueErr: valueErr}, &accountTaskFlowClient{})
+	valueCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{valueErr: valueErr, dueOrderIDs: []string{"trade"}}, &accountTaskFlowClient{})
 	// valueResultErr 保存 Cookie 读取错误。
 	if _, valueResultErr := valueCoordinator.runAutoRate(context.Background(), baseSettings); !errors.Is(valueResultErr, valueErr) {
 		t.Fatalf("Cookie 读取错误=%v", valueResultErr)
 	}
-	// pendingErr 是待评价订单查询失败的底层错误。
-	pendingErr := errors.New("pending orders failed")
-	// pendingCoordinator 保存订单查询失败的评价协调器。
-	pendingCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie"}, &accountTaskFlowClient{pendingErr: pendingErr})
-	// pendingResultErr 保存订单查询错误。
-	if _, pendingResultErr := pendingCoordinator.runAutoRate(context.Background(), baseSettings); !errors.Is(pendingResultErr, pendingErr) {
-		t.Fatalf("待评价查询错误=%v", pendingResultErr)
+	// dueOrderIDsErr 是本地买家确认收货订单查询失败的底层错误。
+	dueOrderIDsErr := errors.New("local completed orders failed")
+	// dueOrderIDsCoordinator 保存本地订单查询失败的评价协调器。
+	dueOrderIDsCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie", dueOrderIDsErr: dueOrderIDsErr}, &accountTaskFlowClient{})
+	// dueOrderIDsResultErr 保存本地订单查询错误。
+	if _, dueOrderIDsResultErr := dueOrderIDsCoordinator.runAutoRate(context.Background(), baseSettings); !errors.Is(dueOrderIDsResultErr, dueOrderIDsErr) {
+		t.Fatalf("本地已完成订单查询错误=%v", dueOrderIDsResultErr)
 	}
 	// claimErr 是评价运行记录抢占失败的底层错误。
 	claimErr := errors.New("claim failed")
 	// claimCoordinator 保存运行记录抢占失败的评价协调器。
-	claimCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie", claimed: true, claimErr: claimErr}, &accountTaskFlowClient{pending: &mtop.PendingRateResult{Orders: []mtop.PendingRateOrder{{TradeID: "trade"}}}})
+	claimCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "cookie", dueOrderIDs: []string{"trade"}, claimed: true, claimErr: claimErr}, &accountTaskFlowClient{})
 	// claimResultErr 保存运行记录抢占错误。
 	if _, claimResultErr := claimCoordinator.runAutoRate(context.Background(), baseSettings); !errors.Is(claimResultErr, claimErr) {
 		t.Fatalf("评价运行记录抢占错误=%v", claimResultErr)
 	}
 	// skippedRepository 保存并发运行记录已被其他 worker 抢占的场景。
-	skippedRepository := &accountTaskFlowRepository{value: "cookie", claimed: false}
+	skippedRepository := &accountTaskFlowRepository{value: "cookie", dueOrderIDs: []string{"trade"}, claimed: false}
 	// skippedCoordinator 保存并发跳过场景的评价协调器。
-	skippedCoordinator := newAccountTaskFlowCoordinator(skippedRepository, &accountTaskFlowClient{pending: &mtop.PendingRateResult{Orders: []mtop.PendingRateOrder{{TradeID: "trade"}}}})
+	skippedCoordinator := newAccountTaskFlowCoordinator(skippedRepository, &accountTaskFlowClient{})
 	// skippedSummary、skippedErr 保存跳过结果。
 	skippedSummary, skippedErr := skippedCoordinator.runAutoRate(context.Background(), baseSettings)
 	if skippedErr != nil || skippedSummary.Skipped != 1 {
 		t.Fatalf("并发跳过结果=%+v err=%v", skippedSummary, skippedErr)
 	}
 	// failedRepository 保存评价动作失败后可以正常写入 failed 状态的仓储。
-	failedRepository := &accountTaskFlowRepository{value: "cookie", claimed: true}
+	failedRepository := &accountTaskFlowRepository{value: "cookie", dueOrderIDs: []string{"trade"}, claimed: true}
 	// failedCoordinator 保存平台返回失败结果的评价协调器。
-	failedCoordinator := newAccountTaskFlowCoordinator(failedRepository, &accountTaskFlowClient{pending: &mtop.PendingRateResult{Orders: []mtop.PendingRateOrder{{TradeID: "trade"}}}, rateResult: &mtop.AccountTaskResult{Success: false, Message: "平台拒绝"}})
+	failedCoordinator := newAccountTaskFlowCoordinator(failedRepository, &accountTaskFlowClient{rateResult: &mtop.AccountTaskResult{Success: false, Message: "平台拒绝"}})
 	// failedSummary、failedErr 保存评价失败结果。
 	failedSummary, failedErr := failedCoordinator.runAutoRate(context.Background(), baseSettings)
 	if failedErr != nil || failedSummary.Failed != 1 {
@@ -261,7 +254,7 @@ func TestAccountTaskRateCoversFailureAndCompensationBranches(t *testing.T) {
 	// cookieUpdateErr 是平台返回新 Cookie 后的持久化错误。
 	cookieUpdateErr := errors.New("task cookie update failed")
 	// cookieUpdateCoordinator 保存 Cookie 持久化失败的评价协调器。
-	cookieUpdateCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "old", updateErr: cookieUpdateErr}, &accountTaskFlowClient{pending: &mtop.PendingRateResult{UpdatedCookies: "new"}})
+	cookieUpdateCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{value: "old", dueOrderIDs: []string{"trade"}, claimed: true, updateErr: cookieUpdateErr}, &accountTaskFlowClient{rateResult: &mtop.AccountTaskResult{Success: true, UpdatedCookies: "new"}})
 	// cookieUpdateResultErr 保存 Cookie 持久化错误。
 	if _, cookieUpdateResultErr := cookieUpdateCoordinator.runAutoRate(context.Background(), baseSettings); !errors.Is(cookieUpdateResultErr, cookieUpdateErr) {
 		t.Fatalf("评价 Cookie 持久化错误=%v", cookieUpdateResultErr)
@@ -381,19 +374,23 @@ func TestAccountTaskCoordinatorCoversPropagationAndRecoveryBranches(t *testing.T
 	if !errors.Is(recoveryErr, sessionError) || !errors.Is(recoveryErr, errAccountTaskCredentialRenewed) {
 		t.Fatalf("会话恢复错误=%v", recoveryErr)
 	}
-	// tokenCoordinator 保存协议续期只返回成功但未轮换签名 Cookie 的测试协调器。
+	// tokenCoordinator 为 Token 错误装配可观测恢复入口，验证入口不能被调用。
 	tokenCoordinator := newAccountTaskFlowCoordinator(&accountTaskFlowRepository{
 		runtimeData: db.CookieRuntimeData{Value: "unb=1; _m_h5_tk=old_token"},
 	}, &accountTaskFlowClient{})
-	tokenCoordinator.recoverer = func() CredentialRecoverer { return accountTaskRecovererBoundary{success: true} }
+	// 恢复端口即使存在也不能因 Token 错误被读取或调用。
+	tokenCoordinator.recoverer = func() CredentialRecoverer {
+		t.Fatal("Token 错误不得进入账号恢复端口")
+		return nil
+	}
 	// tokenError 是平台报告的 MTOP 签名 Token 过期错误。
 	tokenError := &mtop.MTopResponseError{API: "评价接口", Kind: mtop.MTopErrorTokenExpired, HTTPStatus: 200}
-	// tokenRecoveryErr 保存未轮换签名 Cookie 时拒绝误报成功的结果。
+	// tokenRecoveryErr 必须原样保留 Token 失败，不能包装为账号恢复结果。
 	tokenRecoveryErr := tokenCoordinator.recoverAccountTaskCredential(context.Background(), "account", tokenError)
-	if !errors.Is(tokenRecoveryErr, tokenError) || !strings.Contains(tokenRecoveryErr.Error(), "未轮换 MTOP 签名 Cookie") {
-		t.Fatalf("未轮换签名 Cookie 不应报告 Token 恢复成功: %v", tokenRecoveryErr)
+	if tokenRecoveryErr != tokenError {
+		t.Fatalf("Token 错误必须原样返回: %v", tokenRecoveryErr)
 	}
-	// expiryRepository 保存只更新 _m_h5_tk 时间后缀的凭证，验证它不会被误判为签名轮换。
+	// expiryRepository 保存初始凭证，验证 Token 错误不会调用只更新时间后缀的恢复器。
 	expiryRepository := &accountTaskFlowRepository{runtimeData: db.CookieRuntimeData{Value: "unb=1; _m_h5_tk=old_token_100"}}
 	// expiryCoordinator 使用会把时间后缀更新为 200 的恢复回调。
 	expiryCoordinator := newAccountTaskFlowCoordinator(expiryRepository, &accountTaskFlowClient{})
@@ -402,33 +399,33 @@ func TestAccountTaskCoordinatorCoversPropagationAndRecoveryBranches(t *testing.T
 	}
 	// expiryRecoveryErr 保存仅令牌时间后缀变化时的恢复结果。
 	expiryRecoveryErr := expiryCoordinator.recoverAccountTaskCredential(context.Background(), "account", tokenError)
-	if !errors.Is(expiryRecoveryErr, tokenError) || !strings.Contains(expiryRecoveryErr.Error(), "未轮换 MTOP 签名 Cookie") {
-		t.Fatalf("仅更新令牌时间后缀不应报告 Token 恢复成功: %v", expiryRecoveryErr)
+	if expiryRecoveryErr != tokenError || expiryRepository.runtimeData.Value != "unb=1; _m_h5_tk=old_token_100" {
+		t.Fatal("Token 错误不得通过账号恢复器更新时间后缀")
 	}
-	// preReadErr 是续期前读取签名 Cookie 失败的底层错误，恢复回调成功也不能替代该证据。
+	// preReadErr 是仓储预置错误；Token 错误不应读取账号恢复所需的凭证。
 	preReadErr := errors.New("续期前 Cookie 读取失败")
 	// preReadRepository 保存无法提供续期前 Token 的测试仓储。
 	preReadRepository := &accountTaskFlowRepository{runtimeDataErr: preReadErr}
-	// preReadCoordinator 验证恢复前态读取失败不会被报告为 Token 已恢复。
+	// preReadCoordinator 验证仓储不可读时也直接保留 Token 错误。
 	preReadCoordinator := newAccountTaskFlowCoordinator(preReadRepository, &accountTaskFlowClient{})
 	preReadCoordinator.recoverer = func() CredentialRecoverer { return accountTaskRecovererBoundary{success: true} }
-	// preReadRecoveryErr 保存前态读取失败时的恢复结果，必须同时保留平台错误和存储错误。
+	// preReadRecoveryErr 必须原样保留平台错误，不执行账号恢复读取。
 	preReadRecoveryErr := preReadCoordinator.recoverAccountTaskCredential(context.Background(), "account", tokenError)
-	if !errors.Is(preReadRecoveryErr, tokenError) || !errors.Is(preReadRecoveryErr, preReadErr) || strings.Contains(preReadRecoveryErr.Error(), "续期成功") {
-		t.Fatalf("续期前无法读取签名 Cookie 不应报告 Token 恢复成功: %v", preReadRecoveryErr)
+	if preReadRecoveryErr != tokenError {
+		t.Fatalf("仓储不可读也不得把 Token 错误升级为账号恢复: %v", preReadRecoveryErr)
 	}
-	// postReadErr 是续期后读取签名 Cookie 失败的底层错误，错误文本与错误链都必须保留。
+	// postReadErr 由恢复器注入；Token 错误不得触发该副作用。
 	postReadErr := errors.New("续期后 Cookie 读取失败")
 	// postReadRepository 保存续期前可读、续期后由恢复器切换为不可读的测试仓储。
 	postReadRepository := &accountTaskFlowRepository{runtimeData: db.CookieRuntimeData{Value: "unb=1; _m_h5_tk=old_token"}}
-	// postReadCoordinator 验证恢复后态读取失败不会被报告为 Token 已恢复。
+	// postReadCoordinator 验证 Token 错误根本不会运行会修改仓储的恢复器。
 	postReadCoordinator := newAccountTaskFlowCoordinator(postReadRepository, &accountTaskFlowClient{})
 	postReadCoordinator.recoverer = func() CredentialRecoverer {
 		return accountTaskCredentialReadFailingRecoverer{repository: postReadRepository, readErr: postReadErr}
 	}
-	// postReadRecoveryErr 保存恢复后读取失败时的结果，必须同时保留平台错误和存储错误。
+	// postReadRecoveryErr 原样保留 Token 错误，仓储读取能力也应保持不变。
 	postReadRecoveryErr := postReadCoordinator.recoverAccountTaskCredential(context.Background(), "account", tokenError)
-	if !errors.Is(postReadRecoveryErr, tokenError) || !errors.Is(postReadRecoveryErr, postReadErr) || strings.Contains(postReadRecoveryErr.Error(), "续期成功") {
-		t.Fatalf("续期后无法读取签名 Cookie 不应报告 Token 恢复成功: %v", postReadRecoveryErr)
+	if postReadRecoveryErr != tokenError || postReadRepository.runtimeDataErr != nil {
+		t.Fatalf("Token 错误不得执行账号恢复副作用: %v", postReadRecoveryErr)
 	}
 }

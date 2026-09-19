@@ -183,7 +183,6 @@ func (c *credentialCoordinator) refreshTokenWithMinGap(ctx context.Context, _ bo
 		// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
 		a.captchaFailureStreak = 0
 		a.tokenFetchFailures = 0
-		a.tokenImmediateRefreshes = 0
 		a.lastTokenStatus = tokenRefreshSuccess
 		a.mu.Unlock()
 		a.runtimeMu.Lock()

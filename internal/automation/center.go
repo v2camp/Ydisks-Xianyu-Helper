@@ -85,7 +85,7 @@ type OrderDetailFetcher interface {
 	FetchOrderDetail(ctx context.Context, cookieID, orderID, itemID, buyerID, cookieStr string) (*OrderDetail, error)
 }
 
-// CredentialRecoverer 在平台明确返回 Session 或 MTOP Token 失效时执行一次凭证恢复。
+// CredentialRecoverer 仅在平台明确返回 Session 失效时执行一次账号恢复；Token 过期由 MTOP 客户端内部刷新。
 type CredentialRecoverer interface {
 	RecoverExpiredCredential(ctx context.Context, cookieID string) bool
 }
@@ -346,6 +346,13 @@ func (c *Center) handleTask(ctx context.Context, task Task) (bool, error) {
 		c.logger.Info("账号已停用，记录事件事实但不执行自动化", "account", task.AccountID, "trigger", task.TriggerType)
 		return false, nil
 	}
+	if task.TriggerType == TriggerBargainPending {
+		return c.handleBargainPending(ctx, task)
+	}
+	if task.TriggerType == TriggerOrderCompleted {
+		// 买家确认收货事件只更新本地订单完成事实，自动评价由账号任务扫描该事实后独立执行。
+		return true, nil
+	}
 	if task.TriggerType == TriggerOrderPaid && !task.ForceConfirmShipment {
 		// autoConfirm、autoConfirmErr 分别保存参考项目自动发货入口要求的账号开关和读取错误。
 		autoConfirm, autoConfirmErr := c.store.Cookies.GetAutoConfirm(ctx, task.AccountID)
@@ -401,6 +408,80 @@ func (c *Center) handleTask(ctx context.Context, task Task) (bool, error) {
 	return false, firstErr
 }
 
+// handleBargainPending 处理砍价“待刀成”WS 阶段：仅按独立账号开关调用免拼，绝不匹配发卡或确认发货规则。
+func (c *Center) handleBargainPending(ctx context.Context, task Task) (bool, error) {
+	if task.Source != "ws" {
+		c.logger.Warn("拒绝非 WebSocket 的免拼阶段任务", "source", task.Source, "account", task.AccountID, "order_id", task.OrderID)
+		return false, nil
+	}
+	// autoBargain、settingsErr 保存独立自动免拼开关和读取错误。
+	autoBargain, settingsErr := c.store.Cookies.GetAutoBargain(ctx, task.AccountID)
+	if settingsErr != nil {
+		return false, fmt.Errorf("读取自动免拼设置: %w", settingsErr)
+	}
+	if !autoBargain {
+		c.logger.Info("账号未启用自动免拼，跳过待刀成阶段", "account", task.AccountID, "order_id", task.OrderID)
+		return false, nil
+	}
+	if task.OrderID == "" {
+		return false, fmt.Errorf("免拼阶段缺少订单ID")
+	}
+	// claimed、claimErr 保存本次 WS 是否取得免拼阶段唯一执行权。
+	claimed, claimErr := c.store.Automation.ClaimBargainFreeShipping(ctx, task.OrderID, task.AccountID)
+	if claimErr != nil {
+		return false, fmt.Errorf("领取免拼阶段执行权: %w", claimErr)
+	}
+	if !claimed {
+		c.logger.Info("免拼阶段已有其他任务处理，跳过重复事件", "account", task.AccountID, "order_id", task.OrderID)
+		return false, nil
+	}
+	c.logger.Info("开始执行自动免拼", "account", task.AccountID, "order_id", task.OrderID, "trigger", task.TriggerType)
+	// actionErr 保存独立免拼接口的执行结果。
+	actionErr := c.actions.freeShipBargain(ctx, task)
+	// status 保存可重试的明确失败、需要人工核对的未知结果或成功终态。
+	status := "succeeded"
+	if actionErr != nil {
+		// uncertain 用于识别可能已被平台执行、因而不能自动再次提交的免拼结果。
+		var uncertain *uncertainActionError
+		if errors.As(actionErr, &uncertain) {
+			status = "needs_review"
+		} else {
+			status = "failed"
+		}
+		c.logger.Warn("自动免拼失败，已保存阶段状态", "account", task.AccountID, "order_id", task.OrderID, "status", status, "err", actionErr)
+	} else {
+		c.logger.Info("自动免拼成功，等待成功小刀消息后发卡", "account", task.AccountID, "order_id", task.OrderID)
+	}
+	// finishErr 保存免拼阶段终态写入错误，避免远端成功后丢失兜底资格。
+	if finishErr := c.store.Automation.FinishBargainFreeShipping(ctx, task.OrderID, task.AccountID, status); finishErr != nil {
+		// reviewReason 说明阶段收口失败后为何不能再次自动免拼。
+		reviewReason := "免拼请求已经执行，但本地阶段状态保存失败，禁止自动重试，请核对平台订单状态：" + finishErr.Error()
+		if actionErr != nil {
+			reviewReason = "免拼请求结果和本地阶段状态均无法确认，禁止自动重试，请核对平台订单状态：" + errors.Join(actionErr, finishErr).Error()
+		}
+		// notifyCtx 保证原始请求取消后，人工处理通知仍有独立的短时入队预算。
+		notifyCtx, notifyCancel := newAutomationRunCompensationContext(ctx)
+		c.notifications.notifyManualIntervention(notifyCtx, task, "二人小刀免拼", reviewReason, bargainManualInterventionKey(task))
+		notifyCancel()
+		if actionErr != nil {
+			return false, errors.Join(actionErr, fmt.Errorf("收口免拼阶段: %w", finishErr))
+		}
+		return false, uncertainAction(fmt.Errorf("闲鱼已免拼，但本地阶段保存失败: %w", finishErr))
+	}
+	if status == "needs_review" {
+		// notifyCtx 保证免拼结果不确定时的人工处理通知不受平台调用上下文取消影响。
+		notifyCtx, notifyCancel := newAutomationRunCompensationContext(ctx)
+		c.notifications.notifyManualIntervention(notifyCtx, task, "二人小刀免拼", actionErr.Error(), bargainManualInterventionKey(task))
+		notifyCancel()
+	}
+	return false, actionErr
+}
+
+// bargainManualInterventionKey 返回同一账号、订单、免拼阶段共享的通知幂等键，重复 WS 不会制造重复告警。
+func bargainManualInterventionKey(task Task) string {
+	return fmt.Sprintf("manual-intervention:bargain-free-shipping:%s:%s", task.AccountID, task.OrderID)
+}
+
 // taskAutomationRunID 封装任务自动化运行ID业务协调。
 func taskAutomationRunID(task Task) int64 {
 	if task.Raw == nil {
@@ -411,6 +492,19 @@ func taskAutomationRunID(task Task) int64 {
 	// id 用于本次流程后续判断的标识
 	id, _ := strconv.ParseInt(value, 10, 64)
 	return id
+}
+
+// paidDeliveryAutoConfirmEnabled 返回账号是否开启「自动确认发货」。
+// 兜底扫描必须在重开运行或领取冷却窗口之前检查它：开关关闭时 HandleTask 会直接返回而不收口运行，
+// 被它重开的运行会留在 running 并继续持有租约；租约到期后失败运行恢复链路直接执行 executeRule，
+// 从而绕过账号开关与自动确认设置。
+func (c *Center) paidDeliveryAutoConfirmEnabled(ctx context.Context, accountID string) (bool, error) {
+	// autoConfirm、err 保存账号自动确认发货开关与读取错误。
+	autoConfirm, err := c.store.Cookies.GetAutoConfirm(ctx, accountID)
+	if err != nil {
+		return false, fmt.Errorf("读取自动确认发货设置: %w", err)
+	}
+	return autoConfirm, nil
 }
 
 // taskDelayCursor 封装任务延迟游标业务协调。

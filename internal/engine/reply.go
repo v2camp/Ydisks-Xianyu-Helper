@@ -67,6 +67,8 @@ type ReplyService struct {
 	logger   *slog.Logger
 	// reviewNotifier 是 AI 回复人工确认通知器，可选；nil 时只拦截发送、不发确认通知。
 	reviewNotifier ReplyReviewNotifier
+	// imageDimensions 在回复发送前读取图片像素尺寸；读取失败时由协议层沿用默认尺寸。
+	imageDimensions replyImageDimensionResolver
 }
 
 // NewReplyService 构造；末尾变参可选注入 AI 回复人工确认通知器，保持旧调用方兼容。
@@ -81,13 +83,14 @@ func NewReplyService(cookieID string, store *db.Store, sender MessageSender,
 		reviewNotifier = reviewNotifiers[0]
 	}
 	return &ReplyService{
-		cookieID:       cookieID,
-		store:          store,
-		api:            api,
-		ai:             ai,
-		sender:         sender,
-		logger:         logger.With("account", cookieID, "subsys", "reply"),
-		reviewNotifier: reviewNotifier,
+		cookieID:        cookieID,
+		store:           store,
+		api:             api,
+		ai:              ai,
+		sender:          sender,
+		logger:          logger.With("account", cookieID, "subsys", "reply"),
+		reviewNotifier:  reviewNotifier,
+		imageDimensions: resolveReplyImageDimensions,
 	}
 }
 
@@ -128,8 +131,10 @@ func (r *ReplyService) Handle(ctx context.Context, m ChatMessage) error {
 		}
 	}
 	if res.ImageURL != "" && !record.ImageSent {
+		// imageWidth 和 imageHeight 保存回复图片的像素尺寸，供官方客户端按原比例展示。
+		imageWidth, imageHeight := r.replyImageDimensions(ctx, res.ImageURL)
 		if // err 用于本次流程后续判断的err
-		err := r.sender.SendImage(ctx, m.ChatID, m.SenderUserID, res.ImageURL, 0, 0, 0); err != nil {
+		err := r.sender.SendImage(ctx, m.ChatID, m.SenderUserID, res.ImageURL, 0, imageWidth, imageHeight); err != nil {
 			r.logger.Error("发送回复图片失败", "err", err)
 			// persistErr 保存确定未发送状态写入错误。
 			if persistErr := r.markReplyFailure(ctx, res, m, err); persistErr != nil {
@@ -181,6 +186,20 @@ func (r *ReplyService) Handle(ctx context.Context, m ChatMessage) error {
 		}
 	}
 	return nil
+}
+
+// replyImageDimensions 读取自动回复图片尺寸；ctx 控制解析请求取消，imageURL 是图片地址；失败时返回零尺寸并保留原有发送路径。
+func (r *ReplyService) replyImageDimensions(ctx context.Context, imageURL string) (int, int) {
+	if r.imageDimensions == nil {
+		return 0, 0
+	}
+	// width、height 和 dimensionErr 保存图片像素尺寸及读取错误；失败不阻断既有图片投递。
+	width, height, dimensionErr := r.imageDimensions(ctx, imageURL)
+	if dimensionErr != nil {
+		r.logger.Debug("自动回复图片尺寸读取失败，将沿用协议默认尺寸")
+		return 0, 0
+	}
+	return width, height
 }
 
 // markReplyFailure 持久化确定未发送的默认回复失败状态，并反馈状态写入错误。

@@ -438,8 +438,19 @@ func parseItemList(data map[string]any) []ItemListItem {
 			ItemDetail:  string(detailJSON),
 			AuctionType: mtopString(cardData["auctionType"]),
 			ItemStatus:  mtopInt(cardData["itemStatus"]),
-			IsMultiSpec: detectItemMultiSpec(cardData),
+			IsMultiSpec: hasItemSKUField(detailParams),
 		})
 	}
 	return items
+}
+
+// hasItemSKUField 判断商品列表卡片的 detailParams 是否明确标记为多规格。
+// 平台以 isSKU 的真值表示多规格；字段缺失或显式 false 都表示普通单规格商品。
+func hasItemSKUField(detailParams map[string]any) bool {
+	if detailParams == nil {
+		return false
+	}
+	// rawSKU 保存列表卡片携带的多规格标记；缺失键读取为 nil，由 mtopBool 归一化为 false。
+	rawSKU := detailParams["isSKU"]
+	return mtopBool(rawSKU)
 }

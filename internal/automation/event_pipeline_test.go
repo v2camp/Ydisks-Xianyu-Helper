@@ -63,8 +63,8 @@ func TestEventFactRecorderWithoutOrderIsNoOp(t *testing.T) {
 	}
 }
 
-// TestEventFactRecorderPersistsPaidAndReviewedFacts 验证付款与评价事件会写入订单事实及对应事件时间。
-func TestEventFactRecorderPersistsPaidAndReviewedFacts(t *testing.T) {
+// TestEventFactRecorderPersistsPaidCompletedAndReviewedFacts 验证付款、确认收货与买家评价事件分别写入正确的订单事实和时间。
+func TestEventFactRecorderPersistsPaidCompletedAndReviewedFacts(t *testing.T) {
 	// ctx 保存本地数据库测试共用的上下文。
 	ctx := context.Background()
 	// database、dialect、openErr 保存内存隔离数据库的打开结果。
@@ -91,13 +91,40 @@ func TestEventFactRecorderPersistsPaidAndReviewedFacts(t *testing.T) {
 	}
 	// recorder 保存使用本地数据库的事件事实记录组件。
 	recorder := newEventFactRecorder(store)
+	// bargain 保存订单列表已经确认的砍价事实；后续普通事件不得把它降级为 false。
+	bargain := true
+	// bargainSeedErr 保存砍价订单初始事实写入错误。
+	bargainSeedErr := store.Orders.Upsert(ctx, "order-bargain-preserved", db.OrderUpsertOpts{CookieID: "account-1", ItemID: "item-bargain", OrderStatus: "pending_ship", IsBargain: &bargain})
+	if bargainSeedErr != nil {
+		t.Fatal(bargainSeedErr)
+	}
+	// plainCompletedErr 保存不携带砍价标记的普通完成事件写入错误。
+	plainCompletedErr := recorder.record(ctx, Task{AccountID: "account-1", OrderID: "order-bargain-preserved", TriggerType: TriggerOrderCompleted, OrderStatus: "completed"})
+	if plainCompletedErr != nil {
+		t.Fatalf("普通完成事件写入失败: %v", plainCompletedErr)
+	}
+	// preservedBargainOrder、preservedBargainReadErr 保存普通事件写入后的砍价保护标记。
+	preservedBargainOrder, preservedBargainReadErr := store.Orders.Get(ctx, "order-bargain-preserved")
+	if preservedBargainReadErr != nil || preservedBargainOrder.IsBargain != 1 {
+		t.Fatalf("普通事件不得清除既有砍价事实 order=%+v err=%v", preservedBargainOrder, preservedBargainReadErr)
+	}
 	// paidErr 保存付款事件事实写入错误。
 	paidErr := recorder.record(ctx, Task{AccountID: "account-1", OrderID: "order-paid", ItemID: "item-1", BuyerID: "buyer-1", ChatID: "chat-1", TriggerType: TriggerOrderPaid, OrderStatus: "paid", Quantity: "1", Amount: "2.00"})
 	if paidErr != nil {
 		t.Fatalf("付款事实写入失败: %v", paidErr)
 	}
+	// completedErr 保存买家确认收货事件事实写入错误；该事件负责把订单推进到已完成。
+	completedErr := recorder.record(ctx, Task{AccountID: "account-1", OrderID: "order-completed", ItemID: "item-2", BuyerID: "buyer-2", ChatID: "chat-2", TriggerType: TriggerOrderCompleted, OrderStatus: "completed", Quantity: "1", Amount: "3.00"})
+	if completedErr != nil {
+		t.Fatalf("确认收货事实写入失败: %v", completedErr)
+	}
+	// completedSeedErr 保存买家评价前“已完成”订单写入错误，验证评价事件不会重复推进订单阶段。
+	completedSeedErr := store.Orders.Upsert(ctx, "order-reviewed", db.OrderUpsertOpts{CookieID: "account-1", OrderStatus: "completed"})
+	if completedSeedErr != nil {
+		t.Fatalf("写入已完成订单失败: %v", completedSeedErr)
+	}
 	// reviewedErr 保存评价事件事实写入错误。
-	reviewedErr := recorder.record(ctx, Task{AccountID: "account-1", OrderID: "order-reviewed", ItemID: "item-2", BuyerID: "buyer-2", ChatID: "chat-2", TriggerType: TriggerBuyerReviewed, OrderStatus: "reviewed", Quantity: "1", Amount: "3.00"})
+	reviewedErr := recorder.record(ctx, Task{AccountID: "account-1", OrderID: "order-reviewed", ItemID: "item-2", BuyerID: "buyer-2", ChatID: "chat-2", TriggerType: TriggerBuyerReviewed, Quantity: "1", Amount: "3.00"})
 	if reviewedErr != nil {
 		t.Fatalf("评价事实写入失败: %v", reviewedErr)
 	}
@@ -106,9 +133,14 @@ func TestEventFactRecorderPersistsPaidAndReviewedFacts(t *testing.T) {
 	if paidReadErr != nil || paidOrder.PaidAt == "" {
 		t.Fatalf("付款订单事实异常 order=%+v err=%v", paidOrder, paidReadErr)
 	}
+	// completedOrder、completedReadErr 保存确认收货订单读取结果。
+	completedOrder, completedReadErr := store.Orders.Get(ctx, "order-completed")
+	if completedReadErr != nil || completedOrder.OrderStatus != "completed" || completedOrder.CompletedAt == "" {
+		t.Fatalf("确认收货订单事实异常 order=%+v err=%v", completedOrder, completedReadErr)
+	}
 	// reviewedOrder、reviewedReadErr 保存评价订单读取结果。
 	reviewedOrder, reviewedReadErr := store.Orders.Get(ctx, "order-reviewed")
-	if reviewedReadErr != nil || reviewedOrder.BuyerReviewedAt == "" {
+	if reviewedReadErr != nil || reviewedOrder.OrderStatus != "completed" || reviewedOrder.BuyerReviewedAt == "" {
 		t.Fatalf("评价订单事实异常 order=%+v err=%v", reviewedOrder, reviewedReadErr)
 	}
 	// paidSeedErr 保存付款事件错误分支预置订单的写入错误。

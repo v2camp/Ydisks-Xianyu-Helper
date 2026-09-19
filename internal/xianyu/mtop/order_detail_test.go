@@ -248,8 +248,8 @@ func TestFetchOrderDetailRequestError(t *testing.T) {
 	}
 }
 
-// TestFetchOrderDetailTokenExpiredRetriesWithSetCookie: token 过期 + Set-Cookie，二次成功。
-func TestFetchOrderDetailTokenExpiredRetriesWithSetCookie(t *testing.T) {
+// TestFetchOrderDetailTokenExpiredRetriesWithResponseCookie 使用 t 验证新签名 Cookie 可以直接重试详情，不调用账号续期。
+func TestFetchOrderDetailTokenExpiredRetriesWithResponseCookie(t *testing.T) {
 	// requests 用于本次流程后续判断的请求列表
 	var requests atomic.Int32
 	// server 用于本次流程后续判断的server
@@ -267,34 +267,26 @@ func TestFetchOrderDetailTokenExpiredRetriesWithSetCookie(t *testing.T) {
 
 	// client 用于本次流程后续判断的client
 	client := &ClientImpl{HTTPClient: server.Client(), OrderDetailURL: server.URL + "/"}
-	// ctx、cancel 用于本次流程后续判断的ctx、cancel
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	// res、err 用于本次流程后续判断的res、err
-	res, err := client.FetchOrderDetail(ctx, consignCookies, "order-1")
-	if err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	if res.Amount != "9.90" {
-		t.Fatalf("Amount=%q", res.Amount)
-	}
-	if !strings.Contains(res.UpdatedCookies, "newtoken_5") {
-		t.Fatalf("UpdatedCookies=%q", res.UpdatedCookies)
+	// result、err 保存单次 Token 过期响应的返回结果和错误。
+	result, err := client.FetchOrderDetail(context.Background(), consignCookies, "order-1")
+	if err != nil || result == nil || result.Amount != "9.90" || !strings.Contains(result.UpdatedCookies, "_m_h5_tk=newtoken_5") {
+		t.Fatalf("Token 换签重试未成功: err=%v", err)
 	}
 	if requests.Load() != 2 {
 		t.Fatalf("requests=%d want 2", requests.Load())
 	}
 }
 
-// TestFetchOrderDetailTokenExpiredNoCookieRefreshes: token 过期无 Set-Cookie，
-// 走 RefreshToken 刷新成功后重试成功。
-// TestFetchOrderDetailTokenExpiredNoCookieRefreshes 封装TestFetch订单Detail令牌ExpiredNo登录凭证Refreshes业务协调。
-func TestFetchOrderDetailTokenExpiredNoCookieRefreshes(t *testing.T) {
+// TestFetchOrderDetailTokenExpiredRefreshesInline 使用 t 验证详情 Token 过期调用既有刷新方法并仅重试一次。
+func TestFetchOrderDetailTokenExpiredRefreshesInline(t *testing.T) {
 	// orderReqs 用于本次流程后续判断的订单Reqs
 	var orderReqs atomic.Int32
+	// tokenReqs 记录独立 Token 刷新次数，防止遗漏刷新或形成循环。
+	var tokenReqs atomic.Int32
 	// server 用于本次流程后续判断的server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "mtop.taobao.idlemessage.pc.login.token" {
+			tokenReqs.Add(1)
 			http.SetCookie(w, &http.Cookie{Name: "_m_h5_tk", Value: "refreshed_7", Path: "/"})
 			fmt.Fprint(w, `{"ret":["SUCCESS::调用成功"],"data":{"accessToken":"a"}}`)
 			return
@@ -314,13 +306,13 @@ func TestFetchOrderDetailTokenExpiredNoCookieRefreshes(t *testing.T) {
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// res、err 用于本次流程后续判断的res、err
-	res, err := client.FetchOrderDetail(ctx, consignCookies, "order-1")
-	if err != nil {
-		t.Fatalf("err=%v", err)
+	// result、err 保存 Token 过期的单次调用结果和错误。
+	result, err := client.FetchOrderDetail(ctx, consignCookies, "order-1")
+	if err != nil || result == nil || result.Amount != "5.00" || !strings.Contains(result.UpdatedCookies, "_m_h5_tk=refreshed_7") {
+		t.Fatalf("刷新 Token 后未恢复详情: err=%v", err)
 	}
-	if res.Amount != "5.00" {
-		t.Fatalf("Amount=%q", res.Amount)
+	if orderReqs.Load() != 2 || tokenReqs.Load() != 1 {
+		t.Fatalf("orderReqs=%d tokenReqs=%d want 2/1", orderReqs.Load(), tokenReqs.Load())
 	}
 }
 
@@ -372,8 +364,8 @@ func TestFetchOrderDetailTruncateInParseError(t *testing.T) {
 	}
 }
 
-// TestFetchOrderDetailRetryExhausted: token 过期但每次下发不同 Set-Cookie，4 次重试耗尽。
-func TestFetchOrderDetailRetryExhausted(t *testing.T) {
+// TestFetchOrderDetailTokenExpiredWithSetCookieStopsAfterRetry 使用 t 验证换签后仍过期只结束请求，不升级 Session 或无限重试。
+func TestFetchOrderDetailTokenExpiredWithSetCookieStopsAfterRetry(t *testing.T) {
 	// requests 用于本次流程后续判断的请求列表
 	var requests atomic.Int32
 	// server 用于本次流程后续判断的server
@@ -387,16 +379,13 @@ func TestFetchOrderDetailRetryExhausted(t *testing.T) {
 
 	// client 用于本次流程后续判断的client
 	client := &ClientImpl{HTTPClient: server.Client(), OrderDetailURL: server.URL + "/"}
-	// ctx、cancel 用于本次流程后续判断的ctx、cancel
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	// err 用于本次流程后续判断的err
-	_, err := client.FetchOrderDetail(ctx, consignCookies, "order-1")
-	if err == nil || !strings.Contains(err.Error(), "订单详情 token 重试失败") {
+	// result、err 保存首次 Token 过期请求的业务结果和错误。
+	result, err := client.FetchOrderDetail(context.Background(), consignCookies, "order-1")
+	if result != nil || err == nil || !IsMTopTokenExpiredErr(err) || IsSessionExpiredErr(err) {
 		t.Fatalf("err=%v", err)
 	}
-	if requests.Load() != 4 {
-		t.Fatalf("requests=%d want 4", requests.Load())
+	if requests.Load() != 2 {
+		t.Fatalf("requests=%d want 2", requests.Load())
 	}
 }
 

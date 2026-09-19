@@ -645,6 +645,64 @@ func TestParseItemListNumericFields(t *testing.T) {
 	}
 }
 
+// TestParseItemListReadsMultiSpecFromCardData 验证商品列表卡片仅在 isSKU 为真时生成多规格标记。
+func TestParseItemListReadsMultiSpecFromCardData(t *testing.T) {
+	// data 模拟商品列表接口同时返回商品基础字段和多规格标记。
+	data := map[string]any{
+		"cardList": []any{
+			map[string]any{
+				"cardType": 1,
+				"cardData": map[string]any{
+					"title":        "列表多规格商品",
+					"priceInfo":    map[string]any{"price": "18", "preText": "¥"},
+					"detailParams": map[string]any{"itemId": "list-sku-item", "isSKU": true},
+				},
+			},
+		},
+	}
+	// items 保存列表卡片解析得到的本地同步模型。
+	items := parseItemList(data)
+	if len(items) != 1 || items[0].ID != "list-sku-item" || items[0].Title != "列表多规格商品" || items[0].PriceText != "¥18" || !items[0].IsMultiSpec {
+		t.Fatalf("列表多规格字段解析异常 items=%+v", items)
+	}
+}
+
+// TestParseItemListTreatsFalseSKUFieldAsSingleSpec 验证列表卡片显式 isSKU=false 与缺少该字段等价，均按普通单规格处理。
+func TestParseItemListTreatsFalseSKUFieldAsSingleSpec(t *testing.T) {
+	// data 模拟平台明确返回非多规格标记的商品列表卡片。
+	data := map[string]any{
+		"cardList": []any{map[string]any{
+			"cardData": map[string]any{
+				"detailParams": map[string]any{"itemId": "list-explicit-single-item", "isSKU": false},
+				"title":        "显式普通商品",
+			},
+		}},
+	}
+	// items 保存列表卡片解析得到的商品同步模型。
+	items := parseItemList(data)
+	if len(items) != 1 || items[0].ID != "list-explicit-single-item" || items[0].IsMultiSpec {
+		t.Fatalf("isSKU=false 的商品不应标记为多规格 items=%+v", items)
+	}
+}
+
+// TestParseItemListTreatsMissingSKUFieldAsSingleSpec 验证列表卡片缺少 isSKU 字段时按普通单规格处理。
+func TestParseItemListTreatsMissingSKUFieldAsSingleSpec(t *testing.T) {
+	// data 模拟已从多规格改为普通商品后的列表卡片，保留其他商品字段但移除 isSKU。
+	data := map[string]any{
+		"cardList": []any{map[string]any{
+			"cardData": map[string]any{
+				"detailParams": map[string]any{"itemId": "list-single-item"},
+				"title":        "列表普通商品",
+			},
+		}},
+	}
+	// items 保存列表卡片解析得到的商品同步模型。
+	items := parseItemList(data)
+	if len(items) != 1 || items[0].ID != "list-single-item" || items[0].IsMultiSpec {
+		t.Fatalf("缺少 isSKU 的商品不应标记为多规格 items=%+v", items)
+	}
+}
+
 // TestBuildItemListQuery 封装TestBuild商品List查询业务协调。
 func TestBuildItemListQuery(t *testing.T) {
 	// q 用于本次流程后续判断的q

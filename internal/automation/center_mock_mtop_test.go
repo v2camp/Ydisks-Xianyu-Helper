@@ -28,6 +28,22 @@ type fakeMTop struct {
 	consignPicListIn []string
 	consignCookies   []string
 	consignResults   []fakeConsignResult
+	// freeShippingErr 是砍价订单免拼发货调用的预置传输错误。
+	freeShippingErr error
+	// freeShippingOK 是砍价订单免拼发货调用的预置业务成功标志。
+	freeShippingOK bool
+	// freeShippingRet 是砍价订单免拼发货调用的预置业务返回。
+	freeShippingRet []string
+	// freeShippingUpdated 是砍价订单免拼发货调用返回的扁平 Cookie 更新。
+	freeShippingUpdated string
+	// freeShippingCookies 按调用顺序记录免拼请求使用的凭证，供会话恢复重试断言。
+	freeShippingCookies []string
+	// freeShippingResults 是按调用顺序消费的免拼结果，用于模拟恢复前后不同的平台响应。
+	freeShippingResults []fakeFreeShippingResult
+	// freeShippingCalls 统计砍价订单免拼发货调用次数。
+	freeShippingCalls int
+	// freeShippingOrderIn、freeShippingItemIn、freeShippingBuyerIn 记录免拼发货请求的三个平台标识。
+	freeShippingOrderIn, freeShippingItemIn, freeShippingBuyerIn string
 	// consignStarted 通知测试外部 Consign 调用已经开始。
 	consignStarted chan struct{}
 	// consignRelease 控制测试外部 Consign 调用何时返回。
@@ -62,6 +78,18 @@ type fakeConsignResult struct {
 	ret     []string
 	updated string
 	err     error
+}
+
+// fakeFreeShippingResult 是单次免拼调用的业务结果、Cookie 更新与请求错误。
+type fakeFreeShippingResult struct {
+	// ok 表示平台是否明确确认免拼成功。
+	ok bool
+	// ret 保存平台返回的业务结果码。
+	ret []string
+	// updated 保存平台响应携带的扁平 Cookie 更新。
+	updated string
+	// err 保存请求或响应解析阶段的调用错误。
+	err error
 }
 
 // fakeAdjustPriceResult 是单次订单改价调用的预置业务结果、Cookie 更新与传输错误。
@@ -128,6 +156,22 @@ func (f *fakeMTop) ConsignContextWithDelivery(_ context.Context, cookiesStr, ord
 		return result.ok, result.ret, result.updated, result.err
 	}
 	return f.consignOk, f.consignRet, f.consignUpdated, f.consignErr
+}
+
+// FreeShippingContext 返回测试预置的免拼发货结果并记录请求的凭证、订单、商品和买家标识。
+func (f *fakeMTop) FreeShippingContext(_ context.Context, cookieStr, orderID, itemID, buyerID string) (bool, []string, string, error) {
+	f.freeShippingCalls++
+	f.freeShippingCookies = append(f.freeShippingCookies, cookieStr)
+	f.freeShippingOrderIn = orderID
+	f.freeShippingItemIn = itemID
+	f.freeShippingBuyerIn = buyerID
+	if len(f.freeShippingResults) > 0 {
+		// result 保存当前调用消费的预置免拼结果。
+		result := f.freeShippingResults[0]
+		f.freeShippingResults = f.freeShippingResults[1:]
+		return result.ok, result.ret, result.updated, result.err
+	}
+	return f.freeShippingOK, f.freeShippingRet, f.freeShippingUpdated, f.freeShippingErr
 }
 
 // TestConfirmShipmentReleasesCredentialLockBeforeExternalIO 验证 MTOP 外部调用期间同账号凭证锁可以被其他流程获取。
@@ -260,7 +304,7 @@ type fakeCredentialRecoverer struct {
 
 // FetchOrderDetail 封装Fetch订单Detail业务协调。
 func (f *fakeCredentialRecoverer) FetchOrderDetail(context.Context, string, string, string, string, string) (*OrderDetail, error) {
-	return &OrderDetail{Quantity: "1", Amount: "9.9"}, nil
+	return &OrderDetail{Quantity: "1", Amount: "9.9", OrderStatus: "pending_ship"}, nil
 }
 
 // RecoverExpiredCredential 封装RecoverExpiredCredential业务协调。
@@ -319,7 +363,7 @@ func TestConfirmShipmentRetriesFromCheckpointWithoutResendingCard(t *testing.T) 
 		OrderDetailFetcher: recoverer,
 	})
 	// task 用于本次流程后续判断的任务
-	task := Task{AccountID: "cid", TriggerType: TriggerOrderPaid, OrderID: "checkpoint-order",
+	task := Task{Source: "ws", AccountID: "cid", TriggerType: TriggerOrderPaid, OrderID: "checkpoint-order",
 		ItemID: "checkpoint-item", BuyerID: "buyer", ChatID: "chat", Quantity: "1", Amount: "9.9"}
 	if // err 用于本次流程后续判断的err
 	err := center.HandleTask(ctx, task); err == nil {
@@ -419,7 +463,7 @@ func TestConfirmShipmentRetriesFromCheckpointWithoutResendingTemplate(t *testing
 	// center 保存模板恢复测试使用的自动化中心。
 	center := NewWithDependencies(store, testSenderProvider{sender: sender}, nil, CenterDependencies{MTop: mtopMock, OrderDetailFetcher: recoverer})
 	// task 保存模板恢复测试的订单任务。
-	task := Task{AccountID: "cid", TriggerType: TriggerOrderPaid, OrderID: "template-recovery-order", ItemID: "template-recovery-item", BuyerID: "buyer", ChatID: "chat", Quantity: "1"}
+	task := Task{Source: "ws", AccountID: "cid", TriggerType: TriggerOrderPaid, OrderID: "template-recovery-order", ItemID: "template-recovery-item", BuyerID: "buyer", ChatID: "chat", Quantity: "1"}
 	// firstErr 保存首次确认发货因凭证恢复失败而返回的错误。
 	firstErr := center.HandleTask(ctx, task)
 	if firstErr == nil {

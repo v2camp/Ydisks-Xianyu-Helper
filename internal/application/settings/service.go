@@ -108,6 +108,18 @@ type Repository interface {
 type ModelClient interface {
 	// Fetch 获取指定 AI 服务地址的模型名称，调用方不得把 API 密钥写入日志或响应。
 	Fetch(ctx context.Context, baseURL, apiKey string) ([]string, error)
+	// TestConnection 发送一次最小 chat completion 请求验证端点可用性。
+	TestConnection(ctx context.Context, baseURL, apiKey, model string) (AIConnectionTestResult, error)
+}
+
+// AIConnectionTestResult 是连接测试的应用层诊断模型。
+type AIConnectionTestResult struct {
+	// Model 是实际被测试的模型名称。
+	Model string
+	// LatencyMS 是从发送请求到收到响应的毫秒数。
+	LatencyMS int64
+	// Reply 是模型回复正文摘要（最多 100 字符）。
+	Reply string
 }
 
 // OutboundPolicy 定义系统设置切换用户可配置 HTTP 出站策略所需的最小运行时 Port。
@@ -355,6 +367,52 @@ func (s *Service) ListAIModels(ctx context.Context, userID int64, baseURL, apiKe
 		return nil, err
 	}
 	return s.modelClient.Fetch(ctx, baseURL, apiKey)
+}
+
+// TestAIConnection 发送一次最小对话请求验证 API 地址、密钥和模型的组合。
+// baseURL 和 apiKey 为空时回退到系统设置，与 ListAIModels 的解析逻辑一致。
+func (s *Service) TestAIConnection(ctx context.Context, userID int64, baseURL, apiKey, model string) (AIConnectionTestResult, error) {
+	// err 表示服务依赖或当前用户身份校验失败。
+	if err := s.validateUser(userID); err != nil {
+		return AIConnectionTestResult{}, err
+	}
+	if s.modelClient == nil {
+		return AIConnectionTestResult{}, errors.New("AI 模型客户端未初始化")
+	}
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		// lookupErr 表示读取已保存 AI 服务地址时产生的存储错误。
+		var lookupErr error
+		baseURL, lookupErr = s.repository.GetSystem(ctx, "ai_api_url")
+		if lookupErr != nil {
+			return AIConnectionTestResult{}, lookupErr
+		}
+	}
+	if baseURL == "" {
+		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		// secretErr 表示受控读取已保存 API Key 或写入相应审计时产生的错误。
+		var secretErr error
+		apiKey, secretErr = s.repository.ReadSensitiveSystem(ctx, userID, "ai_api_key", "settings.use", "ai_connection_test")
+		if secretErr != nil {
+			return AIConnectionTestResult{}, secretErr
+		}
+	} else if // auditErr 表示临时 API Key 使用审计未持久化，必须阻止出站请求。
+	auditErr := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.use", Resource: "ai_connection_test", Keys: []string{"ai_api_key"}}); auditErr != nil {
+		return AIConnectionTestResult{}, auditErr
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		// lookupErr 表示读取默认模型名称时产生的存储错误。
+		var lookupErr error
+		model, lookupErr = s.repository.GetSystem(ctx, "ai_model")
+		if lookupErr != nil {
+			return AIConnectionTestResult{}, lookupErr
+		}
+	}
+	return s.modelClient.TestConnection(ctx, baseURL, apiKey, model)
 }
 
 // validateRepository 检查应用服务的基础设施 Port 是否已装配。

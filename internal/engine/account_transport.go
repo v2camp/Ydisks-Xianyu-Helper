@@ -144,6 +144,27 @@ func (a *Account) notifyTransportReady(ctx context.Context) {
 	}
 }
 
+// notifyInitialTransportReady 仅在本 Account 实例第一次成功注册 WebSocket 后异步通知订单同步端口。
+// 任务由 accountLifecycle 登记、取消和等待；断线重连不会重复发起平台请求，账号重启会构造新实例并获得一次新机会。
+func (a *Account) notifyInitialTransportReady() {
+	// handler、ok 保存支持首次传输就绪回调的可选业务端口。
+	handler, ok := a.handler.(initialTransportReadyHandler)
+	if !ok {
+		return
+	}
+	a.initialTransportReadyOnce.Do(func() {
+		// taskCtx、finish、accepted 分别表示账号生命周期拥有的同步上下文、结束登记和当前是否允许新任务。
+		taskCtx, finish, accepted := a.lifecycle.beginTask()
+		if !accepted {
+			return
+		}
+		go func() {
+			defer finish()
+			handler.OnInitialTransportReady(taskCtx, a.CookieID)
+		}()
+	})
+}
+
 // setRuntimeState 封装setRuntime状态业务协调。
 func (a *Account) setRuntimeState(state, message string) {
 	a.runtimeMu.Lock()
@@ -153,12 +174,12 @@ func (a *Account) setRuntimeState(state, message string) {
 	a.runtimeUpdatedAt = time.Now()
 }
 
-// setRuntimeError 封装setRuntime错误业务协调。
+// setRuntimeError 根据 err 更新 a 的展示状态；ctx 只用于已有风控通知，Token 失败保持可重试状态。
 func (a *Account) setRuntimeError(ctx context.Context, err error) {
-	// msg 用于本次流程后续判断的msg
+	// msg 归一错误文本大小写，兼容尚未返回结构化错误的调用方。
 	msg := strings.ToLower(errString(err))
 	a.runtimeMu.Lock()
-	// prev 用于本次流程后续判断的prev
+	// prev 是加锁读取的旧状态，用于阻止风控提示重复发送。
 	prev := a.runtimeState
 	a.runtimeMu.Unlock()
 	switch {
@@ -169,7 +190,9 @@ func (a *Account) setRuntimeError(ctx context.Context, err error) {
 			a.alertEvent(ctx, EventSecurityVerification, AlertLevelWarn, "闲鱼要求安全验证",
 				"账号触发闲鱼风控验证（滑块/短信/人脸等）。系统可能无法自动恢复，请前往后台扫码完成验证。")
 		}
-	case strings.Contains(msg, "登录凭证已失效"), strings.Contains(msg, "fail_sys_token_exoired"), strings.Contains(msg, "fail_sys_token_expired"), strings.Contains(msg, "cookie 缺少 unb"):
+	case mtop.IsMTopTokenExpiredErr(err), strings.Contains(msg, "token_exoired"), strings.Contains(msg, "token_expired"), strings.Contains(msg, "token_empty"):
+		a.setRuntimeState(RuntimeReconnecting, "MTOP Token 刷新失败，等待重试")
+	case mtop.IsSessionExpiredErr(err), strings.Contains(msg, "cookie 缺少 unb"):
 		a.setRuntimeState(RuntimeAuthExpired, "登录凭证已失效，请重新扫码登录")
 	default:
 		a.setRuntimeState(RuntimeReconnecting, "连接异常，系统将在限速后自动重试")

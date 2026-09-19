@@ -37,6 +37,7 @@ func TestMigrate_AppliesCleanSchema(t *testing.T) {
 		{"orders", "version"},
 		{"orders", "deleted_at"},
 		{"cookies", "auto_consign"},
+		{"cookies", "auto_bargain"},
 		{"cards", "image_url"},
 		{"cards", "delay_seconds"},
 		{"keywords", "item_id"},
@@ -193,9 +194,9 @@ func TestMigrate_ExistingAutomationRunsReceiveEmptyDeliveryProof(t *testing.T) {
 	if enabledAutoConsign != 1 || disabledAutoConsign != 0 {
 		t.Fatalf("迁移回填 auto_consign 错误: enabled=%d disabled=%d", enabledAutoConsign, disabledAutoConsign)
 	}
-	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳与小刀免拼名单迁移，不能仅证明旧 delivery_proof 列存在。
+	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳与小刀免拼名单迁移，并叠加上游自动免拼与砍价免拼阶段迁移，不能仅证明旧 delivery_proof 列存在。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
-	if versionErr != nil || finalVersion != 53 {
+	if versionErr != nil || finalVersion != 55 {
 		t.Fatalf("final migration version=%d err=%v", finalVersion, versionErr)
 	}
 	// credential_cooldowns 表由 00050 创建，账号任务重试计数列由 00048 创建，发送日计数表由 00051 创建，进程心跳表由 00052 创建，小刀免拼名单表由 00053 创建，都必须在最终版本中存在。
@@ -291,13 +292,13 @@ func TestMigrate_UpgradesDatabaseWithMainChatVersions(t *testing.T) {
 	if !columnExists(t, rawDB, "automation_rule_actions", "delivery_template_id") {
 		t.Fatal("automation_rule_actions should reference delivery templates")
 	}
-	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）与小刀免拼名单持久化（00053），或记录读取失败。
+	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）、小刀免拼名单持久化（00053）与上游自动免拼（00054）、砍价免拼阶段（00055），或记录读取失败。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
 	if versionErr != nil {
 		t.Fatalf("read final migration version: %v", versionErr)
 	}
-	if finalVersion != 53 {
-		t.Fatalf("final migration version=%d, want 53", finalVersion)
+	if finalVersion != 55 {
+		t.Fatalf("final migration version=%d, want 55", finalVersion)
 	}
 	if !tableExists(t, rawDB, "process_heartbeats") {
 		t.Fatal("升级后必须创建进程心跳持久化表")

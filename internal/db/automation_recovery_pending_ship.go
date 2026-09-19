@@ -9,6 +9,28 @@ import (
 	"database/sql"
 )
 
+// CancelObsoletePaidRecoveryRun 取消已不再处于待发货状态的付款运行恢复，并清除可重放发货凭证。
+// 更新同时校验扫描快照和订单当前事实；并发续租、游标推进或订单重新进入待发货都会让本次取消失效。
+func (a *AutomationRules) CancelObsoletePaidRecoveryRun(ctx context.Context, run AutomationRun, reason string) (bool, error) {
+	// result、err 保存基于运行快照和最新订单状态的条件取消结果。
+	result, err := a.DB.ExecContext(ctx, `UPDATE automation_runs
+   SET status='canceled',action_started=0,lease_expires_at=0,next_retry_at=0,error_message=?,delivery_proof='',updated_at=CURRENT_TIMESTAMP
+ WHERE id=? AND attempt_count=? AND status=? AND action_cursor=? AND action_started=? AND lease_expires_at=?
+   AND trigger_type='order_paid'
+   AND NOT EXISTS (SELECT 1 FROM orders o
+                    WHERE o.order_id=automation_runs.order_id
+                      AND o.cookie_id=automation_runs.cookie_id
+                      AND o.deleted_at IS NULL
+                      AND o.order_status='pending_ship'
+                      AND o.system_shipped=0)`, reason, run.ID, run.AttemptCount, run.Status, run.ActionCursor, boolToInt(run.ActionStarted), run.LeaseExpiresAt)
+	if err != nil {
+		return false, err
+	}
+	// affected、rowsErr 表示当前扫描是否仍拥有取消权及驱动读取行数时的错误。
+	affected, rowsErr := result.RowsAffected()
+	return affected == 1, rowsErr
+}
+
 // PendingShipOrdersWithoutPaidRunAfter 用不可变的订单 ID 作为稳定游标分页扫描「已付款待发货、但尚无任何
 // order_paid 运行」的订单，供调度器在付款系统消息丢失时补触发自动发货。
 //
@@ -16,6 +38,8 @@ import (
 //   - 只取 order_status='pending_ship'，即平台侧已确认付款、只差我方发货；
 //   - 只取**完全没有任何** order_paid 运行的订单；已有运行的订单交给失败的运行恢复扫描处理，
 //     避免与恢复链重复触发、也避免形成第二个执行入口；
+//   - 砍价订单只有在“待刀成”阶段已成功免拼后才允许进入候选集合；调度器不得调用免拼接口，
+//     也不得根据订单的砍价标记推断平台阶段；
 //   - 要求账号下存在启用的 order_paid 规则且商品匹配，否则没有可执行的动作；
 //   - 必须有 chat_id，否则无法向买家发起会话发送。
 func (a *AutomationRules) PendingShipOrdersWithoutPaidRunAfter(ctx context.Context, afterOrderID string, limit int) ([]Order, error) {
@@ -42,6 +66,8 @@ SELECT order_id,item_id,buyer_id,spec_name,spec_value,quantity,amount,order_stat
 WHERE o.order_status='pending_ship'
    AND o.deleted_at IS NULL
    AND COALESCE(o.chat_id,'')<>''
+	   AND (o.is_bargain=0 OR EXISTS (SELECT 1 FROM bargain_free_shipping_stages bfs
+	                                  WHERE bfs.order_id=o.order_id AND bfs.cookie_id=o.cookie_id AND bfs.status IN ('ready','succeeded')))
    AND NOT EXISTS (SELECT 1 FROM automation_runs r
                     WHERE r.order_id=o.order_id AND r.trigger_type='order_paid')
    AND EXISTS (SELECT 1 FROM automation_rules r2
@@ -99,8 +125,11 @@ type PendingShipResume struct {
 	Order Order
 	// RunID 是尚未完成全部动作的自动化运行主键。
 	RunID int64
-	// RuleID 是该运行所属规则，续跑时必须用它恢复规则快照。
+	// RuleID 是该运行所属规则，用于校验归属规则是否仍处于启用状态。
 	RuleID int64
+	// RawEventJSON 是运行创建时冻结的任务快照，内含不可变的动作计划；
+	// 调用方必须用它判定「剩余动作是否只含幂等状态动作」，不得改用现行规则的动作。
+	RawEventJSON string
 	// Attempt 是运行当前代次；重开运行必须带上它做 CAS。
 	Attempt int
 	// ActionCursor 是尚未执行的下一个动作下标。
@@ -116,8 +145,11 @@ type PendingShipResume struct {
 //   - 前者覆盖「完全没有运行记录」的订单（付款事件在准备阶段就被卡死）；
 //   - 本方法覆盖「有运行但没做完」的订单（例如消息动作结果不确定后运行被隔离）。
 //
-// **安全边界**：只续跑「游标已越过全部发卡/模板动作」的运行。只要还有会再次联系买家的动作
-// 未完成，续跑就可能重复发货，因此一律不在此处自动恢复，交由人工核对。
+// **安全边界**：本方法只做「运行自身」可判定的过滤——状态、代次上限、订单仍在待发货、
+// **归属规则仍处于启用状态**。真正的放行判据（剩余动作是否只含幂等状态动作）必须由调用方
+// 依据运行快照里冻结的动作计划判定：`automation_rule_actions` 是会被管理员编辑的现行配置，
+// 用它判定会把数字游标套用到改过的规则上，从而改变历史订单的发货义务。
+// 因此本方法额外返回 RawEventJSON，供调用方恢复冻结计划。
 func (a *AutomationRules) PendingShipResumableRunsAfter(ctx context.Context, afterOrderID string, maxAttempts, limit int) ([]PendingShipResume, error) {
 	if limit <= 0 {
 		limit = 200
@@ -141,23 +173,31 @@ SELECT o.order_id,o.item_id,o.buyer_id,o.spec_name,o.spec_value,o.quantity,o.amo
        COALESCE(o.paid_at,''),COALESCE(o.shipped_at,''),COALESCE(o.completed_at,''),
        COALESCE(o.buyer_reviewed_at,''),COALESCE(o.last_review_request_at,''),o.review_request_count,
        o.created_at,o.updated_at,
-       r.id,r.rule_id,r.attempt_count,r.action_cursor,r.status
+       r.id,r.rule_id,COALESCE(r.raw_event_json,''),r.attempt_count,r.action_cursor,r.status
   FROM orders o
   JOIN automation_runs r ON r.order_id=o.order_id AND r.trigger_type='order_paid'
 WHERE o.order_status='pending_ship'
    AND o.deleted_at IS NULL
    AND COALESCE(o.chat_id,'')<>''
+   AND (o.is_bargain=0 OR EXISTS (SELECT 1 FROM bargain_free_shipping_stages bfs
+                                  WHERE bfs.order_id=o.order_id AND bfs.cookie_id=o.cookie_id AND bfs.status IN ('ready','succeeded')))
+   AND r.cookie_id=o.cookie_id
    AND r.status IN ('needs_review','failed')
    AND r.attempt_count<?
-   AND r.action_cursor<(SELECT COUNT(*) FROM automation_rule_actions a
-                        WHERE a.rule_id=r.rule_id AND a.enabled=1)
-   AND r.action_cursor>=(SELECT COUNT(*) FROM automation_rule_actions a
-                          WHERE a.rule_id=r.rule_id AND a.enabled=1
-                            AND a.action_type IN ('send_card','send_template'))
-   AND EXISTS (SELECT 1 FROM automation_rules r2
-                WHERE r2.cookie_id=o.cookie_id AND r2.trigger_type='order_paid'
-                  AND r2.deleted_at IS NULL AND r2.enabled=1
-                  AND (r2.item_id=o.item_id OR r2.item_id=''))`+cursorSQL+`
+   AND r.id=(SELECT latest.id
+               FROM automation_runs latest
+              WHERE latest.order_id=o.order_id
+                AND latest.trigger_type='order_paid'
+              ORDER BY latest.updated_at DESC,latest.id DESC
+              LIMIT 1)
+   AND NOT EXISTS (SELECT 1 FROM automation_runs active
+                    WHERE active.order_id=o.order_id
+                      AND active.trigger_type='order_paid'
+                      AND active.status='running')
+   AND EXISTS (SELECT 1 FROM automation_rules owner
+                WHERE owner.id=r.rule_id AND owner.cookie_id=o.cookie_id
+                  AND owner.trigger_type='order_paid'
+                  AND owner.deleted_at IS NULL AND owner.enabled=1)`+cursorSQL+`
  ORDER BY o.order_id ASC
  LIMIT ?`, args...)
 	if err != nil {
@@ -174,13 +214,14 @@ WHERE o.order_status='pending_ship'
 		// 以下 NullString 保存可能为空的订单文本字段。
 		var itemID, buyerID, specName, specValue, qty, amount, status, cookieID,
 			receiverName, receiverPhone, receiverAddr, receiverCity, chatID sql.NullString
+		// err 保存本行扫描错误；非空时交由调用方决定是否重试整轮查询。
 		if err := rows.Scan(&candidate.Order.OrderID, &itemID, &buyerID, &specName, &specValue, &qty, &amount,
 			&status, &cookieID, &isBargain, &receiverName, &receiverPhone, &receiverAddr,
 			&receiverCity, &version, &chatID, &sysShipped, &candidate.Order.PaidAt,
 			&candidate.Order.ShippedAt, &candidate.Order.CompletedAt, &candidate.Order.BuyerReviewedAt,
 			&candidate.Order.LastReviewRequestAt, &candidate.Order.ReviewRequestCount,
 			&candidate.Order.CreatedAt, &candidate.Order.UpdatedAt,
-			&candidate.RunID, &candidate.RuleID, &candidate.Attempt, &candidate.ActionCursor, &candidate.Status); err != nil {
+			&candidate.RunID, &candidate.RuleID, &candidate.RawEventJSON, &candidate.Attempt, &candidate.ActionCursor, &candidate.Status); err != nil {
 			return nil, err
 		}
 		candidate.Order.ItemID = itemID.String

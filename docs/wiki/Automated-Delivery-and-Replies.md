@@ -7,13 +7,13 @@
 | Trigger | When it runs | Standard flow |
 | --- | --- | --- |
 | Price change for unpaid order | A buyer’s unpaid order card arrives | Match product/specification → change to target price → optionally send a reminder. |
-| Paid delivery | A payment system card arrives | Match product/specification → send cards → confirm shipment after success. |
+| Paid delivery | A payment system card arrives | Match product/specification → send cards → confirm shipment only when the account setting enables it. |
 | Review gift | A review system card arrives | Match product/specification → send gift cards. |
 | Review reminder | A scheduled scan finds a shipped, unreviewed order | Wait until the threshold → send the reminder copy. |
 
 System notification cards enter automation decisions only. In the current production wiring, ordinary buyer messages go through keyword replies, AI replies, and default replies in that order; the code retains an extension point for an external API reply handler.
 
-Payment reminders, successful bargaining cards awaiting shipment, and review reminders can use different system-message formats. The system recognizes their transaction semantics. Ordinary buyer chat does not trigger transaction automation. Result notifications are sent when the account has a bound channel whose event filters include Transaction Notifications, and the automation reaches completed, failed, or manual-review status.
+Payment reminders, successful bargaining cards awaiting shipment, and review reminders can use different system-message formats. The system recognizes their transaction semantics. Ordinary buyer chat does not trigger transaction automation. Result notifications are sent when the account has a bound channel whose event filters include the corresponding automation category, and the automation reaches completed, failed, or manual-review status.
 
 Account-level automatic reviews and daily refresh are separate from the order rules above. Configure them under Account Management → Automatic Reviews and Daily Refresh; see [Chat and Account Automation](Chat-and-Account-Automation).
 
@@ -25,16 +25,16 @@ Account-level automatic reviews and daily refresh are separate from the order ru
 
 ## Configure paid delivery
 
-Prerequisites: the account is online, the product is synced, and an enabled card group has sufficient inventory.
+Prerequisites: the account is online, Automatic Delivery is enabled for the account, the product is synced, and an enabled card group has sufficient inventory. The separate Automatic Shipping Confirmation setting controls whether the platform order is marked shipped.
 
 1. Open Automation, choose Paid Delivery, and click Add.
 2. Set a rule name and select the target account and product. For products with specifications, create a matching configuration for each specification that needs delivery.
 3. Add a Send Cards action, choose card inventory, set quantity per item, and choose whether the action is enabled.
 4. To override the card group’s default delay, enable the override and enter seconds; otherwise the group delay is used.
 5. Save and confirm the rule is enabled.
-6. Use a test order to verify card content is sent, inventory is deducted correctly, and shipment is confirmed only afterward.
+6. Use a test order to verify card content is sent and inventory is deducted correctly; if Automatic Shipping Confirmation is enabled for the account, also verify that the platform status changes to shipped afterward.
 
-For result notifications, bind a notification channel to the account and enable Transaction Notifications in the channel’s events. Quantity per item is multiplied by the order quantity; do not enter the per-order total as the per-item quantity.
+For result notifications, bind a notification channel to the account and select the corresponding automation category in the channel’s events. Quantity per item is multiplied by the order quantity; do not enter the per-order total as the per-item quantity.
 
 ## Configure review gifts and reminders
 
@@ -52,6 +52,8 @@ To configure review reminders:
 The exception area of Automation lists actionable runs and delayed tasks. Check the order, inventory, chat history, and failure reason before using Process/Resolve. If delivery status is uncertain, do not retry immediately; duplicate cards may be sent.
 
 For a manual resend, locate the order in Orders, confirm buyer, product, and delivery history, then use manual delivery/resend. Record the reason and check inventory afterward.
+
+Paid delivery is normally triggered only by the platform's paid system message. If that message is lost, or the order fails during preparation (not even leaving a run record), the order stays in pending shipment forever. The scheduler scans for such orders once a minute, but waits until the local pending-shipment fact has been observed for at least two minutes before re-triggering delivery from status; this lets the real-time paid card establish its run first. Bargain free shipping is a separate account-level switch: the “I have made a small cut, awaiting completion” WebSocket card may call free shipping only when that switch is enabled; the later “successful cut, awaiting shipment” card then sends delivery content, followed by ordinary confirmation shipment if enabled. The fallback never calls free shipping. It may recover a bargain order only after the successful free-shipping stage has been recorded. Once an order has any `order_paid` run it is no longer picked up, and further handling goes through the failed runs in the exception area. Two fallback triggers for the same order are at least 10 minutes apart. Unfinished pending-shipment runs are resumed as well, but only idempotent `confirm_shipment` tail actions that never contact the buyer are allowed. Set `XIANYU_PENDING_SHIP_CATCHUP=0` to disable both fallback paths.
 
 ## Keyword and default replies
 

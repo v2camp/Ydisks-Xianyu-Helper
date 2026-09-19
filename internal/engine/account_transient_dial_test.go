@@ -85,7 +85,8 @@ func TestRecordNetworkFailureDrivesBackoff(t *testing.T) {
 		account.recordNetworkFailure()
 	}
 	// cappedDelay 是连续失败后的退避时长，必须仍被上限约束。
-	if cappedDelay := account.networkRetryDelay(); cappedDelay > 75*time.Second {
+	// 上限为 60s 基础值 + 30% 抖动，即约 78s；断言 80s 以容纳抖动边界。
+	if cappedDelay := account.networkRetryDelay(); cappedDelay > 80*time.Second {
 		t.Fatalf("退避时长应被上限约束，实际 %v", cappedDelay)
 	}
 }
