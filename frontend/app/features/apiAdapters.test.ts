@@ -1270,6 +1270,34 @@ test('updateShippingRule posts review request text action without card requireme
   ]);
 } /* 测试回调验证：updateShippingRule posts review request text action without card requirement。 */);
 
+test('updateShippingRule omits stale id on rebuilt non-template actions', async () => {
+  // fetchMock 是规则更新请求的测试替身，返回成功响应。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true, id: 15 })); /* fetchMock 表示fetchMock。 */
+  stubContractFetch(fetchMock);
+
+  // 免拼动作携带旧主键（删除重建前加载得到），模板动作携带合法主键。
+  await updateShippingRule({
+    id: '15',
+    cookie_id: 'cookie-1',
+    item_id: 'item-1',
+    trigger_type: 'order_pin_pending',
+    enabled: true,
+    actions: [
+      { id: '34', action_type: 'skip_pin', enabled: true, sort_order: 1 },
+      { id: '99', action_type: 'send_template', delivery_template_id: 7, enabled: true, sort_order: 2 },
+    ],
+  });
+
+  const body = JSON.parse(fetchMock.mock.calls[0][1].body); /* body 表示请求体。 */
+  // skipPinAction 是免拼动作，不应携带旧主键；templateAction 是模板动作，应保留主键。
+  const skipPinAction = body.actions.find(/* 当前回调筛选免拼动作。 */ (action: any) => action.action_type === 'skip_pin');
+  const templateAction = body.actions.find(/* 当前回调筛选模板动作。 */ (action: any) => action.action_type === 'send_template');
+  expect(skipPinAction).toMatchObject({ action_type: 'skip_pin' });
+  expect(skipPinAction.id).toBeUndefined();
+  expect(templateAction).toMatchObject({ action_type: 'send_template' });
+  expect(templateAction.id).toBe(99);
+} /* 测试回调验证：updateShippingRule omits stale id on rebuilt non-template actions。 */);
+
 // 会话 API 使用版本化兼容入口。
 const runVersionedSessionAPITest = async () => {
   // fetchMock 是会话 API 请求的测试替身。
