@@ -201,6 +201,16 @@ services:
       BROWSER_HEADLESS: "true"
     command: ["go", "test", "-timeout=2m", "./internal/browser", "-run", "TestTokenCaptchaCDPFallbackBrowserIntegration", "-v", "-count=1"]
 
+  webui-e2e-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.browser-test
+    environment:
+      RUN_WEBUI_E2E: "1"
+      BROWSER_HEADLESS: "true"
+      E2E_SERVER_BIN: "/app/xianyu-server"
+    command: ["go", "test", "-timeout=3m", "./internal/browser", "-run", "TestWebUISmokeAdminFlow", "-v", "-count=1"]
+
   go-vet:
     build:
       context: .

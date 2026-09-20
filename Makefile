@@ -3,7 +3,7 @@
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 
-.PHONY: build build-int build-browser-install build-tray test test-server test-server-race test-multidb test-int vet lint architecture api-generate api-check cover cover-browser cover-frontend tidy frontend fmt comments check
+.PHONY: build build-int build-browser-install build-tray test test-server test-server-race test-multidb test-int vet lint architecture api-generate api-check cover cover-browser cover-frontend tidy frontend fmt comments e2e-webui check
 
 ## build: 编译 server（默认，跳过 integration build tag）
 build:
@@ -97,5 +97,11 @@ comments:
 	$(GO) run ./tools/commentlint -mode check -root .
 	node frontend/scripts/check-comments.mjs --mode check --root frontend
 
+## e2e-webui: 容器内真实 Chromium Web UI 冒烟（复用 browser-test 镜像与生产镜像的 Chromium）
+e2e-webui:
+	docker compose -f docker-compose.functional.yml build webui-e2e-test
+	docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
+
 ## check: 本地提交前全套检查（fmt + vet + lint + test）
+## 真实浏览器 Web UI 冒烟不进本机 check（本机未必有 Chromium），走 scripts/docker-full-test.sh 或 make e2e-webui
 check: fmt architecture api-check vet lint test comments

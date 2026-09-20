@@ -4,12 +4,13 @@ set -eu
 compose="docker compose -f docker-compose.functional.yml"
 
 $compose up -d --build mysql postgres
-$compose build seed-sqlite seed-mysql frontend-test go-vet go-lint go-test browser-integration-test
+$compose build seed-sqlite seed-mysql frontend-test go-vet go-lint go-test browser-integration-test webui-e2e-test
 $compose run --rm frontend-test
 $compose run --rm go-vet
 $compose run --rm go-lint
 $compose run --rm go-test
 $compose run --rm browser-integration-test
+$compose run --rm webui-e2e-test
 $compose run --rm dbverify-sqlite
 $compose run --rm dbverify-mysql
 $compose run --rm dbverify-postgres

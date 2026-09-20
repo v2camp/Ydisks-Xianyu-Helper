@@ -7,6 +7,8 @@ ENV PATH=/usr/local/go/bin:${PATH}
 ENV CGO_ENABLED=0
 WORKDIR /src
 COPY --from=go-toolchain /usr/local/go /usr/local/go
+# 网络受限环境使用 goproxy.cn 镜像拉取 Go 模块，避免直连 proxy.golang.org 超时。
+ENV GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .

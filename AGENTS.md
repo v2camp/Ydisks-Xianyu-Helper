@@ -312,6 +312,8 @@ docker compose -f docker-compose.functional.yml build go-test go-lint
 docker compose -f docker-compose.functional.yml run --rm go-vet
 docker compose -f docker-compose.functional.yml run --rm go-lint
 docker compose -f docker-compose.functional.yml run --rm go-test
+docker compose -f docker-compose.functional.yml build webui-e2e-test
+docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
 ```
 
 - lint 必须走 Dockerfile.test 的 go-lint 阶段。
@@ -360,6 +362,13 @@ docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
     ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws \
     && go tool cover -func=cover-core.out | tail -1'
 ```
+
+### 2.5 UI 动线门禁
+
+- 真实 Chromium 打开 Web UI 的冒烟由 webui-e2e-test 门禁兜底。
+- 前端路由、页面白屏与数据库残留类型回归由 e2e 页面级断言捕获。
+- e2e 断言 React 挂载、路由停留且无控制台错误，不能只校验 HTTP 状态。
+- 涉及前端路由、页面渲染或触发类型删改时，必须跑 webui-e2e-test 门禁。
 
 ---
 
@@ -412,6 +421,7 @@ git tag -a "<版本>-local-<日期>" -m "<中文说明：解决了什么问题>"
 - compose.override.yml 把 app 指向本地镜像并禁用拉取。
 - .docker/playwright-runtime 为空时会联网下载 Chromium，很慢。
 - 替换本地镜像前先给旧镜像打 rollback 备份 tag。
+- Web UI 动线冒烟随 functional 门禁运行，复用生产镜像自带的 Chromium。
 
 ```bash
 docker build -f Dockerfile.debian13 -t ydisks-xianyu-helper:local .
