@@ -253,11 +253,13 @@ func TestNewWriter_EnabledAndDisabled(t *testing.T) {
 	}
 	// 显式关闭：环境变量为 0 时不应构造写者，调用方据此跳过启动。
 	t.Setenv(heartbeatIntervalEnv, "0")
+	// closed 是显式关闭时 NewWriter 的返回，应为 nil。
 	if closed := NewWriter(store, slog.Default()); closed != nil {
 		t.Fatalf("显式关闭应返回 nil, got %+v", closed)
 	}
 	// 未装配存储：即便配置有效也不应构造空转写者。
 	t.Setenv(heartbeatIntervalEnv, "30")
+	// nilStore 是未装配存储时 NewWriter 的返回，应为 nil。
 	if nilStore := NewWriter(nil, slog.Default()); nilStore != nil {
 		t.Fatalf("未装配存储应返回 nil, got %+v", nilStore)
 	}
