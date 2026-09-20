@@ -13,6 +13,8 @@ ARG TARGETARCH
 ARG APP_VERSION=dev
 ARG VCS_REF=unknown
 ARG BUILD_TIME=unknown
+# 网络受限环境使用 goproxy.cn 镜像拉取 Go 模块，避免直连 proxy.golang.org 超时。
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -27,6 +29,8 @@ RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath \
 # 本地 Docker 构建没有主机 runtime 缓存时使用此工具下载一次；CI 会优先复制缓存，
 # 不会走这个兜底路径。
 FROM --platform=$BUILDPLATFORM golang:1.26-trixie AS browser-install-builder
+# 与 backend 阶段一致的 Go 模块代理，保证离线环境同样可用 goproxy.cn 拉取依赖。
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
