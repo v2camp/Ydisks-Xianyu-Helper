@@ -2,7 +2,7 @@
 
 > 版本：1.0
 > 日期：2026-09-20
-> 状态：已实施并部署（v1.0.14-local-20260920）
+> 状态：已实施并部署（v1.0.14-local-20260921）
 > 关联代码：`internal/engine/aimatch`、`internal/engine/ai_scope.go`、`internal/engine/ai.go`、设置页「AI 客服配置」编辑区
 
 ## 一、背景与问题
@@ -110,7 +110,7 @@
 
 - 分支 `feat/ai-scope-config` 四笔提交：组合词匹配器 / 三层配置接入 / 前端编辑区+静态产物 / 注释违规补齐。
 - 合并 `--no-ff` 到 main 并推送 fork（提交 ed8061b 及其上游）。
-- 版本 tag：`v1.0.14-local-20260920`；旧镜像备份 `rollback-20260920`。
+- 版本 tag：`v1.0.14-local-20260921`；旧镜像备份 `rollback-20260921`。
 - 部署状态：见文末「部署记录」更新。
 
 ## 九、遗留与后续
@@ -118,3 +118,18 @@
 1. 部署阻塞：Docker VM 磁盘不足 + debian 源下载慢，`install-deps chromium` 失败，新镜像未替换成功（待解决后 `docker compose up -d app`）。
 2. 可考虑把 Dockerfile runtime 阶段 apt 源切换到国内镜像（镜像构建网络受限时与 goproxy.cn 同理）。
 3. 后续增强方向（参考课程 V4 客服 Agent）：语义检索（Milvus）、槽位与多轮 SOP（换货/改地址/开票）、三级护栏、评测集。
+
+---
+
+## 十、部署记录
+
+### 2026-09-21 异地恢复部署
+
+- 依据 `backup/README.md` 恢复：`.env`（原样保留密钥）、PostgreSQL 备份导入、`app_data`/`browser_data` 数据卷还原，账号登录态保留。
+- 旧补丁：GHCR 正式镜像 `latest`（v1.0.13，2026-09-17 构建）**不含**「AI 客服配置」功能，设置页无该卡片。
+- 处理：Dockerfile.debian13 本地构建 `ydisks-xianyu-helper:local`（v1.0.14-local，含 AI 客服功能），`compose.override.yml` 指向本地镜像并禁用拉取；旧 GHCR 镜像备份为 `rollback-20260921`。
+- 构建阻塞与解决：
+  - Docker Hub buildkit 拉取 golang 层极慢（0.3 MB/s 级）：开 VPN 后恢复（基础镜像层拉取即快）。
+  - Playwright FFmpeg 下载失败：重试通过。
+  - `install-deps chromium` 多次因 apt 包下载失败：实测 aliyun 镜像对大包降速至 0.3 MB/s（libllvm19 23MB 拉不动），清华 tuna 41 MB/s；已把 Dockerfile runtime 阶段 apt 源从 aliyun 切到清华（http，未加 https 需 CA），单次约 80 秒下载完成。
+- 验证：`/health` healthy，version=v1.0.14-local；浏览器实测设置页「AI 客服配置（可配置接管范围）」卡片渲染，边界/语料/策略数据从 API 加载完整（意图 4 条、FAQ 5 条、在售清单 22 条）。
