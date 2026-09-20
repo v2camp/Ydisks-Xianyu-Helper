@@ -146,3 +146,23 @@ jobs:
 
       - name: 执行三方言实测回归
         run: make test-multidb
+
+  webui-e2e:
+    name: Web UI 真实浏览器冒烟
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 构建 functional 测试镜像（含 Chromium runtime）
+        # .docker/playwright-runtime 为空时空缺驱动由 Dockerfile.debian13 联网补齐，
+        # 生成 Dockerfile.browser-test 依赖的基础镜像 ydisks-xianyu-helper:functional。
+        shell: bash
+        run: docker build -f Dockerfile.debian13 -t ydisks-xianyu-helper:functional .
+
+      - name: 运行真实浏览器 Web UI 冒烟门禁
+        # webui-e2e-test 继承 functional 镜像的 Chromium/driver 并补齐 Go 工具链，
+        # 以真实 Chromium 走完 登录→关键页面 动线，捕获页面白屏与控制台错误回归。
+        shell: bash
+        run: docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
