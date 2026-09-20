@@ -48,6 +48,10 @@
 # Git worktrees used for task-level isolation (see AGENTS.md task workflow)
 /.worktree/
 
+# Local build scratch files (tmp Dockerfile) and TRAE working documents
+/.docker/
+/.trae/
+
 # OS / editor
 .DS_Store
 .idea/
