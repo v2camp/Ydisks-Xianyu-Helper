@@ -57,22 +57,25 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	if err != nil || cfg == nil || !cfg.AIEnabled {
 		return nil, nil // 未启用 AI
 	}
-	// extraKeywords 是运维可扩展的投诉负向词表（来自设置 ai_complaint_keywords），与内置取并集；
-	// 读取失败或非法项已安全回落，不会导致漏拦。
+	// scope 是编译后的 AI 边界（意图白名单 + 负向组合词），未配置时回落内置砍价范围。
+	scope, err := a.loadScope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// extraKeywords 是运维可扩展的投诉负向词表（来自设置 ai_complaint_keywords），
+	// 与内置/配置负向词独立追加判定；读取失败或非法项已安全回落，不会导致漏拦。
 	extraKeywords, kwErr := a.loadComplaintKeywords(ctx)
 	if kwErr != nil {
 		a.logger.Warn("读取投诉扩展词表失败，回落内置词表", "err", kwErr)
 	}
-	// hits 是当前消息的意图命中集合（已含扩展投诉词表）。
-	hits := classifyIntentWithKeywords(m.Text, extraKeywords)
-	// 意图注册表做规则前置：AI 只接管明确的砍价意图；投诉/售后类消息即使夹带砍价
-	// 表达也交给默认回复与人工处理，避免 AI 在纠纷场景即兴承诺或降价。
-	// 其余意图（order/inquiry/consult）保持既有路由不变，仍走默认回复。
-	if !aiShouldHandleIntent(hits) {
+	// takeover 表示当前消息是否允许 AI 接管；hitIDs 是按配置顺序命中的意图名。
+	// 边界策略：负向命中（内置/配置/扩展词表任一）一票否决；命中启用意图才接管。
+	takeover, hitIDs := scope.decide(m.Text)
+	if !takeover || intentBlockedByExtra(extraKeywords, m.Text) {
 		return nil, nil
 	}
 	// userIntent 是写入对话历史的真实意图标签（多命中/零命中分别归并到 ambiguous/chitchat）。
-	userIntent := primaryIntentLabel(hits)
+	userIntent := primaryIntentLabel(hitIDs)
 	// aiCfg、err 用于本次流程后续判断的人工智能Cfg、err
 	aiCfg, err := a.globalAIConfig(ctx)
 	if err != nil {
@@ -102,6 +105,21 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	)
 	if !withinBargainLimit {
 		systemPrompt += "\n当前买家已经超过最大砍价轮次。不得继续降价，只能礼貌说明价格不再优惠。"
+	}
+	// knowledge 是语料配置（FAQ 问答与在售清单）。
+	knowledge, err := a.loadKnowledge(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// knowledgeCtx 是命中 FAQ 与在售清单拼装的知识上下文；非空时注入 system 让 AI 有据可答。
+	knowledgeCtx := knowledge.buildKnowledgeContext(m.Text)
+	if knowledgeCtx != "" {
+		systemPrompt += "\n\n" + knowledgeCtx
+	}
+	// policy 是策略配置（报价/拒绝兜底话术），未配置时回落内置文案。
+	policy, err := a.loadPolicy(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// 调 OpenAI 兼容接口。
@@ -162,9 +180,19 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 		}
 		a.logger.Warn("AI 报价超过折扣边界，使用安全回复", "offered", offered, "minimum", minimumPrice)
 		if minimumPrice >= itemPrice || !withinBargainLimit {
-			reply = "抱歉，当前价格已经是最低价，暂时不能再优惠了。"
+			// noDiscount 是策略配置的拒绝兜底话术；未配置时沿用内置文案。
+			noDiscount := policy.NoDiscountReply
+			if noDiscount == "" {
+				noDiscount = "抱歉，当前价格已经是最低价，暂时不能再优惠了。"
+			}
+			reply = noDiscount
 		} else {
-			reply = fmt.Sprintf("可以优惠的最低价格是 %.2f 元，低于这个价格暂时无法成交。", minimumPrice)
+			// minPrice 是策略配置的最低价话术模板，{amount} 替换为该轮最低报价。
+			minPrice := policy.MinPriceReply
+			if !strings.Contains(minPrice, "{amount}") {
+				minPrice = "可以优惠的最低价格是 {amount} 元，低于这个价格暂时无法成交。"
+			}
+			reply = strings.ReplaceAll(minPrice, "{amount}", fmt.Sprintf("%.2f", minimumPrice))
 			if cfg.AutoAdjustPriceEnabled {
 				quote = &AIPriceQuoteProposal{PriceCents: priceToCents(minimumPrice)}
 			}
@@ -206,6 +234,17 @@ type globalAIConfig struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+}
+
+// intentBlockedByExtra 判断文本是否命中扩展投诉负向词表中的任一正则；命中即阻止 AI 接管。
+func intentBlockedByExtra(extra []*regexp.Regexp, text string) bool {
+	// re 表示当前遍历到的扩展负向正则。
+	for _, re := range extra {
+		if re.MatchString(text) {
+			return true
+		}
+	}
+	return false
 }
 
 // loadComplaintKeywords 从设置读取可扩展的投诉负向词表并解析为已校验正则。

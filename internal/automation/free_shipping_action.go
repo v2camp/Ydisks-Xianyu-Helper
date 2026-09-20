@@ -16,6 +16,7 @@ func (e *automationActionExecutor) freeShipBargain(ctx context.Context, task Tas
 	if template, readErr := e.store.Cookies.GetBargainSootheTemplate(ctx, task.AccountID); readErr == nil {
 		// sootheText 是渲染后的安抚文案；空模板或缺少会话、买家标识时不发送。
 		if sootheText := strings.TrimSpace(renderTemplate(template, task)); sootheText != "" && task.ChatID != "" && task.BuyerID != "" {
+			// sootheErr 是发送安抚消息的错误；发送失败只记日志不阻断免拼。
 			if sootheErr := e.sendText(ctx, task, sootheText); sootheErr != nil {
 				e.logger.Warn("免拼安抚消息发送失败，继续执行免拼", "account", task.AccountID, "order_id", task.OrderID, "err", sootheErr)
 			}

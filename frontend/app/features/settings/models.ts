@@ -35,6 +35,12 @@ export interface SystemSettings {
   'captcha.remote_secret_key_configured'?: boolean;
   /** 远程验证码服务 Cookie 配置。 */
   'captcha.remote_pass_cookies'?: boolean | string;
+  /** 边界配置 JSON：意图白名单与负向组合词，决定 AI 接管范围。 */
+  ai_scope_config?: string;
+  /** 语料配置 JSON：FAQ 问答与在售清单，供 AI 有据作答。 */
+  ai_knowledge_config?: string;
+  /** 策略配置 JSON：报价与拒绝兜底话术模板。 */
+  ai_policy_config?: string;
   /** 是否启用 AI 回复人工确认模式，开启后 AI 回复需人工确认后再发送。 */
   ai_reply_review_mode?: boolean;
   /** 多账号合计的每日发送条数上限，0 表示不限制。 */
