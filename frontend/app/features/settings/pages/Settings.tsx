@@ -15,6 +15,7 @@ Zap
 import React from 'react';
 import { DEFAULT_AI_API_URL,LOG_LEVELS } from '../constants';
 import { useSettings } from '../hooks';
+import { AIConfigEditor } from '../components/AIConfigEditor';
 
 // Settings 展示系统配置、AI 模型和登录凭据编辑页面。
 const Settings: React.FC = () => {
@@ -320,6 +321,9 @@ const Settings: React.FC = () => {
               </div>
             </div>
           </section>
+
+          {/* AI 客服可配置接管范围：边界/语料/策略三层 JSON，改完随系统配置保存即时生效。 */}
+          <AIConfigEditor settings={settings} onChange={/* 当前回调把 AI 客服配置编辑写回系统配置草稿。 */ patch => setSettings({ ...settings, ...patch })} />
         </div>
 
         {/* Right Column */}
