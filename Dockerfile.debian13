@@ -93,8 +93,8 @@ COPY --from=playwright-runtime /ms-playwright /ms-playwright
 # driver 只安装 Chromium 所需系统依赖，并在同一镜像层清理 apt/npm/临时缓存。
 # 网络受限时先把 apt 源切到国内镜像（与 Go 的 goproxy.cn 同理），避免 deb.debian.org 超时。
 RUN set -eux; \
-    sed -i 's|http://deb.debian.org/debian|http://mirrors.aliyun.com/debian|g; s|http://security.debian.org/debian-security|http://mirrors.aliyun.com/debian-security|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || :; \
-    sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || :; \
+    sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g; s|http://security.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || :; \
+    sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || :; \
     node /ms-playwright-go/package/cli.js install-deps chromium; \
     apt-get update; \
     apt-get install --reinstall -y --no-install-recommends ca-certificates; \
