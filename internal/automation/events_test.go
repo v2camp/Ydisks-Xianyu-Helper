@@ -69,6 +69,38 @@ func TestExtractTaskFromWS_OrderCompleted(t *testing.T) {
 	}
 }
 
+// TestExtractTaskFromWS_OrderCompletedNewCardLayout 验证新版确认收货卡片的 updateKey
+// “订单号:20:业务键:序号”不会把渠道位 20 误当订单号，完成事实必须关联合法订单，
+// 避免自动评价候选被写到假订单上导致真实订单永远漏评。
+func TestExtractTaskFromWS_OrderCompletedNewCardLayout(t *testing.T) {
+	// raw 保存与线上一致的新版确认收货系统卡片：updateKey 首段是真实订单号，次段 20 是渠道位，
+	// 聊天会话由 reminderUrl 的 sid 提供，完整布局可直接复现把完成事件写到假订单的缺陷。
+	raw := mustMap(t, `{
+	  "1": {
+	    "2": "62904549781@goofish",
+	    "7": 1,
+	    "10": {
+	      "reminderContent": "快给ta一个评价吧～",
+	      "reminderTitle": "买家已确认收货",
+	      "senderUserId": "buyer-3",
+	      "reminderUrl": "fleamarket://message_chat?itemId=1063217820795&peerUserId=buyer-3&sid=62904549781&messageId=m-1&adv=no",
+	      "extJson": "{\"contentType\":\"25\",\"messageId\":\"m-1\",\"updateKey\":\"5127764293171003500:20:BUYER_CONFIRM_RATE_SELLER:74\"}"
+	    }
+	  }
+	}`)
+	// task 保存新版确认收货卡片经统一入口解析后的订单完成任务。
+	task := ExtractTaskFromWS("acc1", "cookie", raw)
+	if task == nil || task.TriggerType != TriggerOrderCompleted || task.OrderStatus != "completed" {
+		t.Fatalf("确认收货任务解析错误: %+v", task)
+	}
+	if task.OrderID != "5127764293171003500" {
+		t.Fatalf("完成事件订单号错误: %q", task.OrderID)
+	}
+	if task.ChatID != "62904549781" {
+		t.Fatalf("完成事件会话错误: %q", task.ChatID)
+	}
+}
+
 // TestExtractTaskFromWS_ServiceReviewInvitationIgnored 封装TestExtract任务FromWSServiceReviewInvitationIgnored业务协调。
 func TestExtractTaskFromWS_ServiceReviewInvitationIgnored(t *testing.T) {
 	// raw 用于本次流程后续判断的原始

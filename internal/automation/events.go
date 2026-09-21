@@ -570,11 +570,18 @@ func extFields(ext string) (updateKey, contentType string) {
 	return strAny(m["updateKey"]), strAny(m["contentType"])
 }
 
-// parseUpdateKey 封装parseUpdateKey业务协调。
+// parseUpdateKey 从平台 updateKey 提取聊天会话与订单标识；交易卡片存在两种布局：
+// 旧版“会话:订单:业务键:序号”的次段是订单号；新版确认收货卡“订单号:渠道位:业务键:序号”
+// 的首段是订单号，次段只是渠道位（如 20），不能被当成订单号落入本地订单关联。
+// 新版卡片的会话由跳转链接兜底补齐，本函数不猜测。
 func parseUpdateKey(updateKey string) (chatID, orderID string) {
-	// parts 用于本次流程后续判断的parts
+	// parts 保存按冒号分隔的原始段；订单号缺失时调用方依赖跳转链接继续兜底。
 	parts := strings.Split(updateKey, ":")
 	if len(parts) >= 2 {
+		// 首段是 15 位以上纯数字（新版订单号）时只返回订单号，避免次段渠道位污染订单关联。
+		if order := directOrderID(parts[0]); len(parts[0]) >= 15 && order != "" {
+			return "", order
+		}
 		return parts[0], parts[1]
 	}
 	return "", ""
