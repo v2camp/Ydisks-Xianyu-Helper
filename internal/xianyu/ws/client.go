@@ -734,8 +734,8 @@ func (c *Conn) ReceiveLoop(ctx context.Context, onMessage func(decrypted map[str
 			}
 		}(raw)
 
-		// 仅处理同步包：body.syncPushPackage.data[0].data
-		syncData, ok := extractSyncPayload(raw)
+		// 同步包可在一个帧中携带多条卡片；必须逐条解码，但 ACK 仍按原始帧只发送一次。
+		syncPayloads, ok := extractSyncPayloads(raw)
 		if !ok {
 			c.sendACK(ctx, raw)
 			if // recorder 用于本次流程后续判断的recorder
@@ -744,26 +744,39 @@ func (c *Conn) ReceiveLoop(ctx context.Context, onMessage func(decrypted map[str
 			}
 			continue
 		}
-		// decoded、err 用于本次流程后续判断的decoded、err
-		decoded, err := decodeSyncData(syncData)
-		if err != nil {
-			c.sendACK(ctx, raw)
+		// decodedMessages 保存当前帧中成功解码的全部业务消息，保持平台条目的原始分发顺序。
+		decodedMessages := make([]map[string]any, 0, len(syncPayloads))
+		// payload 表示当前待校验及解码的同步包条目。
+		for _, payload := range syncPayloads {
+			if !payload.valid {
+				c.logger.Warn("同步推送条目格式无效", "entry_index", payload.index, "reason", payload.invalidReason)
+				continue
+			}
+			// decoded 和 err 分别保存当前条目的业务对象及单条解密失败原因。
+			decoded, err := decodeSyncData(payload.data)
+			if err != nil {
+				if // recorder 用于本次流程后续判断的recorder
+				recorder := c.recorderSnapshot(); recorder != nil {
+					recorder("in", rawText, "", "decrypt_failed", err.Error())
+				}
+				c.logger.Warn("同步推送条目解密失败", "entry_index", payload.index, "err", err)
+				continue
+			}
 			if // recorder 用于本次流程后续判断的recorder
 			recorder := c.recorderSnapshot(); recorder != nil {
-				recorder("in", rawText, "", "decrypt_failed", err.Error())
+				if // b、e 用于本次流程后续判断的b、e
+				b, e := json.Marshal(decoded); e == nil {
+					recorder("in", rawText, string(b), "decrypted", "")
+				}
 			}
-			c.logger.Error("消息解密失败", "err", err)
-			continue
-		}
-		if // recorder 用于本次流程后续判断的recorder
-		recorder := c.recorderSnapshot(); recorder != nil {
-			if // b、e 用于本次流程后续判断的b、e
-			b, e := json.Marshal(decoded); e == nil {
-				recorder("in", rawText, string(b), "decrypted", "")
-			}
+			decodedMessages = append(decodedMessages, decoded)
 		}
 		c.sendACK(ctx, raw)
-		if onMessage != nil {
+		if onMessage == nil {
+			continue
+		}
+		// decoded 表示当前帧中已解密并通过既有上游业务识别的一条消息。
+		for _, decoded := range decodedMessages {
 			onMessage(decoded)
 		}
 	}

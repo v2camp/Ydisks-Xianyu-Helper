@@ -44,20 +44,21 @@ func TestOfficialRegistrationUARecognizesHeadlessChrome(t *testing.T) {
 	}
 }
 
-// TestExtractSyncPayload 封装TestExtractSync请求载荷业务协调。
-func TestExtractSyncPayload(t *testing.T) {
+// TestExtractSyncPayloads 验证同一同步帧中的每个条目都被保留，避免后续付款卡片被 data[0] 遮蔽。
+func TestExtractSyncPayloads(t *testing.T) {
 	// msg 用于本次流程后续判断的msg
 	msg := map[string]any{"body": map[string]any{"syncPushPackage": map[string]any{
-		"data": []any{map[string]any{"data": "payload"}},
+		"data": []any{map[string]any{"data": "first"}, map[string]any{"data": "second"}, map[string]any{"data": 1}},
 	}}}
-	if // got、ok 用于本次流程后续判断的got、ok
-	got, ok := extractSyncPayload(msg); !ok || got != "payload" {
-		t.Fatalf("extractSyncPayload() = %q, %v", got, ok)
+	// got 和 ok 分别保存完整条目列表及同步包形状是否有效。
+	got, ok := extractSyncPayloads(msg)
+	if !ok || len(got) != 3 || !got[0].valid || got[0].data != "first" || !got[1].valid || got[1].data != "second" || got[2].valid {
+		t.Fatalf("extractSyncPayloads() = %#v, %v", got, ok)
 	}
-	// invalid 表示当前遍历过程中的invalid
+	// invalid 表示当前遍历过程中的缺少同步条目的帧；空数组沿用旧行为按非同步帧跳过。
 	for _, invalid := range []map[string]any{{}, {"body": map[string]any{}}, {"body": map[string]any{"syncPushPackage": map[string]any{"data": []any{}}}}} {
 		if // ok 用于本次流程后续判断的ok
-		_, ok := extractSyncPayload(invalid); ok {
+		_, ok := extractSyncPayloads(invalid); ok {
 			t.Fatalf("invalid payload accepted: %#v", invalid)
 		}
 	}

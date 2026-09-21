@@ -107,31 +107,51 @@ func (c *Conn) sendACK(ctx context.Context, msg map[string]any) {
 	cancel()
 }
 
-// extractSyncPayload 取出 body.syncPushPackage.data[0].data（字符串）。
-func extractSyncPayload(msg map[string]any) (string, bool) {
+// syncPayloadEntry 表示同步帧 data 数组中的一个待解码条目。
+// index 保留其在原始帧中的顺序，data 只在 valid 为真时可传给协议解码器，invalidReason 用于不记录原始密文的告警。
+type syncPayloadEntry struct {
+	index         int
+	data          string
+	valid         bool
+	invalidReason string
+}
+
+// extractSyncPayloads 取出 body.syncPushPackage.data 中的全部条目，保留无效条目以便调用方留下可观测告警。
+func extractSyncPayloads(msg map[string]any) ([]syncPayloadEntry, bool) {
 	// body 用于本次流程后续判断的请求体
 	body, _ := msg["body"].(map[string]any)
 	if body == nil {
-		return "", false
+		return nil, false
 	}
 	// pkg 用于本次流程后续判断的pkg
 	pkg, _ := body["syncPushPackage"].(map[string]any)
 	if pkg == nil {
-		return "", false
+		return nil, false
 	}
 	// arr 用于本次流程后续判断的arr
-	arr, _ := pkg["data"].([]any)
-	if len(arr) == 0 {
-		return "", false
+	arr, ok := pkg["data"].([]any)
+	if !ok || len(arr) == 0 {
+		return nil, false
 	}
-	// first 用于本次流程后续判断的first
-	first, _ := arr[0].(map[string]any)
-	if first == nil {
-		return "", false
+	// entries 按原始顺序保存所有同步条目，使同一帧的后续付款卡片不会被 data[0] 遮蔽。
+	entries := make([]syncPayloadEntry, 0, len(arr))
+	// index 和 rawEntry 分别表示条目在平台帧中的位置及其未可信的原始对象。
+	for index, rawEntry := range arr {
+		// entry 是符合平台对象形状的同步条目；非对象条目无法交给解码器。
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			entries = append(entries, syncPayloadEntry{index: index, invalidReason: "条目不是对象"})
+			continue
+		}
+		// data 和 dataOK 分别保存协议密文及其字符串类型校验结果。
+		data, dataOK := entry["data"].(string)
+		if !dataOK || strings.TrimSpace(data) == "" {
+			entries = append(entries, syncPayloadEntry{index: index, invalidReason: "缺少非空字符串 data"})
+			continue
+		}
+		entries = append(entries, syncPayloadEntry{index: index, data: data, valid: true})
 	}
-	// d、ok 用于本次流程后续判断的d、ok
-	d, ok := first["data"].(string)
-	return d, ok && d != ""
+	return entries, true
 }
 
 // decodeSyncData 先尝试 base64+JSON（未加密系统消息），失败则 base64+msgpack 解密。

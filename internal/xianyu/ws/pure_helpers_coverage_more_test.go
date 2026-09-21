@@ -63,10 +63,10 @@ func TestWSDecodeAndSyncHelpersCoversSuccessAndFailure(t *testing.T) {
 	if decodeErr != nil || decoded["kind"] != "sync" {
 		t.Fatalf("decoded=%v err=%v", decoded, decodeErr)
 	}
-	// payload、payloadOK 保存同步推送包提取结果。
-	payload, payloadOK := extractSyncPayload(map[string]any{"body": map[string]any{"syncPushPackage": map[string]any{"data": []any{map[string]any{"data": "payload"}}}}})
-	if !payloadOK || payload != "payload" {
-		t.Fatalf("payload=%q ok=%v", payload, payloadOK)
+	// payloads、payloadOK 保存同步推送包提取结果及其包级形状校验结果。
+	payloads, payloadOK := extractSyncPayloads(map[string]any{"body": map[string]any{"syncPushPackage": map[string]any{"data": []any{map[string]any{"data": "payload"}}}}})
+	if !payloadOK || len(payloads) != 1 || !payloads[0].valid || payloads[0].data != "payload" {
+		t.Fatalf("payloads=%#v ok=%v", payloads, payloadOK)
 	}
 	// invalidErr 保存非法同步数据的解码错误。
 	if _, invalidErr := decodeSyncData("not-base64"); invalidErr == nil {
