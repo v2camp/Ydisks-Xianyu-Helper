@@ -75,6 +75,7 @@ func (c *Center) prepareManualDeliveryTask(ctx context.Context, order *db.Order)
 	task := Task{
 		Source:               "manual",
 		AccountID:            order.CookieID,
+		OrderRole:            OrderRoleSeller,
 		TriggerType:          TriggerOrderPaid,
 		ChatID:               order.ChatID,
 		OrderID:              order.OrderID,
