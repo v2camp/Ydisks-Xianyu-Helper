@@ -48,6 +48,8 @@ const ChatItemSearchAPI = "https://h5api.m.goofish.com/h5/mtop.taobao.idlemessag
 const SoldOrdersAPI = "https://h5api.m.goofish.com/h5/mtop.taobao.idle.trade.merchant.sold.get/1.0/"
 
 // ItemDetailAPI 是闲鱼 PC 商品详情端点。
+// 上游 42a476f 已随批量详情调用一并删除本端点，本地保留 item_detail.go 供
+// 商品发布、目录、统计等链路按需查询单件商品事实，故此处同步保留常量。
 const ItemDetailAPI = "https://h5api.m.goofish.com/h5/mtop.taobao.idle.pc.detail/1.0/"
 
 // MTopRetryGap 用于本次流程后续判断的MTop重试Gap
@@ -86,6 +88,7 @@ type ClientImpl struct {
 	AdjustPriceURL      string
 	OrderDetailURL      string
 	SoldOrdersURL       string
+	// ItemDetailURL 覆盖单件商品详情端点，仅供本地 HTTP 回归测试注入替身；空值使用官方端点。
 	ItemDetailURL       string
 	LoginUserURL        string
 	RateCreateURL       string

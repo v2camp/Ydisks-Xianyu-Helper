@@ -673,7 +673,7 @@ func credentialRuntimeFingerprint(data db.CookieRuntimeData) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
-// actionMatchesOrderSpec 判断动作配置的规格是否匹配订单。
+// actionMatchesOrderSpec 判断动作配置的规格是否匹配订单；账号级且已确认全商品的付款规则允许空规格动作匹配任意订单规格，商品级规则仍要求完整规格相等。
 func actionMatchesOrderSpec(task Task, action db.AutomationAction) bool {
 	// cfg 保存卡密动作的规格过滤配置。
 	var cfg struct {
@@ -684,6 +684,9 @@ func actionMatchesOrderSpec(task Task, action db.AutomationAction) bool {
 		return false
 	}
 	if strings.TrimSpace(cfg.SpecName) == "" && strings.TrimSpace(cfg.SpecValue) == "" {
+		if task.AllowAllItems {
+			return true
+		}
 		return strings.TrimSpace(task.SpecName) == "" && strings.TrimSpace(task.SpecValue) == ""
 	}
 	return orderspec.Equal(task.SpecName, task.SpecValue, cfg.SpecName, cfg.SpecValue)

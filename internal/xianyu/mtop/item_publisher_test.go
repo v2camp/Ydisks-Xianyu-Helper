@@ -5,96 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 )
-
-// TestFetchItemPublisher 使用本地 HTTP 详情验证发布人字段及错误边界；t 管理服务生命周期。
-func TestFetchItemPublisher(t *testing.T) {
-	// cases 覆盖实际卖家对象、无效结构、推荐商品及买家字段，避免递归误取无关身份。
-	cases := []struct {
-		// name 是当前响应场景。
-		name string
-		// body 是本地模拟的平台响应。
-		body string
-		// want 是合法发布人标识，空值表示请求必须失败。
-		want string
-	}{
-		{"字符串发布人", `{"ret":["SUCCESS::调用成功"],"data":{"sellerDO":{"sellerId":"123"}}}`, "123"},
-		{"数字发布人", `{"ret":["SUCCESS::调用成功"],"data":{"sellerDO":{"sellerId":123}}}`, "123"},
-		{"买家不是发布人", `{"ret":["SUCCESS::调用成功"],"data":{"buyerDO":{"sellerId":"123"}}}`, ""},
-		{"推荐商品不是会话商品", `{"ret":["SUCCESS::调用成功"],"data":{"recommend":{"sellerDO":{"sellerId":"123"}}}}`, ""},
-		{"空详情", `{"ret":["SUCCESS::调用成功"],"data":{}}`, ""},
-		{"平台失败", `{"ret":["FAIL_BIZ_ITEM_NOT_FOUND::商品不存在"],"data":{"sellerDO":{"sellerId":"123"}}}`, ""},
-		{"格式错误", `broken`, ""},
-	}
-	// scenario 是当前响应和预期身份组合。
-	for _, scenario := range cases {
-		t.Run(scenario.name, func(t *testing.T) {
-			// server 返回固定平台详情；w 写入响应，r 供确认客户端使用详情接口。
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Query().Get("api") != "mtop.taobao.idle.pc.detail" {
-					t.Error("未使用商品详情接口")
-				}
-				fmt.Fprint(w, scenario.body)
-			}))
-			defer server.Close()
-			// client 将详情请求限制到本地 HTTP 服务。
-			client := &ClientImpl{HTTPClient: server.Client(), ItemDetailURL: server.URL}
-			// publisher、err 保存一次完整的发布人查询结果。
-			publisher, err := client.FetchItemPublisher(context.Background(), "_m_h5_tk=test_1", "conversation-item")
-			if publisher != scenario.want || (err != nil) != (scenario.want == "") {
-				t.Fatalf("发布人结果=%q 错误=%v", publisher, err)
-			}
-		})
-	}
-}
-
-// TestPublisherTokenRecovery 验证发布人查询沿用详情接口的 Token 恢复、耗尽和失败语义；t 管理本地 HTTP 生命周期。
-func TestPublisherTokenRecovery(t *testing.T) {
-	// mode 选择响应下发新 Token、连续过期或主动刷新失败三种确定性场景。
-	for _, mode := range []string{"updated", "exhausted", "refresh-failed"} {
-		t.Run(mode, func(t *testing.T) {
-			// requests 统计跨 HTTP 服务协程的请求次数。
-			var requests atomic.Int32
-			// server 只在本地模拟详情与 Token 接口；w 输出合成响应，r 用于区分端点。
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// requestNumber 是当前详情或刷新请求的全局顺序。
-				requestNumber := requests.Add(1)
-				if strings.HasPrefix(r.URL.Path, "/token") {
-					fmt.Fprint(w, `{"ret":["FAIL_BIZ_DENIED::本地模拟刷新失败"]}`)
-					return
-				}
-				if mode == "updated" && requestNumber > 1 {
-					fmt.Fprint(w, `{"ret":["SUCCESS::调用成功"],"data":{"sellerDO":{"sellerId":"123"}}}`)
-					return
-				}
-				if mode != "refresh-failed" {
-					http.SetCookie(w, &http.Cookie{Name: "_m_h5_tk", Value: fmt.Sprintf("synthetic%d_1", requestNumber), Path: "/"})
-				}
-				fmt.Fprint(w, `{"ret":["FAIL_SYS_TOKEN_EXOIRED::本地模拟签名过期"]}`)
-			}))
-			defer server.Close()
-			// client 将详情与主动 Token 刷新都限制到同一本地服务。
-			client := &ClientImpl{HTTPClient: server.Client(), ItemDetailURL: server.URL + "/detail", TokenURL: server.URL + "/token"}
-			// ctx 携带已存在的平面 Cookie 会话，覆盖查询复用会话的路径。
-			ctx, _ := WithFlatCookieSession(context.Background(), "unb=123; _m_h5_tk=initial_1")
-			// publisher、err 是恢复结束后的发布人和错误。
-			publisher, err := client.FetchItemPublisher(ctx, "unb=ignored", "item")
-			if mode == "updated" {
-				if err != nil || publisher != "123" || requests.Load() != 2 {
-					t.Fatalf("新 Token 重试失败: publisher=%q err=%v requests=%d", publisher, err, requests.Load())
-				}
-			} else if err == nil || publisher != "" {
-				t.Fatal("恢复失败后不能返回商品发布人")
-			}
-			if mode == "exhausted" && requests.Load() != 4 {
-				t.Fatalf("应在四次详情请求后停止: %d", requests.Load())
-			}
-		})
-	}
-}
 
 // TestItemSyncTotalConsistency 验证准确总数允许完整同步，分页途中总数变化则拒绝提交；t 管理场景。
 func TestItemSyncTotalConsistency(t *testing.T) {

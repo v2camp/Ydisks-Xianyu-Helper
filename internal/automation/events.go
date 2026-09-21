@@ -72,6 +72,8 @@ type Task struct {
 	UpdateKey string
 	// ForceConfirmShipment 仅供明确的人工“完整发货”使用；自动事件仍遵循账号自动确认开关。
 	ForceConfirmShipment bool
+	// AllowAllItems 表示当前冻结规则是否明确授权账号级付款发货动作忽略订单规格；该事实随运行快照保存，避免恢复时重新猜测规则范围。
+	AllowAllItems bool
 	// ActionPlan 是运行创建时冻结的动作计划。延迟恢复和失败重试必须使用该快照，
 	// 不能把数字游标应用到管理员后来修改过的规则上。
 	ActionPlan []db.AutomationAction
