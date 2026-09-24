@@ -421,12 +421,23 @@ git tag -a "<版本>-local-<日期>" -m "<中文说明：解决了什么问题>"
 - compose.override.yml 把 app 指向本地镜像并禁用拉取。
 - .docker/playwright-runtime 为空时会联网下载 Chromium，很慢。
 - 替换本地镜像前先给旧镜像打 rollback 备份 tag。
+- 备份 tag 必须在构建前打，构建会覆盖 local 指向。
+- 本地构建必须传 APP_VERSION，否则 version 显示 dev。
+- 构建后重启 app，核对容器镜像 ID 与 /health 状态。
+- 重启 compose 必须同时带主文件与 override 文件。
 - Web UI 动线冒烟随 functional 门禁运行，复用生产镜像自带的 Chromium。
 
 ```bash
-docker build -f Dockerfile.debian13 -t ydisks-xianyu-helper:local .
+# 1. 先备份当前 local 指向的旧镜像
 docker tag ydisks-xianyu-helper:local ydisks-xianyu-helper:rollback-<日期>
-docker compose up -d app      # 用本地镜像重启 app
+# 2. 再构建新镜像，必须显式传版本号
+docker build -f Dockerfile.debian13 --build-arg APP_VERSION=<版本>-local-<日期> \
+  -t ydisks-xianyu-helper:local .
+# 3. 用本地镜像重启 app（主文件与 override 都要带）
+docker compose -f compose.yml -f compose.override.yml up -d app
+# 4. 核对状态与版本号
+docker ps --filter name=ydisks-xianyu-helper-app-1 --format '{{.Image}} {{.Status}}'
+curl -s http://127.0.0.1:59188/health
 ```
 
 ### 4.2 桌面打包
