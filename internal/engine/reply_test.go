@@ -45,7 +45,7 @@ func TestKeywordReply_MatchAndVariableSubst(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO keywords (cookie_id,keyword,reply,type) VALUES ('cid','在吗','你好{send_user_name}，在的','text')`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("老板在吗", "item1", "chat1"))
 	if res == nil || res.Source != "关键词" {
@@ -68,7 +68,7 @@ func TestKeywordReply_ItemIDPriority(t *testing.T) {
 		('cid','价格','该商品专属价格回复','item1','text')`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("价格多少", "item1", "chat1"))
 	if res == nil || res.Text != "该商品专属价格回复" {
@@ -90,7 +90,7 @@ func TestKeywordReply_EmptyReplySkip(t *testing.T) {
 	ctx := context.Background()
 	s.DB.ExecContext(ctx, `INSERT INTO keywords (cookie_id,keyword,reply,type) VALUES ('cid','静默','','text')`)
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("静默一下", "item1", "chat1"))
 	if res == nil || !res.Skip {
@@ -109,7 +109,7 @@ func TestDefaultReply_ItemReplyFirst(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO item_replay (item_id,cookie_id,reply_content) VALUES ('item1','cid','该商品专属默认回复')`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("任意消息", "item1", "chat1"))
 	if res == nil || res.Text != "该商品专属默认回复" {
@@ -129,7 +129,7 @@ func TestDefaultReply_ReplyOnce(t *testing.T) {
 	// sender 用于本次流程后续判断的sender
 	sender := &recordingSender{}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, sender, nil, nil, nil)
+	r := NewReplyService("cid", s, sender, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := r.Handle(ctx, chatMsg("在吗", "item1", "chatX")); err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestPriority_Order(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO default_replies (cookie_id,enabled,reply_content,reply_once) VALUES ('cid',1,'默认回复',0)`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// 命中关键词 → 关键词回复。
 	res := r.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res == nil || res.Source != "关键词" {

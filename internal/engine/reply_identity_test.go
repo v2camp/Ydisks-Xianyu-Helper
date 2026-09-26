@@ -84,7 +84,7 @@ func TestBuyerMessagesRemainVisibleWithoutAutoReply(t *testing.T) {
 			// api 提供可计数的 API 回复，禁止买家侧执行外部回复查询。
 			api := &fakeAPIReplier{result: &ReplyResult{Text: "API 回复"}}
 			// reply 是待测回复链，默认场景不装配 API 优先层。
-			reply := NewReplyService("cid", store, sender, nil, nil, nil)
+			reply := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 			if apiReply {
 				reply.api = api
 			}
