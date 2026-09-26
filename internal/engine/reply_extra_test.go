@@ -89,7 +89,7 @@ func TestReplyOnceMarksDefiniteFailureWithIndependentContext(t *testing.T) {
 	// sender 模拟确定未发送错误，并在返回前取消原始请求上下文。
 	sender := &recordingSender{textErr: automation.ErrMessageNotSent, beforeTextError: cancel}
 	// service 使用真实状态仓储验证失败状态可恢复。
-	service := NewReplyService("cid", store, sender, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 	// sendErr 保存确定未发送错误的回复结果。
 	if sendErr := service.Handle(requestCtx, chatMsg("你好", "", "chat-definite-failure")); !errors.Is(sendErr, automation.ErrMessageNotSent) {
 		t.Fatalf("确定未发送错误未透传: %v", sendErr)
@@ -141,7 +141,7 @@ func TestAIQuoteSavedOnlyAfterTextDelivery(t *testing.T) {
 	// failedSender 模拟文本没有成功交给买家。
 	failedSender := &recordingSender{textErr: errors.New("send failed")}
 	// failedService 是注入发送失败替身的 AI 回复链。
-	failedService := NewReplyService("cid", store, failedSender, nil, &fakeAIReplier{result: result}, nil)
+	failedService := NewReplyService("cid", store, failedSender, nil, &fakeAIReplier{result: result}, nil, nil)
 	// err 是模拟发送失败时必须向调用方返回的错误。
 	if err := failedService.Handle(ctx, chatMsg("能便宜吗", "item-1", "chat-1")); err == nil {
 		t.Fatal("发送失败应返回错误")
@@ -152,7 +152,7 @@ func TestAIQuoteSavedOnlyAfterTextDelivery(t *testing.T) {
 		t.Fatalf("发送失败不应保存报价: quote=%+v err=%v", failedQuote, err)
 	}
 	// successService 是文本发送成功的 AI 回复链。
-	successService := NewReplyService("cid", store, &recordingSender{}, nil, &fakeAIReplier{result: result}, nil)
+	successService := NewReplyService("cid", store, &recordingSender{}, nil, &fakeAIReplier{result: result}, nil, nil)
 	if err = successService.Handle(ctx, chatMsg("能便宜吗", "item-1", "chat-1")); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestReplyOnceRetriesOnlyFailedParts(t *testing.T) {
 	// firstSender 用于本次流程后续判断的firstSender
 	firstSender := &recordingSender{textErr: textFailure}
 	// service 用于本次流程后续判断的service
-	service := NewReplyService("cid", s, firstSender, nil, nil, nil)
+	service := NewReplyService("cid", s, firstSender, nil, nil, nil, nil)
 	service.imageDimensions = fixedReplyImageDimensions
 	if // err 用于本次流程后续判断的err
 	err := service.Handle(ctx, chatMsg("在吗", "", "chat-retry")); !errors.Is(err, textFailure) {
@@ -196,7 +196,7 @@ func TestReplyOnceRetriesOnlyFailedParts(t *testing.T) {
 
 	// secondSender 用于本次流程后续判断的secondSender
 	secondSender := &recordingSender{}
-	service = NewReplyService("cid", s, secondSender, nil, nil, nil)
+	service = NewReplyService("cid", s, secondSender, nil, nil, nil, nil)
 	service.imageDimensions = fixedReplyImageDimensions
 	if // err 用于本次流程后续判断的err
 	err := service.Handle(ctx, chatMsg("再问", "", "chat-retry")); err != nil {
@@ -226,7 +226,7 @@ func TestReplyOnceQuarantinesUncertainSend(t *testing.T) {
 	// sender 模拟平台连接在发送后断开，无法判断消息是否已经送达。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证不确定结果隔离。
-	service := NewReplyService("cid", store, sender, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain"))
 	if firstErr == nil {
@@ -262,7 +262,7 @@ func TestReplyOnceQuarantinesWhenUncertainStateIsRejected(t *testing.T) {
 	// sender 让平台返回可能已送达的未知结果。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证降级隔离。
-	service := NewReplyService("cid", store, sender, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	if firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain-fallback")); firstErr == nil {
 		t.Fatal("不确定发送结果必须返回调用错误")
@@ -301,7 +301,7 @@ func TestReplyOnceDoesNotReclaimWhenUncertainPersistenceFails(t *testing.T) {
 	// sender 模拟平台可能已经送达但连接返回未知结果。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证 sending 状态的持久化保护。
-	service := NewReplyService("cid", store, sender, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	if firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain-db-down")); firstErr == nil {
 		t.Fatal("不确定发送结果必须返回调用错误")
@@ -338,7 +338,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 返回结果 → 用 API。
 	api := &fakeAPIReplier{result: &ReplyResult{Text: "API回复"}}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, api, nil, nil)
+	r := NewReplyService("cid", s, nil, api, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res == nil || res.Source != "API" || res.Text != "API回复" {
@@ -348,7 +348,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 报错 → 降级到关键词。
 	api2 := &fakeAPIReplier{err: errors.New("upstream down")}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, nil, api2, nil, nil)
+	r2 := NewReplyService("cid", s, nil, api2, nil, nil, nil)
 	// res2 用于本次流程后续判断的res2
 	res2 := r2.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res2 == nil || res2.Source != "关键词" || res2.Text != "关键词回复" {
@@ -358,7 +358,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 返回 nil（无回复）→ 降级到关键词。
 	api3 := &fakeAPIReplier{result: nil}
 	// r3 用于本次流程后续判断的r3
-	r3 := NewReplyService("cid", s, nil, api3, nil, nil)
+	r3 := NewReplyService("cid", s, nil, api3, nil, nil, nil)
 	// res3 用于本次流程后续判断的res3
 	res3 := r3.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res3 == nil || res3.Source != "关键词" {
@@ -378,7 +378,7 @@ func TestReply_AIPriorityOverDefault(t *testing.T) {
 	// ai 用于本次流程后续判断的人工智能
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI回复"}}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, ai, nil)
+	r := NewReplyService("cid", s, nil, nil, ai, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("复杂问题", "", "chat1"))
 	if res == nil || res.Source != "AI" || res.Text != "AI回复" {
@@ -388,7 +388,7 @@ func TestReply_AIPriorityOverDefault(t *testing.T) {
 	// AI 报错 → 降级到默认。
 	ai2 := &fakeAIReplier{err: errors.New("model timeout")}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, nil, nil, ai2, nil)
+	r2 := NewReplyService("cid", s, nil, nil, ai2, nil, nil)
 	// res2 用于本次流程后续判断的res2
 	res2 := r2.resolve(ctx, chatMsg("复杂问题", "", "chat1"))
 	if res2 == nil || res2.Source != "默认" || res2.Text != "默认回复" {
@@ -406,7 +406,7 @@ func TestReply_ImageKeyword(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO keywords (cookie_id,keyword,reply,image_url,type) VALUES ('cid','看图','','http://img/x.png','image')`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("发看图", "item1", "chat1"))
 	if res == nil || res.Source != "关键词" || res.ImageURL != "http://img/x.png" {
@@ -426,7 +426,7 @@ func TestReply_HandleSendsImageThenText(t *testing.T) {
 	// sender 用于本次流程后续判断的sender
 	sender := &recordingSender{}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, sender, nil, nil, nil)
+	r := NewReplyService("cid", s, sender, nil, nil, nil, nil)
 	r.imageDimensions = fixedReplyImageDimensions
 	if // err 用于本次流程后续判断的err
 	err := r.Handle(ctx, chatMsg("在吗", "", "chat9")); err != nil {
@@ -444,7 +444,7 @@ func TestReply_HandleSendsImageThenText(t *testing.T) {
 	// sender2 用于本次流程后续判断的sender2
 	sender2 := &recordingSender{}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, sender2, nil, nil, nil)
+	r2 := NewReplyService("cid", s, sender2, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := r2.Handle(ctx, chatMsg("在吗", "", "chat9")); err != nil {
 		t.Fatalf("Handle skip: %v", err)
@@ -469,7 +469,7 @@ func TestReply_HandleUsesProtocolDefaultWhenImageDimensionsCannotBeRead(t *testi
 	// sender 记录解析失败后的实际图片发送尺寸。
 	sender := &recordingSender{}
 	// reply 使用元数据失败替身确认兼容路径仍发送图片。
-	reply := NewReplyService("cid", store, sender, nil, nil, nil)
+	reply := NewReplyService("cid", store, sender, nil, nil, nil, nil)
 	reply.imageDimensions = failedReplyImageDimensions
 	// sendErr 保存元数据读取失败后继续投递图片的结果。
 	if sendErr := reply.Handle(ctx, chatMsg("给我照片", "", "chat-image-dimensions-fallback")); sendErr != nil {

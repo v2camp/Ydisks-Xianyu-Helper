@@ -117,7 +117,7 @@ func TestScanReplySafety_DisabledByEnv(t *testing.T) {
 
 // newSafetyTestService 构造一个只用于安全闸门校验的回复服务，不依赖数据库与平台连接。
 func newSafetyTestService() *ReplyService {
-	return NewReplyService("cid-safety", nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewReplyService("cid-safety", nil, nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // TestApplyReplySafety_ClearsPriceQuote 验证文本被替换时，AI 的自动报价承诺会一并作废。

@@ -383,7 +383,7 @@ func New(cfg Config) *Account {
 	// echoTracker 保存当前账号自动化出站消息的回显等待项；其生命周期与账号 facade 一致。
 	echoTracker := newOutgoingEchoTracker()
 	if cfg.Store != nil {
-		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger), logger, cfg.ReplyReviewNotifier)
+		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger), NewFindStuffReplierFromEnv(cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
 	}
 	// publisher 是平台客户端提供的商品发布人查询能力；缺失时回复门禁保持关闭。
 	publisher, _ := mtopClient.(replyItemPublisher)

@@ -1,4 +1,4 @@
-# 默认生产部署：仅拉取 GHCR 多架构镜像，不在服务器上构建源码。
+# 默认生产部署：Ydisks 仅拉取 GHCR 多架构镜像；插件服务 find-stuff 在同栈内本地构建。
 x-app-env: &app-env
   DATABASE_URL: ${DATABASE_URL:?请在 .env 中配置 DATABASE_URL}
   XIANYU_DATA_KEY: ${XIANYU_DATA_KEY:?请在 .env 中配置 XIANYU_DATA_KEY}
@@ -9,6 +9,8 @@ x-app-env: &app-env
   LOG_FORMAT: ${LOG_FORMAT:-json}
   BROWSER_HEADLESS: ${BROWSER_HEADLESS:-true}
   XIANYU_CONTINUE_AFTER_UNCERTAIN: ${XIANYU_CONTINUE_AFTER_UNCERTAIN:-1}
+  # find-stuff 插件层 MCP 端点：默认走 compose 内网服务名；显式置空（单横线语法）则关闭插件层回复。
+  FIND_STUFF_MCP_URL: ${FIND_STUFF_MCP_URL-http://find-stuff:59190/mcp}
 
 x-app-volumes: &app-volumes
   - app_data:/app/data
@@ -52,6 +54,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # find-stuff 插件服务（找书/找短剧）：复用本栈 postgres，经内网服务名供 app 调用 MCP。
+  # 首次部署需在 postgres 里建一次独立库（已有数据卷不会自动创建）：
+  #   docker compose exec postgres psql -U "$POSTGRES_USER" -c 'CREATE DATABASE find_stuff'
+  find-stuff:
+    build:
+      # 构建上下文默认指向与 Ydisks 同级检出的 find_stuff 仓库，可用环境变量覆盖。
+      context: ${FIND_STUFF_BUILD_CONTEXT:-../find_stuff}
+      dockerfile: Dockerfile
+    image: find-stuff:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 独立库 find_stuff；账号密码沿用本栈 postgres 配置。
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/find_stuff
+      WEB_ADDR: ":59189"
+      MCP_ADDR: ":59190"
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      # 管理台默认只绑本机回环；需要远程访问时用 FIND_STUFF_BIND_ADDRESS 显式放开。
+      - "${FIND_STUFF_BIND_ADDRESS:-127.0.0.1}:59189:59189"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:59189/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      # 与 app 同栈默认网络：MCP 端口不对外映射，只靠服务名 find-stuff:59190 访问。
+      - default
 
 volumes:
   postgres_data:

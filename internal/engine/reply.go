@@ -1,8 +1,8 @@
-// reply.go 四级回复引擎：API → 关键词 → AI → 默认回复。
-// 实现关键词回复、默认回复和 AI 回复的调度。
+// reply.go 五级回复引擎：API → 关键词 → 插件（find_stuff）→ AI → 默认回复。
+// 实现关键词回复、插件层回复、默认回复和 AI 回复的调度。
 //
 // Phase 3 实现：关键词（含商品ID优先+变量替换+空回复标记）、默认回复（指定商品优先+reply_once+变量替换）。
-// API 回复（调外部 /xianyu/reply 接口）和 AI 回复（OpenAI 兼容）留接口注入。
+// API 回复（调外部 /xianyu/reply 接口）、插件层回复（find_stuff MCP）和 AI 回复（OpenAI 兼容）留接口注入。
 
 package engine
 
@@ -22,7 +22,7 @@ import (
 type ReplyResult struct {
 	Text      string // 文本回复（可空）
 	ImageURL  string // 图片回复（可空）
-	Source    string // 回复来源：API/关键词/AI/默认
+	Source    string // 回复来源：API/关键词/PLUGIN/AI/默认
 	Skip      bool   // true 表示匹配到空回复，不发送任何内容
 	ReplyOnce bool   // 仅默认回复使用，发送状态由 Handle 持久化
 	// AutoPriceQuote 是 AI 已明确承诺且通过价格边界校验的可执行报价。
@@ -51,6 +51,13 @@ type AIReplier interface {
 	Reply(ctx context.Context, m ChatMessage) (*ReplyResult, error)
 }
 
+// PluginReplier 插件层回复（优先级2.5，关键词之后、AI 之前）。
+// 只负责生成回复文本（如 find_stuff 的找书/找短剧结果），发送与幂等仍由 Handle 负责。
+// 返回 nil 表示本层不接管，链路继续交给后续优先级；返回错误只记录日志，不中断链路。
+type PluginReplier interface {
+	Reply(ctx context.Context, m ChatMessage) (*ReplyResult, error)
+}
+
 // MessageSender 是回复服务发送文本/图片所需的最小接口。
 type MessageSender interface {
 	SendText(ctx context.Context, chatID, toUserID, text string) error
@@ -63,17 +70,20 @@ type ReplyService struct {
 	store    *db.Store
 	api      APIReplier // 可为 nil
 	ai       AIReplier  // 可为 nil
-	sender   MessageSender
-	logger   *slog.Logger
+	// plugin 是插件层回复器（find_stuff 找书/找短剧），可为 nil；nil 时跳过插件层。
+	plugin PluginReplier
+	sender MessageSender
+	logger *slog.Logger
 	// reviewNotifier 是 AI 回复人工确认通知器，可选；nil 时只拦截发送、不发确认通知。
 	reviewNotifier ReplyReviewNotifier
 	// imageDimensions 在回复发送前读取图片像素尺寸；读取失败时由协议层沿用默认尺寸。
 	imageDimensions replyImageDimensionResolver
 }
 
-// NewReplyService 构造；末尾变参可选注入 AI 回复人工确认通知器，保持旧调用方兼容。
+// NewReplyService 构造；plugin 可为 nil（跳过插件层）；
+// 末尾变参可选注入 AI 回复人工确认通知器，保持旧调用方兼容。
 func NewReplyService(cookieID string, store *db.Store, sender MessageSender,
-	api APIReplier, ai AIReplier, logger *slog.Logger, reviewNotifiers ...ReplyReviewNotifier) *ReplyService {
+	api APIReplier, ai AIReplier, plugin PluginReplier, logger *slog.Logger, reviewNotifiers ...ReplyReviewNotifier) *ReplyService {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -87,6 +97,7 @@ func NewReplyService(cookieID string, store *db.Store, sender MessageSender,
 		store:           store,
 		api:             api,
 		ai:              ai,
+		plugin:          plugin,
 		sender:          sender,
 		logger:          logger.With("account", cookieID, "subsys", "reply"),
 		reviewNotifier:  reviewNotifier,
@@ -94,7 +105,7 @@ func NewReplyService(cookieID string, store *db.Store, sender MessageSender,
 	}
 }
 
-// Handle 收到一条聊天消息，按四级优先级回复。
+// Handle 收到一条聊天消息，按五级优先级回复。
 // 由 Account 在防抖后调用。返回是否产生了回复。
 // Handle 处理当前值。
 func (r *ReplyService) Handle(ctx context.Context, m ChatMessage) error {
@@ -251,6 +262,17 @@ func (r *ReplyService) resolve(ctx context.Context, m ChatMessage) *ReplyResult 
 	// 优先级2：关键词匹配。
 	if res := r.keywordReply(ctx, m); res != nil {
 		return res
+	}
+
+	// 优先级2.5：插件层（find_stuff 找书/找短剧）。降级（nil）或失败时只记录日志，继续后续优先级。
+	if r.plugin != nil {
+		if // res、err 用于本次流程后续判断的res、err
+		res, err := r.plugin.Reply(ctx, m); err != nil {
+			r.logger.Error("插件层回复失败", "err", err)
+		} else if res != nil {
+			res.Source = "PLUGIN"
+			return res
+		}
 	}
 
 	// 优先级3：AI 回复。
