@@ -334,7 +334,7 @@ func (s *ChannelService) TestChannel(ctx context.Context, userID, channelID int6
 		now = time.Now()
 	}
 	// body 是固定测试通知正文，不包含渠道敏感配置。
-	body := fmt.Sprintf("🧪 通知渠道测试\n\n这是一条来自Ydisks闲鱼助手的测试通知，收到说明渠道配置正常。\n时间: %s", now.Format("2006-01-02 15:04:05"))
+	body := fmt.Sprintf("🧪 通知渠道测试\n\n这是一条来自闲鱼助手的测试通知，收到说明渠道配置正常。\n时间: %s", now.Format("2006-01-02 15:04:05"))
 	return s.sender.SendToChannel(channelID, body)
 }
 

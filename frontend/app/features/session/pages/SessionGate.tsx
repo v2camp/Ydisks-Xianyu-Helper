@@ -75,7 +75,7 @@ export const SessionGate: React.FC = () => {
   // heading 是当前认证流程的页面标题，保证初始化和登录表单使用一致视觉壳。
   const heading = needsInit ? '首次设置管理员密码' : '欢迎回来';
   // description 是当前认证流程的辅助说明，不泄露任何会话或账户敏感数据。
-  const description = needsInit ? '设置完成后会自动进入系统，管理员账号为 admin。' : 'Ydisks闲鱼助手 · 自动发货与管家系统';
+  const description = needsInit ? '设置完成后会自动进入系统，管理员账号为 admin。' : '闲鱼助手 · 自动发货与管家系统';
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans">

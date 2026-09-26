@@ -46,7 +46,7 @@ let latestSocket: {
 describe('chat title notification', /* 当前测试组验证后台实时消息的浏览器标题提示行为。 */ () => {
   beforeEach(/* 当前回调重置标题和时间，隔离浏览器全局状态。 */ () => {
     originalTitle = document.title;
-    document.title = 'Ydisks闲鱼助手';
+    document.title = '闲鱼助手';
     vi.useFakeTimers();
     latestSocket = null;
     showBrowserNotificationMock.mockReset();
@@ -113,13 +113,13 @@ describe('chat title notification', /* 当前测试组验证后台实时消息�
       // secondMessageAction 模拟同一提醒周期收到第二条消息。
       () => hook.result.current.notifyIncomingMessage(incomingMessageFixture),
     );
-    expect(document.title).toBe('【新消息】Ydisks闲鱼助手');
+    expect(document.title).toBe('【新消息】闲鱼助手');
     expect(hook.result.current.hasUnreadChatMessage).toBe(true);
     act(
       // flashAction 推进一个闪烁周期以展示原始标题相位。
       () => vi.advanceTimersByTime(1_000),
     );
-    expect(document.title).toBe('Ydisks闲鱼助手');
+    expect(document.title).toBe('闲鱼助手');
     expect(hook.result.current.hasUnreadChatMessage).toBe(true);
     act(
       // unreadClearedAction 模拟聊天页确认所有会话均无未读消息。
@@ -130,7 +130,7 @@ describe('chat title notification', /* 当前测试组验证后台实时消息�
       // focusAction 模拟用户重新聚焦浏览器窗口，确认已看到提醒。
       () => window.dispatchEvent(new Event('focus')),
     );
-    expect(document.title).toBe('Ydisks闲鱼助手');
+    expect(document.title).toBe('闲鱼助手');
     hook.unmount();
   });
 
@@ -148,7 +148,7 @@ describe('chat title notification', /* 当前测试组验证后台实时消息�
       // systemMessageAction 模拟后台收到不应通知用户的系统消息。
       () => hook.result.current.notifyIncomingMessage({ ...incomingMessageFixture, message_type: 'system' }),
     );
-    expect(document.title).toBe('Ydisks闲鱼助手');
+    expect(document.title).toBe('闲鱼助手');
     hook.unmount();
   });
 
@@ -174,7 +174,7 @@ describe('chat title notification', /* 当前测试组验证后台实时消息�
       // incomingMessageAction 模拟用户停留在仪表盘等其他页面时服务端推送买家消息。
       () => latestSocket?.onmessage?.({ data: JSON.stringify({ message: incomingMessageFixture }) }),
     );
-    expect(document.title).toBe('【新消息】Ydisks闲鱼助手');
+    expect(document.title).toBe('【新消息】闲鱼助手');
     expect(hook.result.current.hasUnreadChatMessage).toBe(true);
     hook.unmount();
     expect(latestSocket?.close).toHaveBeenCalledTimes(1);
