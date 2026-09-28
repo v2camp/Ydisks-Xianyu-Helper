@@ -19,6 +19,8 @@ const accountFixture = {
   auto_rate_enabled: false,
   auto_polish_enabled: false,
   auto_confirm: false,
+  auto_consign: true,
+  auto_bargain: false,
   paused: false,
 } as AccountDetail;
 
@@ -53,6 +55,15 @@ describe('账号 feature 展示组件', /* 当前回调覆盖账号页面子模�
     expect(onAI).toHaveBeenCalledWith(accountFixture);
     expect(onToggle).toHaveBeenCalledWith(accountFixture.id, accountFixture.enabled);
     expect(onDelete).toHaveBeenCalledWith(accountFixture);
+  });
+
+  test('账号卡片常显自动确认发货与自动免拼状态', /* 当前回调验证发货相关开关在卡片上的外显边界。 */ () => {
+    render(<AccountCard account={accountFixture} refreshing={false} deleting={false} onRefreshProfile={noopAccountAction} onReauthorize={noopAccountAction} onEdit={noopAccountAction} onAI={noopAccountAction} onTasks={noopAccountAction} onToggle={noopAccountAction} onDelete={noopAccountAction} />);
+    // 自动确认发货在 fixture 中开启，自动免拼关闭；两者都必须常显以便一眼识别半截发货配置。
+    expect(screen.getByText('自动确认发货')).toBeTruthy();
+    expect(screen.getByText('自动免拼')).toBeTruthy();
+    expect(screen.getByTitle('发完卡密后会自动点发货')).toBeTruthy();
+    expect(screen.getByTitle('待刀成阶段不会自动免拼')).toBeTruthy();
   });
 
   test('AI 设置弹窗使用补丁更新并转发保存', /* 当前回调验证 AI 设置字段更新和保存动作。 */ () => {

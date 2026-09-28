@@ -1,4 +1,4 @@
-import { AlertCircle,Bot,CalendarClock,Check,Clock,Edit2,Loader2,MessageCircle,Power,QrCode,RefreshCw,Sparkles,Trash2,User } from 'lucide-react';
+import { AlertCircle,Bot,CalendarClock,Check,Clock,ClipboardCheck,Edit2,Loader2,MessageCircle,Power,QrCode,RefreshCw,Sparkles,Trash2,User,Zap } from 'lucide-react';
 import React from 'react';
 import type { AccountDetail } from '../api';
 import { accountRuntimePresentation } from '../runtime';
@@ -84,6 +84,20 @@ export const AccountCard = React.memo(/* AccountCard 负责渲染单个账号卡
               </span>
             )}
             {account.auto_confirm && <span className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700"><Check className="h-3 w-3" /> 自动发货</span>}
+            {/* 自动确认发货常显：开启与「自动发货」同色系，关闭用灰色弱化，避免半截发货不可见。 */}
+            <span
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_consign ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}
+              title={account.auto_consign ? '发完卡密后会自动点发货' : '发完卡密后不会自动点发货，需手动发货'}
+            >
+              <ClipboardCheck className="h-3 w-3" /> 自动确认发货
+            </span>
+            {/* 自动免拼常显：开启用玫瑰色区分砍价链路，关闭同样灰色弱化。 */}
+            <span
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_bargain ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-500'}`}
+              title={account.auto_bargain ? '待刀成阶段会自动调用免拼' : '待刀成阶段不会自动免拼'}
+            >
+              <Zap className="h-3 w-3" /> 自动免拼
+            </span>
             {account.profile_error && (
               <span className="px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-700 text-xs font-bold flex items-center gap-1" title={account.profile_error}>
                 <AlertCircle className="w-3 h-3" /> 资料未同步
