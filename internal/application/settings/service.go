@@ -4,11 +4,13 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrInvalidUser 表示调用方没有提供有效的本地用户标识。
@@ -476,6 +478,7 @@ func (s *Service) validateValues(values map[string]string) error {
 }
 
 // validateSystemValue 校验具有运行时语义的普通系统设置，避免非法值落库或切换策略。
+// 校验范围包括布尔开关、非负整数和 MCP 服务列表形状，其余普通键原样放行。
 func validateSystemValue(key, value string) error {
 	// trimmed 是去除首尾空白后的待校验值，便于统一判断布尔与数字边界。
 	trimmed := strings.TrimSpace(value)
@@ -495,6 +498,65 @@ func validateSystemValue(key, value string) error {
 		case "1", "true", "yes", "on", "enabled", "0", "false", "no", "off", "disabled", "":
 		default:
 			return errors.New("ai_reply_review_mode 必须是布尔开关值")
+		}
+	case "mcp.servers":
+		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
+		if trimmed == "" {
+			return nil
+		}
+		// 顶层数组以外的形状都不是合法的 MCP 服务列表。
+		if !strings.HasPrefix(trimmed, "[") {
+			return fmt.Errorf("%s 必须是 JSON 数组", key)
+		}
+		// entries 是解析出的 JSON 数组元素列表。
+		var entries []any
+		// err 是 JSON 数组解析失败原因；非法 JSON 整体拒绝落库。
+		if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+			return fmt.Errorf("%s 必须是合法 JSON 数组", key)
+		}
+		// i 是当前条目在数组中的下标，entry 是该条目的原始 JSON 值。
+		for i, entry := range entries {
+			// obj 表示当前条目解析出的 JSON 对象字段表。
+			obj, ok := entry.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s 第 %d 个元素必须是 JSON 对象", key, i+1)
+			}
+			// nameField 是当前条目的服务名称字段原始值。
+			nameField, ok := obj["name"]
+			if !ok {
+				return fmt.Errorf("%s 第 %d 个元素缺少 name 字段", key, i+1)
+			}
+			// name、ok 尝试把名称字段断言为 JSON 字符串。
+			name, ok := nameField.(string)
+			if !ok {
+				return fmt.Errorf("%s 第 %d 个元素的 name 必须是字符串", key, i+1)
+			}
+			// name 去首尾空白后必须非空且不超过 64 个字符，供引擎按名称匹配插件。
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return fmt.Errorf("%s 第 %d 个元素的 name 不能为空", key, i+1)
+			}
+			if utf8.RuneCountInString(name) > 64 {
+				return fmt.Errorf("%s 第 %d 个元素的 name 不能超过 64 字符", key, i+1)
+			}
+			// urlField 是当前条目的服务地址字段原始值。
+			urlField, ok := obj["url"]
+			if !ok {
+				return fmt.Errorf("%s 第 %d 个元素缺少 url 字段", key, i+1)
+			}
+			// url、ok 尝试把地址字段断言为 JSON 字符串。
+			url, ok := urlField.(string)
+			if !ok {
+				return fmt.Errorf("%s 第 %d 个元素的 url 必须是字符串", key, i+1)
+			}
+			// url 去首尾空白后必须非空且不超过 512 个字符，仅约束长度不强制协议。
+			url = strings.TrimSpace(url)
+			if url == "" {
+				return fmt.Errorf("%s 第 %d 个元素的 url 不能为空", key, i+1)
+			}
+			if utf8.RuneCountInString(url) > 512 {
+				return fmt.Errorf("%s 第 %d 个元素的 url 不能超过 512 字符", key, i+1)
+			}
 		}
 	}
 	return nil
