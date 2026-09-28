@@ -221,6 +221,7 @@ func aiContentMockServer(t *testing.T, content string) (*httptest.Server, *aiCon
 		// 解析请求体并记录 system 消息供断言；解析失败不影响固定回复。
 		if decErr := json.NewDecoder(r.Body).Decode(&body); decErr == nil {
 			rec.mu.Lock()
+			// msg 是本轮遍历到的对话消息，只关心 system 角色用于断言提示词注入。
 			for _, msg := range body.Messages {
 				if msg.Role == "system" {
 					rec.systemPrompt = msg.Content
@@ -279,9 +280,11 @@ func contentStore(t *testing.T, g aiContentEvalGroup, apiURL string) *db.Store {
 		}
 	}
 	// 写入模型调用配置：测试密钥与 mock 服务地址。
+	// err 是写入测试 API Key 时的数据库错误。
 	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入 AI API Key 失败: %v", err)
 	}
+	// err 是写入测试 API 地址时的数据库错误。
 	if err := s.Settings.Set(ctx, "ai_api_url", apiURL); err != nil {
 		t.Fatalf("写入 AI API 地址失败: %v", err)
 	}
