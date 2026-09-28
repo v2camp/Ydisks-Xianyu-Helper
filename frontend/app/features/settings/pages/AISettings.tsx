@@ -4,7 +4,6 @@ import {
   Eye,EyeOff,
   RefreshCw,
   Save,
-  Server,
   Sparkles,
   Zap
 } from 'lucide-react';
@@ -12,6 +11,7 @@ import React from 'react';
 import { DEFAULT_AI_API_URL } from '../constants';
 import { useSettings } from '../hooks';
 import { AIConfigEditor } from '../components/AIConfigEditor';
+import { MCPServerList } from '../components/MCPServerList';
 
 // AISettings 展示 AI 智能回复、AI 客服接管、人工确认开关与 MCP 服务器配置；保存只提交 AI 白名单字段。
 const AISettings: React.FC = () => {
@@ -227,27 +227,8 @@ const AISettings: React.FC = () => {
           </div>
         </section>
 
-        {/* MCP 服务器列表占位：后续波次替换为真组件；当前用 JSON 字符串最小编辑 mcp.servers。 */}
-        <section className="space-y-4">
-          <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-500 text-white">
-              <Server className="w-4 h-4" />
-            </div>
-            MCP 服务器列表
-          </h3>
-          <div className="ios-card rounded-xl p-6 bg-white space-y-3">
-            <p className="text-xs text-gray-500">
-              JSON 数组字符串，元素含 name 与 url 字段；引擎目前消费其中 name 为 find_stuff 的条目，未配置时回落环境变量 FIND_STUFF_MCP_URL。
-            </p>
-            <textarea
-              value={typeof settings['mcp.servers'] === 'string' ? settings['mcp.servers'] : ''}
-              onChange={/* 输入变化更新 MCP 服务器列表的 JSON 字符串草稿。 */ event => setSettings({ ...settings, 'mcp.servers': event.target.value })}
-              placeholder='[{"name": "find_stuff", "url": "http://find-stuff:59190/mcp"}]'
-              spellCheck={false}
-              className="w-full ios-input px-4 py-3 rounded-xl h-32 font-mono text-xs leading-5 resize-y"
-            />
-          </div>
-        </section>
+        {/* MCP 服务器列表：名称 + 服务地址行编辑，序列化到 mcp.servers JSON 字符串。 */}
+        <MCPServerList settings={settings} onChange={/* patch 是 MCP 列表写回的字段，合并进当前草稿。 */ patch => setSettings({ ...settings, ...patch })} />
       </div>
 
       {/* Save Button */}
