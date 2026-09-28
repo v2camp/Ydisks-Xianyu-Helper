@@ -45,7 +45,7 @@ func TestReplyReview_InterceptsAIReply(t *testing.T) {
 	// ai 返回固定的 AI 回复草稿。
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI 草稿内容", Source: "AI"}}
 	// r 是被测回复服务。
-	r := NewReplyService("cid", s, sender, nil, ai, nil, notifier)
+	r := NewReplyService("cid", s, sender, nil, ai, nil, nil, notifier)
 	// err 是回复处理失败原因。
 	if err := r.Handle(ctx, chatMsg("能便宜点吗", "item1", "chat1")); err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestReplyReview_DisabledSendsNormally(t *testing.T) {
 	// ai 返回固定的 AI 回复草稿。
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI 草稿内容", Source: "AI"}}
 	// r 是被测回复服务，未写入设置即默认关闭。
-	r := NewReplyService("cid", s, sender, nil, ai, nil, notifier)
+	r := NewReplyService("cid", s, sender, nil, ai, nil, nil, notifier)
 	// err 是回复处理失败原因。
 	if err := r.Handle(ctx, chatMsg("在吗", "item1", "chat1")); err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestReplyReview_KeywordSourceUnaffected(t *testing.T) {
 	// sender 记录回复投递。
 	sender := &recordingSender{}
 	// r 是被测回复服务，AI 与 API 回复均未注入。
-	r := NewReplyService("cid", s, sender, nil, nil, nil, notifier)
+	r := NewReplyService("cid", s, sender, nil, nil, nil, nil, notifier)
 	// err 是回复处理失败原因。
 	if err := r.Handle(ctx, chatMsg("老板在吗", "item1", "chat1")); err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestReplyReview_SettingReadFailureTreatedAsOff(t *testing.T) {
 	// ai 返回固定的 AI 回复草稿。
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI 草稿内容", Source: "AI"}}
 	// r 是被测回复服务。
-	r := NewReplyService("cid", s, sender, nil, ai, nil, notifier)
+	r := NewReplyService("cid", s, sender, nil, ai, nil, nil, notifier)
 	// err 是回复处理失败原因。
 	if err := r.Handle(ctx, chatMsg("在吗", "item1", "chat1")); err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestReplyReview_UnknownSettingValueTreatedAsOff(t *testing.T) {
 	// ai 返回固定的 AI 回复草稿。
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI 草稿内容", Source: "AI"}}
 	// r 是被测回复服务。
-	r := NewReplyService("cid", s, sender, nil, ai, nil, notifier)
+	r := NewReplyService("cid", s, sender, nil, ai, nil, nil, notifier)
 	// err 是回复处理失败原因。
 	if err := r.Handle(ctx, chatMsg("在吗", "item1", "chat1")); err != nil {
 		t.Fatal(err)
