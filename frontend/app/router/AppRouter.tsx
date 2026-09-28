@@ -24,9 +24,10 @@ export const AppRouter: React.FC = () => {
     return /* historyCleanup 在路由组件卸载时释放全局历史监听。 */ () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  /** effect 在权限变化时将设置页改写为仪表盘，防止地址栏绕过客户端展示限制。 */
+  /** effect 在权限变化时将设置类页面改写为仪表盘，防止地址栏或历史回退绕过客户端展示限制。 */
   useEffect(/* authorizationEffect 负责将失效的管理员页面安全回退。 */ () => {
-    if (isLoggedIn && !isAdmin && activeRoute === 'settings') {
+    // activeRoute 是浏览器历史事件同步进来的当前路由，settings 与 ai-settings 同为管理员专用。
+    if (isLoggedIn && !isAdmin && (activeRoute === 'settings' || activeRoute === 'ai-settings')) {
       window.history.replaceState({}, '', pathByRoute.dashboard);
       setActiveRoute('dashboard');
     }
@@ -34,8 +35,8 @@ export const AppRouter: React.FC = () => {
 
   /** navigate 由侧边栏用户操作触发，写入规范 URL 并更新当前路由。 */
   const navigate = (route: AppRoute): void => {
-    // permittedRoute 是应用当前权限允许的最终路由。
-    const permittedRoute = route === 'settings' && !isAdmin ? 'dashboard' : route;
+    // permittedRoute 是应用当前权限允许的最终路由；非管理员访问设置类页面一律回退仪表盘。
+    const permittedRoute = (route === 'settings' || route === 'ai-settings') && !isAdmin ? 'dashboard' : route;
     // nextPath 是最终路由对应的规范浏览器地址。
     const nextPath = pathByRoute[permittedRoute];
     if (nextPath !== window.location.pathname) window.history.pushState({}, '', nextPath);

@@ -47,6 +47,8 @@ export interface SystemSettings {
   global_send_daily_limit?: number;
   /** 业务静默告警阈值（分钟），0 表示关闭看门狗，未配置回落默认 180。 */
   silence_alert_minutes?: number;
+  /** MCP 服务器列表 JSON 字符串，元素为含 name 与 url 的对象；引擎消费其中 find_stuff 条目。 */
+  'mcp.servers'?: string;
   /** 兼容未来配置键的扩展字段。 */
   /** 未知设置键只能承载服务端声明的标量值，敏感值不进入该 UI 模型。 */
   [key: string]: string | number | boolean | undefined;

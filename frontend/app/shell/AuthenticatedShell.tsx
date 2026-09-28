@@ -53,6 +53,8 @@ const PublishSpecsEditor = lazy(/* 规格编辑器随商品页面路由加载。
 const PublishImagesEditor = lazy(/* 图片编辑器随商品页面路由加载。 */ () => import('../features/items/components/PublishImagesEditor').then(/* module 提供图片编辑器的具名导出。 */ module => ({ default: module.PublishImagesEditor })));
 // Settings 是按需加载的系统设置页面，仅在管理员访问时加载。
 const Settings = lazy(/* Settings 页面按路由激活时加载。 */ () => import('../features/settings/pages/Settings'));
+// AISettings 是按需加载的 AI 设置页面，仅在管理员访问时加载。
+const AISettings = lazy(/* AISettings 页面按路由激活时加载。 */ () => import('../features/settings/pages/AISettings'));
 // Rules 是按需加载的自动化规则页面，避免首屏载入规则编辑器代码。
 const Rules = lazy(/* Rules 页面按路由激活时加载。 */ () => import('../features/rules/pages/Rules'));
 // DeliveryTemplates 是按需加载的发货模板管理页面。
@@ -116,6 +118,7 @@ export const AppContent: React.FC<AppContentProps> = ({
       case 'delivery-templates': return <DeliveryTemplates />;
       case 'notifications': return <Notifications isAdmin={isAdmin} />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
+      case 'ai-settings': return isAdmin ? <AISettings /> : <Dashboard />;
       default: return <Dashboard />;
     }
   };
