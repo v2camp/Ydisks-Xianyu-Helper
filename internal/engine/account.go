@@ -383,7 +383,13 @@ func New(cfg Config) *Account {
 	// echoTracker 保存当前账号自动化出站消息的回显等待项；其生命周期与账号 facade 一致。
 	echoTracker := newOutgoingEchoTracker()
 	if cfg.Store != nil {
-		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger), NewFindStuffReplierFromEnv(cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
+		// settings 是系统设置读取接口，供插件层动态解析 MCP 地址；
+		// 具体指针为 nil 时保持接口为 nil，解析器只走环境变量回落，避免解引用空指针。
+		var settings settingsReader
+		if cfg.Store.Settings != nil {
+			settings = cfg.Store.Settings
+		}
+		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
 	}
 	// publisher 是平台客户端提供的商品发布人查询能力；缺失时回复门禁保持关闭。
 	publisher, _ := mtopClient.(replyItemPublisher)

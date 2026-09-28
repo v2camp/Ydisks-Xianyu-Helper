@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -318,10 +319,19 @@ func TestFindStuffReplier_EmptyURLDisables(t *testing.T) {
 	replier := NewFindStuffReplier("  ", "cid", nil); replier != nil {
 		t.Fatalf("空地址应返回 nil 关闭插件层，got %+v", replier)
 	}
+	if // replier2 是非空地址配空日志器的构造结果，应回落默认日志器仍可启用。
+	replier2 := NewFindStuffReplier("http://find-stuff:59190/mcp", "cid", nil); replier2 == nil {
+		t.Fatal("非空地址应构造插件层回复器，日志器缺失时回落默认实现")
+	}
 }
 
 // TestResolveFindStuffMCPURL 验证 MCP 地址解析：未设置用默认内网地址，显式置空关闭，显式配置优先。
 func TestResolveFindStuffMCPURL(t *testing.T) {
+	// defaultedNilLookup 是 lookup 为 nil 时的解析结果，按环境变量未设置处理。
+	defaultedNilLookup := resolveFindStuffMCPURL(nil)
+	if defaultedNilLookup != "http://find-stuff:59190/mcp" {
+		t.Errorf("lookup 缺省应回落默认地址，got %q", defaultedNilLookup)
+	}
 	// defaulted 是环境变量未设置时的解析结果。
 	defaulted := resolveFindStuffMCPURL(func(string) (string, bool) { return "", false })
 	if defaulted != "http://find-stuff:59190/mcp" {
@@ -422,9 +432,21 @@ func TestPluginReply_ConcurrentFirstUseSharesSession(t *testing.T) {
 		Type: "book", Status: "hit",
 		Hits: []stuffHit{{EntityID: 7, Title: "解忧杂货店", Author: "东野圭吾", PanURL: "https://pan.quark.cn/s/jieyou"}},
 	})
+	// gate 用于把并发建连卡在工厂内部，确保确定性制造两个会话并走到胜者/败者分支。
+	gate := make(chan struct{})
+	// releaseOnce 保证 gate 只被关闭一次，后续建连者不再重复关闭。
+	var releaseOnce sync.Once
+	// entered 是进入工厂的累计次数；第一个进入者阻塞到第二个进入者放行。
+	var entered int32
 	// replier 是并发驱动的插件层回复器，工厂每次构造一个新的假会话。
 	replier := NewFindStuffReplier("http://find-stuff:59190/mcp", "cid", pluginTestLogger())
 	replier.newSession = func(string) (mcpSession, error) {
+		if atomic.AddInt32(&entered, 1) == 1 {
+			// 首个建连者在此等待后来者，保证至少两个建连同时在途。
+			<-gate
+		} else {
+			releaseOnce.Do(func() { close(gate) })
+		}
 		// session 是本次构造的假会话；登记后返回以便后续断言。
 		session := &fakeMCPSession{result: hitResult}
 		mu.Lock()
@@ -459,5 +481,359 @@ func TestPluginReply_ConcurrentFirstUseSharesSession(t *testing.T) {
 	}
 	if closedCount != len(created)-1 {
 		t.Errorf("应只保留一个会话，其余全部关闭：created=%d closed=%d", len(created), closedCount)
+	}
+}
+
+// fakeSettings 是可控的系统设置假实现：按键返回预设值或错误，并按 key 统计读取次数。
+// 只允许单 goroutine 的测试串行读写，避免与并发用例共享。
+type fakeSettings struct {
+	// values 是按键预设的设置值；测试可在两次调用间改写以模拟卖家保存新配置。
+	values map[string]string
+	// errs 是按键预设的读取错误，模拟存储故障。
+	errs map[string]error
+	// reads 是按键累计的读取次数，用于断言无意图消息不读设置。
+	reads map[string]int
+}
+
+// Get 返回预设值或错误，并累计该键的读取次数。
+func (f *fakeSettings) Get(_ context.Context, key string) (string, error) {
+	// n 是该键含本次在内的累计读取次数。
+	n := f.reads[key] + 1
+	f.reads[key] = n
+	return f.values[key], f.errs[key]
+}
+
+// readCount 返回指定键的读取次数。
+func (f *fakeSettings) readCount(key string) int {
+	return f.reads[key]
+}
+
+// TestFindStuffURLResolver_Priority 验证地址解析优先级：
+// 设置条目优先于环境变量；条目缺失或 URL 空白=关闭插件层；设置缺失、读取失败或 JSON 非法回落环境变量。
+func TestFindStuffURLResolver_Priority(t *testing.T) {
+	// cases 是解析优先级用例矩阵。
+	cases := []struct {
+		// name 是子用例名。
+		name string
+		// settings 是系统设置假实现；nil 表示无设置读取能力。
+		settings settingsReader
+		// envValue、envSet 分别是环境变量模拟值与是否显式设置。
+		envValue string
+		envSet   bool
+		// want 是期望解析出的地址。
+		want string
+	}{
+		{
+			name: "设置优先于环境变量",
+			settings: &fakeSettings{values: map[string]string{
+				findStuffMCPServersSetting: `[{"name":"other","url":"http://other:1/mcp"},{"name":"find_stuff","url":" http://settings:59190/mcp "},{"name":"find_stuff","url":"http://second:2/mcp"}]`,
+			}, errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "http://settings:59190/mcp",
+		},
+		{
+			name: "设置无find_stuff条目关闭插件层",
+			settings: &fakeSettings{values: map[string]string{
+				findStuffMCPServersSetting: `[{"name":"other","url":"http://other:1/mcp"}]`,
+			}, errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "",
+		},
+		{
+			name: "设置URL空白关闭插件层",
+			settings: &fakeSettings{values: map[string]string{
+				findStuffMCPServersSetting: `[{"name":"find_stuff","url":"   "}]`,
+			}, errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "",
+		},
+		{
+			name: "非法JSON回落环境变量",
+			settings: &fakeSettings{values: map[string]string{
+				findStuffMCPServersSetting: `{"not":"an-array"}`,
+			}, errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "http://env:1/mcp",
+		},
+		{
+			name: "键不存在回落环境变量",
+			settings: &fakeSettings{values: map[string]string{},
+				errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "http://env:1/mcp",
+		},
+		{
+			name: "键为空白回落环境变量",
+			settings: &fakeSettings{values: map[string]string{
+				findStuffMCPServersSetting: "  ",
+			}, errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "http://env:1/mcp",
+		},
+		{
+			name: "读取失败回落环境变量",
+			settings: &fakeSettings{values: map[string]string{},
+				errs: map[string]error{findStuffMCPServersSetting: errors.New("设置读取失败")}, reads: map[string]int{}},
+			envValue: "http://env:1/mcp", envSet: true, want: "http://env:1/mcp",
+		},
+		{
+			name:     "无设置读取器走环境变量",
+			settings: nil,
+			envValue: "http://env:1/mcp", envSet: true, want: "http://env:1/mcp",
+		},
+		{
+			name: "环境变量未设置用默认地址",
+			settings: &fakeSettings{values: map[string]string{},
+				errs: map[string]error{}, reads: map[string]int{}},
+			envSet: false, want: "http://find-stuff:59190/mcp",
+		},
+		{
+			name: "环境变量显式置空关闭插件层",
+			settings: &fakeSettings{values: map[string]string{},
+				errs: map[string]error{}, reads: map[string]int{}},
+			envValue: "", envSet: true, want: "",
+		},
+	}
+	// tc 是当前遍历到的子用例。
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// lookup 是环境变量模拟查询：返回预设值与是否显式设置。
+			lookup := func(string) (string, bool) { return tc.envValue, tc.envSet }
+			// resolver 是被测地址解析器。
+			resolver := newFindStuffURLResolver(tc.settings, lookup, pluginTestLogger())
+			if // got 是本次解析结果。
+			got := resolver(context.Background()); got != tc.want {
+				t.Errorf("解析结果: got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPluginReply_SettingsDisableSkipsConnect 验证设置解析为空（关闭插件层）时不建连、不接管、不报错。
+func TestPluginReply_SettingsDisableSkipsConnect(t *testing.T) {
+	// settings 只含无关条目，解析应判定为显式关闭插件层。
+	settings := &fakeSettings{values: map[string]string{
+		findStuffMCPServersSetting: `[{"name":"other","url":"http://other:1/mcp"}]`,
+	}, errs: map[string]error{}, reads: map[string]int{}}
+	// connects 是会话工厂被调用次数。
+	connects := 0
+	// replier 是按设置动态解析地址的插件层回复器。
+	replier := NewFindStuffReplierFromSettings(settings, "cid", pluginTestLogger())
+	replier.newSession = func(string) (mcpSession, error) {
+		connects++
+		// session 是不应被用到的假会话。
+		session := &fakeMCPSession{result: searchToolResult(t, stuffSearchOutput{Type: "book", Status: "miss"})}
+		return session, nil
+	}
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if err != nil || res != nil {
+		t.Fatalf("插件层关闭应不接管且不报错: res=%+v err=%v", res, err)
+	}
+	if connects != 0 {
+		t.Errorf("插件层关闭不应建连，got %d", connects)
+	}
+	if settings.readCount(findStuffMCPServersSetting) != 1 {
+		t.Errorf("意图命中应恰好解析一次设置，got %d", settings.readCount(findStuffMCPServersSetting))
+	}
+}
+
+// TestPluginReply_URLChangeReconnects 验证设置里的地址变更后关闭旧会话并按新 URL 重连（下一条消息生效）。
+func TestPluginReply_URLChangeReconnects(t *testing.T) {
+	// hitResult 是两条消息共用的单条命中结果。
+	hitResult := searchToolResult(t, stuffSearchOutput{
+		Type: "book", Status: "hit",
+		Hits: []stuffHit{{EntityID: 1, Title: "三体", PanURL: "https://pan.quark.cn/s/santi"}},
+	})
+	// settings 的地址会在两条消息之间被改写，模拟卖家保存了新的 MCP 配置。
+	settings := &fakeSettings{values: map[string]string{
+		findStuffMCPServersSetting: `[{"name":"find_stuff","url":"http://old:59190/mcp"}]`,
+	}, errs: map[string]error{}, reads: map[string]int{}}
+	// used 记录工厂收到的建连地址。
+	used := make([]string, 0, 2)
+	// created 记录工厂构造的假会话，便于断言旧会话被关闭。
+	created := make([]*fakeMCPSession, 0, 2)
+	// replier 是按设置动态解析地址的插件层回复器。
+	replier := NewFindStuffReplierFromSettings(settings, "cid", pluginTestLogger())
+	replier.newSession = func(mcpURL string) (mcpSession, error) {
+		used = append(used, mcpURL)
+		// session 是本次构造的假会话。
+		session := &fakeMCPSession{result: hitResult}
+		created = append(created, session)
+		return session, nil
+	}
+	// res、err 分别是首条消息（旧地址）的插件层结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if err != nil || res == nil {
+		t.Fatalf("首条消息应命中: res=%+v err=%v", res, err)
+	}
+	// 卖家保存了新地址后，下一条消息才按新地址重连。
+	settings.values[findStuffMCPServersSetting] = `[{"name":"find_stuff","url":"http://new:59190/mcp"}]`
+	// res2、err2 分别是第二条消息（新地址）的插件层结果与失败原因。
+	res2, err2 := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat2"))
+	if err2 != nil || res2 == nil {
+		t.Fatalf("地址变更后第二条消息应命中: res=%+v err=%v", res2, err2)
+	}
+	if len(used) != 2 || used[0] != "http://old:59190/mcp" || used[1] != "http://new:59190/mcp" {
+		t.Fatalf("应按新旧地址各建连一次，got %v", used)
+	}
+	if len(created) != 2 || !created[0].closed {
+		t.Fatalf("URL 变更应关闭旧会话再按新地址建连: created=%d closed0=%v", len(created), created[0].closed)
+	}
+}
+
+// TestPluginReply_NoIntentDoesNotReadSettings 验证无意图消息不读设置、不建连，保持零开销。
+func TestPluginReply_NoIntentDoesNotReadSettings(t *testing.T) {
+	// settings 是用于断言读取次数的空设置。
+	settings := &fakeSettings{values: map[string]string{}, errs: map[string]error{}, reads: map[string]int{}}
+	// connects 是会话工厂被调用次数。
+	connects := 0
+	// replier 是按设置动态解析地址的插件层回复器。
+	replier := NewFindStuffReplierFromSettings(settings, "cid", pluginTestLogger())
+	replier.newSession = func(string) (mcpSession, error) {
+		connects++
+		// session 是不应被用到的假会话。
+		session := &fakeMCPSession{}
+		return session, nil
+	}
+	// text 是当前遍历到的非意图买家消息。
+	for _, text := range []string{"能便宜点吗", "在吗", "什么时候发货"} {
+		// res、err 分别是插件层回复结果与失败原因。
+		res, err := replier.Reply(context.Background(), chatMsg(text, "item1", "chat1"))
+		if res != nil || err != nil {
+			t.Fatalf("消息 %q 不应命中插件层: res=%+v err=%v", text, res, err)
+		}
+	}
+	if settings.readCount(findStuffMCPServersSetting) != 0 {
+		t.Errorf("无意图消息不得读设置，got %d", settings.readCount(findStuffMCPServersSetting))
+	}
+	if connects != 0 {
+		t.Errorf("无意图消息不得建连，got %d", connects)
+	}
+}
+
+// TestPluginReply_ConnectFactoryErrorDegrades 验证会话工厂失败时按降级上报错误，不接管回复。
+func TestPluginReply_ConnectFactoryErrorDegrades(t *testing.T) {
+	// replier 是工厂始终失败的插件层回复器。
+	replier := NewFindStuffReplier("http://find-stuff:59190/mcp", "cid", pluginTestLogger())
+	replier.newSession = func(string) (mcpSession, error) {
+		return nil, errors.New("构造失败")
+	}
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if res != nil || err == nil {
+		t.Fatalf("工厂失败应降级: res=%+v err=%v", res, err)
+	}
+	if !strings.Contains(err.Error(), "构造 MCP 会话失败") {
+		t.Errorf("错误应包含构造失败原因，got %v", err)
+	}
+}
+
+// TestPluginReply_StartErrorClosesSession 验证传输层建连失败时半成品会话被关闭并降级。
+func TestPluginReply_StartErrorClosesSession(t *testing.T) {
+	// broken 是 Start 失败的假会话，代表网络拨号失败。
+	broken := &fakeMCPSession{startErr: errors.New("dial refused")}
+	// replier 是注入了失败会话的插件层回复器。
+	replier := newPluginTestReplier(t, broken)
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if res != nil || err == nil {
+		t.Fatalf("建连失败应降级: res=%+v err=%v", res, err)
+	}
+	if !broken.closed {
+		t.Error("建连失败的会话应被关闭，避免连接泄漏")
+	}
+}
+
+// TestPluginReply_ToolCallErrorDegrades 验证工具调用网络失败时降级上报，不使用空结果。
+func TestPluginReply_ToolCallErrorDegrades(t *testing.T) {
+	// session 是 CallTool 返回网络错误的假会话。
+	session := &fakeMCPSession{callErr: errors.New("broken pipe")}
+	// replier 是注入了假会话的插件层回复器。
+	replier := newPluginTestReplier(t, session)
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if res != nil || err == nil {
+		t.Fatalf("工具调用失败应降级: res=%+v err=%v", res, err)
+	}
+	if !strings.Contains(err.Error(), "调用 stuff.search 失败") {
+		t.Errorf("错误应包含调用失败原因，got %v", err)
+	}
+}
+
+// TestPluginReply_EmptyHitsOrTitleReturnsNil 验证命中结果不可用（空命中列表、空标题）时不接管回复。
+func TestPluginReply_EmptyHitsOrTitleReturnsNil(t *testing.T) {
+	// cases 是不可用结果矩阵：命中列表为空、命中标题为空、候选标题全空。
+	cases := []struct {
+		// name 是子用例名。
+		name string
+		// out 是假会话返回的检索出参。
+		out stuffSearchOutput
+	}{
+		{name: "命中列表为空", out: stuffSearchOutput{Type: "book", Status: "hit"}},
+		{name: "命中标题为空", out: stuffSearchOutput{Type: "book", Status: "hit", Hits: []stuffHit{{EntityID: 1}}}},
+		{name: "候选标题全空", out: stuffSearchOutput{Type: "book", Status: "multi", Hits: []stuffHit{{EntityID: 2}}}},
+	}
+	// tc 是当前遍历到的子用例。
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// session 是返回不可用结果的假会话。
+			session := &fakeMCPSession{result: searchToolResult(t, tc.out)}
+			// replier 是注入了假会话的插件层回复器。
+			replier := newPluginTestReplier(t, session)
+			// res、err 分别是插件层回复结果与失败原因。
+			res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+			if err != nil || res != nil {
+				t.Fatalf("不可用结果应不接管: res=%+v err=%v", res, err)
+			}
+		})
+	}
+}
+
+// TestNewFindStuffReplierFromSettings_NilLoggerDefaults 验证省略日志器时回落默认日志器，动态解析与检索照常工作。
+func TestNewFindStuffReplierFromSettings_NilLoggerDefaults(t *testing.T) {
+	// settings 是返回 find_stuff 地址的设置。
+	settings := &fakeSettings{values: map[string]string{
+		findStuffMCPServersSetting: `[{"name":"find_stuff","url":"http://settings:59190/mcp"}]`,
+	}, errs: map[string]error{}, reads: map[string]int{}}
+	// session 是命中时被调用的假会话。
+	session := &fakeMCPSession{result: searchToolResult(t, stuffSearchOutput{
+		Type: "book", Status: "hit",
+		Hits: []stuffHit{{EntityID: 1, Title: "三体"}},
+	})}
+	// replier 是未注入日志器的插件层回复器。
+	replier := NewFindStuffReplierFromSettings(settings, "cid", nil)
+	replier.newSession = func(string) (mcpSession, error) { return session, nil }
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if err != nil || res == nil {
+		t.Fatalf("空日志器不应影响检索: res=%+v err=%v", res, err)
+	}
+}
+
+// TestNewFindStuffReplierFromEnv 验证纯环境变量构造：显式置空关闭插件层，显式配置时按该地址建连。
+func TestNewFindStuffReplierFromEnv(t *testing.T) {
+	// 显式置空表示关闭插件层，构造结果应为 nil。
+	t.Setenv(findStuffMCPURLEnv, "")
+	if // replier 是显式置空环境变量下的构造结果。
+	replier := NewFindStuffReplierFromEnv("cid", pluginTestLogger()); replier != nil {
+		t.Fatalf("显式置空应关闭插件层，got %+v", replier)
+	}
+	// 显式配置的环境变量地址应成为建连端点。
+	t.Setenv(findStuffMCPURLEnv, "http://env-custom:59190/mcp")
+	// used 记录工厂收到的建连地址。
+	used := ""
+	// replier 是显式配置环境变量下的插件层回复器。
+	replier := NewFindStuffReplierFromEnv("cid", pluginTestLogger())
+	if replier == nil {
+		t.Fatal("显式配置应构造插件层回复器")
+	}
+	replier.newSession = func(mcpURL string) (mcpSession, error) {
+		used = mcpURL
+		// session 是未命中的假会话，只为触发建连记录地址。
+		session := &fakeMCPSession{result: searchToolResult(t, stuffSearchOutput{Type: "book", Status: "miss"})}
+		return session, nil
+	}
+	// res、err 分别是插件层回复结果与失败原因。
+	res, err := replier.Reply(context.Background(), chatMsg("有《三体》吗", "item1", "chat1"))
+	if err != nil || res != nil {
+		t.Fatalf("未命中应不接管: res=%+v err=%v", res, err)
+	}
+	if used != "http://env-custom:59190/mcp" {
+		t.Fatalf("应按环境变量地址建连，got %q", used)
 	}
 }

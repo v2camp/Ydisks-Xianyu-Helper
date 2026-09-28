@@ -1,5 +1,6 @@
 // plugin_reply.go 插件层回复（优先级2.5，位于关键词之后、AI 之前）：
 // 识别找书/找短剧意图后调用 find_stuff 的 MCP streamable HTTP 服务检索资源，只生成回复文本。
+// MCP 地址每次建连前动态解析：系统设置 mcp.servers 的 find_stuff 条目优先，缺失时回落环境变量。
 // 插件只查不发：发送、安全闸门与幂等仍由 ReplyService.Handle 统一负责；
 // find_stuff 不可达或超时按降级处理（返回 nil 并向上报错），不阻塞后续 AI/默认回复链路。
 
@@ -23,6 +24,10 @@ import (
 const (
 	// findStuffMCPURLEnv 是 find_stuff MCP 服务地址的环境变量名。
 	findStuffMCPURLEnv = "FIND_STUFF_MCP_URL"
+	// findStuffMCPServersSetting 是 MCP 服务器列表的系统设置键，值为 JSON 数组字符串。
+	findStuffMCPServersSetting = "mcp.servers"
+	// findStuffMCPServerName 是引擎消费的 MCP 服务器条目名，设置里 name 必须恰为该值。
+	findStuffMCPServerName = "find_stuff"
 	// defaultFindStuffMCPURL 是 compose 内网 find-stuff 服务的 MCP streamable HTTP 端点默认地址。
 	defaultFindStuffMCPURL = "http://find-stuff:59190/mcp"
 	// pluginSearchTimeout 是插件层单次检索（含首次懒连接握手）的时间预算，超时即降级。
@@ -53,6 +58,71 @@ func resolveFindStuffMCPURL(lookup func(string) (string, bool)) string {
 	return strings.TrimSpace(raw)
 }
 
+// mcpServerEntry 是系统设置 mcp.servers JSON 数组里的单个服务器条目；未知字段被忽略。
+type mcpServerEntry struct {
+	// Name 是服务器条目名，引擎只消费恰为 find_stuff 的条目。
+	Name string `json:"name"`
+	// URL 是该服务器的 MCP streamable HTTP 端点。
+	URL string `json:"url"`
+}
+
+// settingsReader 是解析 MCP 地址所需的最小系统设置读取能力；
+// *db.SystemSettings 可直接满足；键不存在时约定返回空串且无错误。
+type settingsReader interface {
+	// Get 返回指定系统设置键的原始字符串值；读取失败时返回错误。
+	Get(ctx context.Context, key string) (string, error)
+}
+
+// findStuffURLFromSettings 从系统设置 mcp.servers 解析 find_stuff 的 MCP 地址。
+// decided 为真表示设置已生效：url 为解析结果（空串表示显式关闭插件层）；
+// decided 为假表示设置缺失、读取失败或 JSON 非法，调用方应回落环境变量语义。
+// 函数只读非敏感设置，不接触 Cookie、Token 等凭证。
+func findStuffURLFromSettings(ctx context.Context, settings settingsReader, logger *slog.Logger) (url string, decided bool) {
+	if settings == nil {
+		return "", false
+	}
+	// raw 是 mcp.servers 的原始 JSON 文本；读取失败按键不存在处理，回落环境变量。
+	raw, err := settings.Get(ctx, findStuffMCPServersSetting)
+	if err != nil {
+		return "", false
+	}
+	// trimmed 是去掉首尾空白后的设置值；空串按键不存在处理，回落环境变量。
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	// entries 是解析出的服务器条目列表。
+	var entries []mcpServerEntry
+	if // unmarshalErr 是 JSON 解析失败原因；历史脏数据记 Warn 后回落环境变量。
+	unmarshalErr := json.Unmarshal([]byte(trimmed), &entries); unmarshalErr != nil {
+		logger.Warn("mcp.servers 设置 JSON 非法，回落环境变量解析 find_stuff 地址", "err", unmarshalErr)
+		return "", false
+	}
+	// entry 是当前遍历到的服务器条目；只认 name 恰为 find_stuff 的第一条。
+	for _, entry := range entries {
+		if entry.Name != findStuffMCPServerName {
+			continue
+		}
+		return strings.TrimSpace(entry.URL), true
+	}
+	// 有效列表里没有 find_stuff 条目表示显式关闭插件层。
+	return "", true
+}
+
+// newFindStuffURLResolver 构造插件层 MCP 地址解析器，供每次建连前调用：
+// 优先读系统设置 mcp.servers 的 find_stuff 条目，设置缺失或非法时回落环境变量 FIND_STUFF_MCP_URL；
+// 返回空串表示插件层当前关闭。lookup 为 nil 时按环境变量未设置处理；logger 必须非空。
+func newFindStuffURLResolver(settings settingsReader, lookup func(string) (string, bool), logger *slog.Logger) func(ctx context.Context) string {
+	return func(ctx context.Context) string {
+		// url、decided 分别是设置解析结果与设置是否已生效。
+		url, decided := findStuffURLFromSettings(ctx, settings, logger)
+		if decided {
+			return url
+		}
+		return resolveFindStuffMCPURL(lookup)
+	}
+}
+
 // mcpSession 是插件层所需的最小 MCP 会话能力；
 // github.com/mark3labs/mcp-go/client 的 *client.Client 满足该接口，单测注入假实现即可隔离网络。
 type mcpSession interface {
@@ -72,47 +142,68 @@ func newStreamableMCPSession(mcpURL string) (mcpSession, error) {
 }
 
 // FindStuffReplier 是插件层回复实现：连接 find_stuff MCP 服务，按找书/找短剧意图检索资源。
-// 并发约定：mu 只保护 session 指针的读写，连接握手与工具调用等网络等待一律在锁外执行；
-// 会话按需懒连接，建连失败不缓存，下一条消息自动重试。
+// 并发约定：mu 只保护 session 与 sessionURL 的读写，地址解析、连接握手与工具调用等网络等待一律在锁外执行；
+// 会话按需懒连接，建连失败不缓存，下一条消息自动重试；地址变更后旧会话关闭并按新地址重连。
 type FindStuffReplier struct {
-	// mcpURL 是 find_stuff 的 MCP streamable HTTP 端点。
-	mcpURL string
+	// urlResolver 每次建连前解析 find_stuff 的 MCP 端点；空串表示插件层当前关闭。
+	// 生产实现按「系统设置 mcp.servers → 环境变量」优先级解析，构造时与无意图消息都不触发解析。
+	urlResolver func(ctx context.Context) string
 	// cookieID 是所属账号标识，只用于日志归属，不参与检索。
 	cookieID string
 	// logger 是插件层结构化日志器。
 	logger *slog.Logger
 	// newSession 按端点构造新的 MCP 会话；生产走 streamable HTTP 客户端，测试注入假会话。
 	newSession func(mcpURL string) (mcpSession, error)
-	// mu 保护 session 字段的读写；持锁期间禁止任何网络等待。
+	// mu 保护 session 与 sessionURL 字段的读写；持锁期间禁止任何网络等待。
 	mu sync.Mutex
 	// session 是已完成初始化的 MCP 会话；nil 表示尚未建立或上次建连失败。
 	session mcpSession
+	// sessionURL 是 session 建连时使用的端点；解析结果与之不同会关闭旧会话并重连。
+	sessionURL string
 }
 
-// NewFindStuffReplier 构造插件层回复器；mcpURL 为空表示不启用插件层，返回 nil。
+// NewFindStuffReplier 构造固定地址的插件层回复器；mcpURL 去空白后为空表示不启用插件层，返回 nil。
 func NewFindStuffReplier(mcpURL, cookieID string, logger *slog.Logger) *FindStuffReplier {
-	if strings.TrimSpace(mcpURL) == "" {
+	// endpoint 是去掉首尾空白后的固定 MCP 端点。
+	endpoint := strings.TrimSpace(mcpURL)
+	if endpoint == "" {
 		return nil
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &FindStuffReplier{
-		mcpURL:     mcpURL,
-		cookieID:   cookieID,
-		logger:     logger.With("account", cookieID, "subsys", "plugin"),
-		newSession: newStreamableMCPSession,
+		// fixedResolver 是固定端点解析器：每次都返回同一个地址，不读设置。
+		urlResolver: func(context.Context) string { return endpoint },
+		cookieID:    cookieID,
+		logger:      logger.With("account", cookieID, "subsys", "plugin"),
+		newSession:  newStreamableMCPSession,
 	}
 }
 
-// NewFindStuffReplierFromEnv 按进程环境变量构造插件层回复器：
+// NewFindStuffReplierFromSettings 构造按系统设置动态解析地址的插件层回复器：
+// 找书/找短剧意图命中后、建连前解析「mcp.servers → 环境变量」，构造时不读设置、不建连，
+// 保证无意图消息零开销。settings 为 nil 时只走环境变量语义；解析空串表示当前关闭插件层。
+func NewFindStuffReplierFromSettings(settings settingsReader, cookieID string, logger *slog.Logger) *FindStuffReplier {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &FindStuffReplier{
+		urlResolver: newFindStuffURLResolver(settings, os.LookupEnv, logger),
+		cookieID:    cookieID,
+		logger:      logger.With("account", cookieID, "subsys", "plugin"),
+		newSession:  newStreamableMCPSession,
+	}
+}
+
+// NewFindStuffReplierFromEnv 按进程环境变量构造插件层回复器（纯环境变量路径，不做设置解析）：
 // FIND_STUFF_MCP_URL 未设置时用 compose 内网默认地址，显式置空则返回 nil 关闭插件层。
 func NewFindStuffReplierFromEnv(cookieID string, logger *slog.Logger) *FindStuffReplier {
 	return NewFindStuffReplier(resolveFindStuffMCPURL(os.LookupEnv), cookieID, logger)
 }
 
 // Reply 实现 PluginReplier 接口：识别找书/找短剧意图并检索 find_stuff，命中时生成回复文本。
-// 返回 nil 表示本层不接管（意图不匹配、未命中或工具降级），由后续优先级继续处理。
+// 返回 nil 表示本层不接管（意图不匹配、插件层关闭、未命中或工具降级），由后续优先级继续处理。
 // 本方法只生成文本，不发送任何消息。
 func (p *FindStuffReplier) Reply(ctx context.Context, m ChatMessage) (*ReplyResult, error) {
 	// stuffType、query、matched 分别是识别出的检索领域、查询词与是否命中意图。
@@ -127,6 +218,10 @@ func (p *FindStuffReplier) Reply(ctx context.Context, m ChatMessage) (*ReplyResu
 	out, err := p.search(callCtx, stuffType, query)
 	if err != nil {
 		return nil, fmt.Errorf("find_stuff 插件层检索失败: %w", err)
+	}
+	// out 为 nil 表示插件层当前关闭（地址解析为空），本层不接管也不报错。
+	if out == nil {
+		return nil, nil
 	}
 	switch out.Status {
 	case "hit":
@@ -155,11 +250,15 @@ func (p *FindStuffReplier) Reply(ctx context.Context, m ChatMessage) (*ReplyResu
 }
 
 // search 通过 MCP 会话调用 stuff.search 并解析出参；会话懒连接，失败不缓存以便下一条消息重试。
+// 返回 (nil, nil) 表示插件层当前关闭（地址解析为空），不发起任何工具调用。
 func (p *FindStuffReplier) search(ctx context.Context, stuffType, query string) (*stuffSearchOutput, error) {
 	// session、err 分别是可用会话与建连失败原因。
 	session, err := p.ensureSession(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if session == nil {
+		return nil, nil
 	}
 	// request 是 stuff.search 的具名入参：领域类型 + 买家原文，槽位抽取由 find_stuff 负责。
 	request := mcp.CallToolRequest{}
@@ -173,17 +272,33 @@ func (p *FindStuffReplier) search(ctx context.Context, stuffType, query string) 
 	return parseStuffSearchResult(result)
 }
 
-// ensureSession 返回已初始化的 MCP 会话；未连接时在锁外建连，建连失败不缓存。
+// ensureSession 返回已初始化的 MCP 会话；返回 (nil, nil) 表示地址解析为空、插件层当前关闭。
+// 每次调用先解析地址：与建连地址不同则先关闭旧会话再按新地址重连（设置保存后下一条消息生效）；
+// 连接握手在锁外执行，建连失败不缓存。
 func (p *FindStuffReplier) ensureSession(ctx context.Context) (mcpSession, error) {
+	// mcpURL 是本次解析出的 MCP 端点；空串表示插件层关闭，不建连。
+	mcpURL := p.urlResolver(ctx)
+	if strings.TrimSpace(mcpURL) == "" {
+		return nil, nil
+	}
 	p.mu.Lock()
-	// existing 是已建立会话的快照，读完后立即释放锁。
-	existing := p.session
-	p.mu.Unlock()
-	if existing != nil {
+	// existing、sessionURL 分别是已建立会话与其建连地址的快照，读完后立即释放锁。
+	existing, sessionURL := p.session, p.sessionURL
+	if existing != nil && sessionURL == mcpURL {
+		p.mu.Unlock()
 		return existing, nil
 	}
+	if existing != nil {
+		// 地址已变：摘除并关闭旧会话后再按新地址建连；旧会话上的在途调用可能因此失败并降级。
+		p.session = nil
+		p.sessionURL = ""
+		p.mu.Unlock()
+		_ = existing.Close()
+	} else {
+		p.mu.Unlock()
+	}
 	// session、err 分别是本次新建的会话与建连失败原因。
-	session, err := p.connect(ctx)
+	session, err := p.connect(ctx, mcpURL)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +306,7 @@ func (p *FindStuffReplier) ensureSession(ctx context.Context) (mcpSession, error
 	// winner 表示本次建连是否成为最终会话；并发落败的一方立即关闭自己的会话，避免连接泄漏。
 	if p.session == nil {
 		p.session = session
+		p.sessionURL = mcpURL
 		p.mu.Unlock()
 		return session, nil
 	}
@@ -201,10 +317,10 @@ func (p *FindStuffReplier) ensureSession(ctx context.Context) (mcpSession, error
 	return final, nil
 }
 
-// connect 建立并初始化一个新的 MCP 会话；任何一步失败都会关闭半成品会话。
-func (p *FindStuffReplier) connect(ctx context.Context) (mcpSession, error) {
+// connect 按给定端点建立并初始化一个新的 MCP 会话；任何一步失败都会关闭半成品会话。
+func (p *FindStuffReplier) connect(ctx context.Context, mcpURL string) (mcpSession, error) {
 	// session、err 分别是新建会话与构造失败原因。
-	session, err := p.newSession(p.mcpURL)
+	session, err := p.newSession(mcpURL)
 	if err != nil {
 		return nil, fmt.Errorf("构造 MCP 会话失败: %w", err)
 	}
@@ -223,7 +339,7 @@ func (p *FindStuffReplier) connect(ctx context.Context) (mcpSession, error) {
 		return nil, fmt.Errorf("初始化 MCP 会话失败: %w", initErr)
 	}
 	// 会话建立成功只记一次调试日志；重复消息复用同一会话，不会重复输出。
-	p.logger.Debug("find_stuff MCP 会话已建立", "url", p.mcpURL)
+	p.logger.Debug("find_stuff MCP 会话已建立", "url", mcpURL)
 	return session, nil
 }
 
