@@ -4,7 +4,7 @@ import type { SystemSettings } from './api';
 import { fetchAIModels,getSystemSettings,testAIConnection,updateLoginCredentials,updateSystemSettings,verifySession } from './api';
 import { DEFAULT_AI_API_URL } from './constants';
 import { buildPersistableSettings,createCredentials,createCredentialsMessage,isCurrentAIConnectionTest,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage,validateCredentials } from './state';
-import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus } from './types';
+import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
 
 /** Settings feature 的 Hook 返回值。 */
 export type UseSettingsResult = SettingsFeatureState & {
@@ -38,8 +38,8 @@ export type UseSettingsResult = SettingsFeatureState & {
   setCredentialsMessage: React.Dispatch<React.SetStateAction<CredentialsMessage>>;
 };
 
-/** 管理系统设置、AI 模型和登录凭据的请求与表单状态。 */
-export const useSettings = (): UseSettingsResult => {
+/** 管理设置草稿、AI 模型和登录凭据的请求与表单状态；scope 决定保存白名单，并限定模型发现与连接测试仅在 AI 范围发起。 */
+export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   // settings 保存当前系统配置草稿。
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   // loading 表示系统配置是否正在加载。
@@ -140,8 +140,10 @@ export const useSettings = (): UseSettingsResult => {
     modelRequestController.current = null;
   }, []);
 
-  // loadAIModels 加载当前数据（AIModels）。
+  // loadAIModels 加载当前数据（AIModels）；仅 ai 范围发起模型发现请求。
   const loadAIModels = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (source?: SystemSettings | null, openAfterLoad = false) => {
+    // system 范围不涉及模型发现，直接返回避免发出无关请求。
+    if (scope !== 'ai') return;
     // current 是本次模型发现使用的配置快照。
     const current = source || settingsRef.current;
     // baseUrl 是兼容模型发现接口的服务地址。
@@ -167,10 +169,12 @@ export const useSettings = (): UseSettingsResult => {
     } finally {
       if (isCurrentSettingsRequest(modelRequestSequence.current, request.sequence, request.controller.signal)) setModelsLoading(false);
     }
-  }, [beginModelRequest]);
+  }, [beginModelRequest, scope]);
 
-  // testConnection 发送一次最小对话请求验证 AI API 可用性。
+  // testConnection 发送一次最小对话请求验证 AI API 可用性；仅 ai 范围发起连接测试。
   const testConnection = useCallback(/* 当前回调由用户点击触发，使用取消器与配置快照拒绝旧测试结果。 */ async () => {
+    // system 范围不涉及连接测试，直接返回避免发出无关请求。
+    if (scope !== 'ai') return;
     // current 是用户点击按钮时的配置草稿，后续响应必须与其保持一致才可显示。
     const current = settingsRef.current;
     if (!current || connectionTestLoading) return;
@@ -202,7 +206,7 @@ export const useSettings = (): UseSettingsResult => {
     } finally {
       if (testRequestSequence.current === sequence) setConnectionTestLoading(false);
     }
-  }, [connectionTestLoading]);
+  }, [connectionTestLoading, scope]);
 
   // loadSettings 加载当前数据（设置）。
   const loadSettings = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ () => {
@@ -225,7 +229,8 @@ export const useSettings = (): UseSettingsResult => {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return;
       setSettings(data);
       if (session.username) setCredentials(/* 当前回调处理用户交互或异步状态变化。 */ previous => ({ ...previous, new_username: session.username || '' }));
-      void loadAIModels(data, false);
+      // 模型发现仅归属 AI 设置范围，system 范围加载完成后不再触发该请求。
+      if (scope === 'ai') void loadAIModels(data, false);
       setRequestStatus('success');
     }).catch(/* 当前回调处理用户交互或异步状态变化。 */ error => {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return;
@@ -235,7 +240,7 @@ export const useSettings = (): UseSettingsResult => {
     }).finally(/* 当前回调处理用户交互或异步状态变化。 */ () => {
       if (isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) setLoading(false);
     });
-  }, [beginRequest, cancelModelRequest, loadAIModels]);
+  }, [beginRequest, cancelModelRequest, loadAIModels, scope]);
 
   useEffect(/* 当前回调同步 React 副作用和资源生命周期。 */ () => {
     loadSettings();
@@ -278,16 +283,18 @@ export const useSettings = (): UseSettingsResult => {
     setSaving(true);
     setSaveError('');
     try {
-      await updateSystemSettings(buildPersistableSettings(settings), { signal: controller.signal });
+      // payload 只包含当前 scope 白名单内的字段，保证系统页与 AI 页保存互不覆盖。
+      await updateSystemSettings(buildPersistableSettings(settings, scope), { signal: controller.signal });
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return;
-      window.alert('系统配置已保存');
+      // savedAlertText 按保存范围给出对应的中文成功提示。
+      window.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存');
     } catch (/* error 保存系统设置提交请求的失败原因；过期响应不会覆盖当前表单。 */ error) {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return;
       setSaveError(settingsErrorMessage(error, '保存配置失败'));
     } finally {
       if (isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) setSaving(false);
     }
-  }, [beginRequest, cancelModelRequest, saving, settings]);
+  }, [beginRequest, cancelModelRequest, saving, scope, settings]);
 
   // handleCredentialsSave 处理当前用户操作（CredentialsSave）。
   const handleCredentialsSave = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (event: React.FormEvent) => {

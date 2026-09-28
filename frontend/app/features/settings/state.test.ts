@@ -2,18 +2,26 @@ import { expect,test } from 'vitest';
 import type { SystemSettings } from './api';
 import { buildPersistableSettings,createCredentials,createCredentialsMessage,isCurrentSettingsRequest,validateCredentials } from './state';
 
-// settingsFixture 是覆盖敏感字段过滤和系统配置保留字段的最小草稿。
+// settingsFixture 是覆盖敏感字段过滤、系统字段与 AI 字段的最小草稿。
 const settingsFixture: SystemSettings = {
   log_level: 'info',
   smtp_password: 'secret',
   ai_api_key: 'api-key',
+  ai_model: 'model-a',
+  'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]',
   renewal_log_retention_days: 15,
 };
 
-test('Settings 保存草稿只提交允许的系统配置字段',
-  // 配置裁剪测试验证 SMTP 等兼容字段不会被系统设置批量接口覆盖。
+test('system 保存草稿只提交系统白名单字段并剔除 AI 字段',
+  // 配置裁剪测试验证 SMTP 兼容字段与 AI 字段都不会被系统范围批量保存覆盖。
   () => {
-    expect(buildPersistableSettings(settingsFixture)).toEqual({ log_level: 'info', ai_api_key: 'api-key', renewal_log_retention_days: 15 });
+    expect(buildPersistableSettings(settingsFixture, 'system')).toEqual({ log_level: 'info', renewal_log_retention_days: 15 });
+  });
+
+test('ai 保存草稿只提交 AI 白名单字段并剔除系统字段',
+  // 配置裁剪测试验证 AI 范围不会覆盖系统设置页负责的字段。
+  () => {
+    expect(buildPersistableSettings(settingsFixture, 'ai')).toEqual({ ai_api_key: 'api-key', ai_model: 'model-a', 'mcp.servers': settingsFixture['mcp.servers'] });
   });
 
 test('登录凭据校验覆盖用户名、密码和确认密码边界',

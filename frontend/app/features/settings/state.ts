@@ -1,16 +1,18 @@
 import type { SystemSettings } from './api';
-import { SETTINGS_SAVE_OMIT_KEYS } from './constants';
-import type { CredentialsForm,CredentialsMessage } from './types';
+import { AI_SETTING_KEYS, SETTINGS_SAVE_OMIT_KEYS, SYSTEM_SETTING_KEYS } from './constants';
+import type { CredentialsForm,CredentialsMessage,SettingsScope } from './types';
 
-/** 将配置草稿裁剪为可以保存到后端的字段。 */
-export const buildPersistableSettings = (settings: SystemSettings): Partial<SystemSettings> => (
-  Object.fromEntries(
+/** 将配置草稿裁剪为当前 scope 允许保存到后端的字段：先剔除兼容字段与空值，再按保存范围白名单过滤。 */
+export const buildPersistableSettings = (settings: SystemSettings, scope: SettingsScope): Partial<SystemSettings> => {
+  // allowedKeys 是本次保存范围允许写回的字段白名单，防止两页互相覆盖。
+  const allowedKeys = scope === 'system' ? SYSTEM_SETTING_KEYS : AI_SETTING_KEYS;
+  return Object.fromEntries(
     Object.entries(settings).filter(
-      // entry 是配置键值对，过滤掉兼容字段和空值。
-      ([key, value]) => !SETTINGS_SAVE_OMIT_KEYS.has(key) && value !== undefined && value !== null,
+      // entry 是配置键值对：仅保留白名单内、且未列入省略键、且非空的字段。
+      ([key, value]) => allowedKeys.has(key) && !SETTINGS_SAVE_OMIT_KEYS.has(key) && value !== undefined && value !== null,
     ),
-  ) as Partial<SystemSettings>
-);
+  ) as Partial<SystemSettings>;
+};
 
 /** 校验登录凭据表单并返回用户可见错误。 */
 export const validateCredentials = (credentials: CredentialsForm): string => {

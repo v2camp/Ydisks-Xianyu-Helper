@@ -17,6 +17,12 @@ vi.mock('../features/settings/pages/Settings', /* settingsMockFactory 提供设�
   return { default: SettingsMock };
 });
 
+vi.mock('../features/settings/pages/AISettings', /* aiSettingsMockFactory 提供 AI 设置页面的轻量替身。 */ () => {
+  // AISettingsMock 渲染 AI 设置页面标识，验证管理员权限分支。
+  const AISettingsMock: React.FC = () => <div data-testid="ai-settings-page">AI 设置</div>;
+  return { default: AISettingsMock };
+});
+
 vi.mock('../features/items/pages/ItemList', /* itemListMockFactory 提供商品页面的联动替身。 */ () => {
   // MockItemListProps 描述商品页面替身接收的规则配置回调。
   interface MockItemListProps {
@@ -89,6 +95,42 @@ describe('AuthenticatedShell 页面组合行为', /* 当前回调验证权限回
     );
 
     await waitFor(/* settingsAssertion 等待设置页面懒加载完成。 */ () => expect(screen.getByTestId('settings-page')).toBeTruthy());
+  });
+
+  test('非管理员访问 AI 设置页时回退到仪表盘', /* 当前回调验证非管理员的 AI 设置页权限回退。 */ async () => {
+    // appContentModule 表示动态加载的页面组合模块。
+    const appContentModule = await loadAppContent();
+    // AppContentComponent 表示动态模块导出的页面组合组件。
+    const AppContentComponent = appContentModule.AppContent;
+    render(
+      <AppContentComponent
+        activeTab="ai-settings"
+        isAdmin={false}
+        onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
+        onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
+      />,
+    );
+
+    await waitFor(/* dashboardAssertion 等待仪表盘懒加载完成。 */ () => expect(screen.getByTestId('dashboard-page')).toBeTruthy());
+    expect(screen.queryByTestId('ai-settings-page')).toBeNull();
+  });
+
+  test('管理员访问 AI 设置页时加载 AI 设置页面', /* 当前回调验证管理员 AI 设置页面加载。 */ async () => {
+    // appContentModule 表示动态加载的页面组合模块。
+    const appContentModule = await loadAppContent();
+    // AppContentComponent 表示动态模块导出的页面组合组件。
+    const AppContentComponent = appContentModule.AppContent;
+    render(
+      <AppContentComponent
+        activeTab="ai-settings"
+        isAdmin
+        onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
+        onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
+      />,
+    );
+
+    await waitFor(/* aiSettingsAssertion 等待 AI 设置页面懒加载完成。 */ () => expect(screen.getByTestId('ai-settings-page')).toBeTruthy());
+    expect(screen.queryByTestId('settings-page')).toBeNull();
   });
 
   test('商品配置入口把目标传递到规则页面并支持消费确认', /* 当前回调验证商品到规则页面的联动参数和消费确认。 */ async () => {

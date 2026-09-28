@@ -30,3 +30,28 @@ export const SETTINGS_SAVE_OMIT_KEYS = new Set([
   'item_sync_max_pages',
   'default_reply',
 ]);
+
+/** 系统设置页允许保存的字段白名单；命中后仍会经过省略键与空值过滤。 */
+export const SYSTEM_SETTING_KEYS = new Set([
+  'log_level',
+  'log_format',
+  'renewal_log_retention_days',
+  'outbound_http_public_only',
+  'global_send_daily_limit',
+  'silence_alert_minutes',
+  'captcha.remote_service_url',
+  'captcha.remote_secret_key',
+  'captcha.remote_pass_cookies',
+]);
+
+/** AI 设置页允许保存的字段白名单；命中后仍会经过省略键与空值过滤。 */
+export const AI_SETTING_KEYS = new Set([
+  'ai_api_url',
+  'ai_api_key',
+  'ai_model',
+  'ai_reply_review_mode',
+  'ai_scope_config',
+  'ai_knowledge_config',
+  'ai_policy_config',
+  'mcp.servers',
+]);

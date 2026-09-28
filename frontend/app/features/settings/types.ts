@@ -1,5 +1,8 @@
 import type { SystemSettings } from './api';
 
+/** 设置保存范围：system 只写系统字段，ai 只写 AI 字段，两页互不覆盖。 */
+export type SettingsScope = 'system' | 'ai';
+
 /** 登录凭据编辑表单。 */
 export type CredentialsForm = {
   /** 新登录用户名。 */
