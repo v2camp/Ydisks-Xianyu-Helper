@@ -54,7 +54,8 @@ type aiFAQItem struct {
 	Answer string `json:"answer"`
 }
 
-// aiCatalogItem 是语料配置中的一条在售资源。
+// aiCatalogItem 是语料配置中的一条手工在售资源（历史兼容字段）。
+// 前端编辑器将移除；动态列表为空时才回落该字段，解析必须保留以免配置炸。
 type aiCatalogItem struct {
 	// Title 是资源名称。
 	Title string `json:"title"`
@@ -66,7 +67,7 @@ type aiCatalogItem struct {
 type aiKnowledgeConfig struct {
 	// FAQ 是问答知识列表。
 	FAQ []aiFAQItem `json:"faq"`
-	// Catalog 是在售资源清单。
+	// Catalog 是手工在售资源清单（历史兼容，动态列表为空时才回落）。
 	Catalog []aiCatalogItem `json:"catalog"`
 }
 
@@ -100,14 +101,15 @@ type aiScope struct {
 // 金额数字段用双引号包裹按正则匹配，避免与组合词语法符号冲突。
 const builtinBargainExpr = "(便宜|优惠|少点|最低|砍价|降价|打折)|(能不能&(元|块))|(\"\\d+(\\.\\d+)?\\s*(元|块)\"&(卖|行|可以))"
 
-// builtinComplaintExpr 是内置负向词表对应的组合词表达式，与历史正则等价。
-const builtinComplaintExpr = "退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权"
+// builtinComplaintExpr 是内置负向词表对应的组合词表达式：既有投诉纠纷词保持不变，
+// 追加站外引流与平台处罚风险词，命中即禁止 AI 接管。只用竖线分隔字面词，不含正则元字符。
+const builtinComplaintExpr = "退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|微信|加微|加V|维信|薇信|二维码|扫码|线下|站外|起诉|法院|报警|消协|工商|12315|侵权|盗版|违规|扣分|封号|申诉"
 
 // 内置非接管意图词表与历史意图注册表等价：仅参与命中标注（写入历史），不触发接管；
 // 保证未配置时「多意图归并 ambiguous」等历史语义不变。
 const (
-	// builtinOrderExpr 是订单/发货咨询意图。
-	builtinOrderExpr = "发货|还没发|提取码|网盘|下载链接|怎么下载"
+	// builtinOrderExpr 是订单/发货咨询意图，覆盖发货时效与发货方式问法。
+	builtinOrderExpr = "发货|还没发|提取码|网盘|下载链接|怎么下载|怎么发|什么时候发|多久发|发货方式|什么网盘"
 	// builtinInquiryExpr 是询价与物流政策意图。
 	builtinInquiryExpr = "多少钱|什么价格|怎么卖|包邮"
 	// builtinConsultExpr 是商品内容咨询意图。
@@ -250,7 +252,9 @@ func (k *aiKnowledgeConfig) matchedFAQ(text string, limit int) []aiFAQItem {
 }
 
 // buildKnowledgeContext 把命中的 FAQ 与在售清单格式化成注入 system 的知识上下文。
-func (k *aiKnowledgeConfig) buildKnowledgeContext(text string) string {
+// live 为动态查询结果：动态列表非空时优先注入并忽略手工 catalog；动态列表为空时
+// 才回落手工 catalog（兼容历史配置）。库存摘要与发货推断按需追加。
+func (k *aiKnowledgeConfig) buildKnowledgeContext(text string, live liveKnowledge) string {
 	// parts 是知识上下文的段落列表。
 	var parts []string
 	// faqHits 是当前文本命中的 FAQ 条目。
@@ -264,8 +268,11 @@ func (k *aiKnowledgeConfig) buildKnowledgeContext(text string) string {
 		}
 		parts = append(parts, "店铺知识（回答买家问题时必须以此为据）：\n"+strings.Join(lines, "\n"))
 	}
-	if len(k.Catalog) > 0 {
-		// catalogLines 是在售清单的逐行格式。
+	// 动态在售列表优先；为空时回落手工 catalog 兼容历史配置。
+	if len(live.CatalogLines) > 0 {
+		parts = append(parts, liveCatalogInstruction+"：\n"+strings.Join(live.CatalogLines, "\n"))
+	} else if len(k.Catalog) > 0 {
+		// catalogLines 是手工在售清单的逐行格式（历史配置兼容路径）。
 		catalogLines := make([]string, 0, len(k.Catalog))
 		// item 表示当前遍历到的在售资源。
 		for _, item := range k.Catalog {
@@ -277,6 +284,14 @@ func (k *aiKnowledgeConfig) buildKnowledgeContext(text string) string {
 			catalogLines = append(catalogLines, "- "+line)
 		}
 		parts = append(parts, "本店在售资源清单（买家问有没有/能否单买/第几季时依此回答，未在清单内的一律回答“暂时没有”）：\n"+strings.Join(catalogLines, "\n"))
+	}
+	// 库存摘要仅在查询成功且有数据卡组时注入。
+	if len(live.StockLines) > 0 {
+		parts = append(parts, liveStockInstruction+"：\n"+strings.Join(live.StockLines, "\n"))
+	}
+	// 发货推断仅在有线索时注入。
+	if live.DeliveryHint != "" {
+		parts = append(parts, live.DeliveryHint)
 	}
 	return strings.Join(parts, "\n\n")
 }

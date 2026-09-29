@@ -189,13 +189,13 @@ func TestKnowledgeMatchedFAQAndContext(t *testing.T) {
 	if len(hits) != 1 || hits[0].Category != "发货" {
 		t.Fatalf("FAQ 应命中: %+v", hits)
 	}
-	// ctx 应同时包含 FAQ 答案与在售清单。
-	ctx := k.buildKnowledgeContext("是百度网盘发货吗")
+	// ctx 应同时包含 FAQ 答案与在售清单（动态列表为空时回落手工 catalog）。
+	ctx := k.buildKnowledgeContext("是百度网盘发货吗", liveKnowledge{})
 	if !strings.Contains(ctx, "支持百度网盘与夸克发货") || !strings.Contains(ctx, "糯糯下山") || !strings.Contains(ctx, "92集完整版") {
 		t.Fatalf("知识上下文缺失: %s", ctx)
 	}
 	// 未命中 FAQ 的问题不应输出问答段落。
-	if c2 := k.buildKnowledgeContext("什么时候到货"); strings.Contains(c2, "店铺知识") {
+	if c2 := k.buildKnowledgeContext("什么时候到货", liveKnowledge{}); strings.Contains(c2, "店铺知识") {
 		t.Fatalf("无命中时不应输出 FAQ 段落: %s", c2)
 	}
 }
