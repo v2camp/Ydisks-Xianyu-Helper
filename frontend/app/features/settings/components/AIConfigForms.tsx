@@ -23,19 +23,14 @@ export const POLICY_RECOMMENDED = {
   no_discount_reply: '抱歉，当前价格已经是最低价，暂时不能再优惠了。',
 };
 
-// FAQ_RECOMMENDED 是「填入推荐语料」写入的 FAQ 问答起点，按实际店铺改写。
+// FAQ_RECOMMENDED 是「填入推荐语料」写入的 FAQ 问答起点，按实际店铺改写；
+// 发货答复按商品区分方式，不写死全局网盘清单；不承诺经营结果。
 export const FAQ_RECOMMENDED = [
-  { category: '发货', match: '百度|度盘|什么盘|网盘发货', answer: '本店支持百度网盘、夸克、迅雷发货，拍下后自动发链接与提取码。' },
+  { category: '发货', match: '百度|度盘|什么盘|网盘发货|怎么发|什么网盘|夸克|迅雷', answer: '不同商品发货方式不同，请以商品详情页说明为准；拍下付款后按该商品方式发货，可能是网盘链接、资源码，或先发资源码后发链接。' },
   { category: '资源码', match: '资源码|鸿蒙', answer: '资源码是网盘极速转存码，复制到网盘 App 粘贴即可；鸿蒙系统不显示资源码按钮时可改用链接+提取码。' },
-  { category: '退款', match: '退款|退钱|支持退吗', answer: '虚拟电子资源拍下即自动发货，不支持退款；资源失效或缺少内容随时找我们补发。' },
-  { category: '更新', match: '更新|包更新|后续', answer: '本店承诺包更新，新一季出来会持续补档，已购用户会收到更新通知。' },
-  { category: '赠送', match: '好评|赠送|送什么', answer: '收货好评后赠送万部资源包，具体入口拍下后私信发送。' },
-];
-
-// CATALOG_RECOMMENDED 是「填入推荐语料」写入的在售清单起点，可直接改成自家在售。
-export const CATALOG_RECOMMENDED = [
-  { title: '糯糯下山，师兄们都慌了', detail: '1-3季全，网盘发货' },
-  { title: '梦遇崔郎', detail: '92集完整版，含两集未删减' },
+  { category: '退款', match: '退款|退钱|支持退吗', answer: '电子资料拍下自动发货；非质量问题不支持退款，资料失效或与描述不符可联系我们补发或按平台规则处理。' },
+  { category: '更新', match: '更新|包更新|后续', answer: '新一季出来会持续补档，已购用户可收到更新通知；具体更新范围以商品详情页说明为准。' },
+  { category: '赠送', match: '好评|赠送|送什么', answer: '收货好评后可参与赠品活动，具体入口以商品详情页或下单后说明为准。' },
 ];
 
 // IntentTemplate 是常用意图模板芯片的展示与插入数据。
@@ -63,7 +58,7 @@ export const INTENT_TEMPLATES: IntentTemplate[] = [
   {
     id: 'delivery',
     label: '发货',
-    match: '什么盘|网盘发货|资源码|鸿蒙|度盘|夸克|(百度网盘&发)',
+    match: '什么盘|网盘发货|资源码|鸿蒙|度盘|夸克|怎么发|什么时候发|多久发|发货方式|什么网盘|(百度网盘&发)',
   },
   {
     id: 'stock',
@@ -72,8 +67,9 @@ export const INTENT_TEMPLATES: IntentTemplate[] = [
   },
 ];
 
-// NEGATIVE_RECOMMENDED 是负向组合词推荐值，命中一律不交给 AI。
-export const NEGATIVE_RECOMMENDED = '退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|违规|扣分|封号|申诉';
+// NEGATIVE_RECOMMENDED 是负向组合词推荐值，命中一律不交给 AI；
+// 除售后维权词外，还覆盖站外引流与违规处罚类高风险词。
+export const NEGATIVE_RECOMMENDED = '退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|违规|扣分|封号|申诉|微信|加微|加V|维信|薇信|二维码|扫码|线下|站外|起诉|法院|报警|消协|工商|12315|侵权|盗版';
 
 // FAQRow 是语料 FAQ 一行的已知字段与可保留的扩展字段。
 export interface FAQRow {
@@ -83,16 +79,6 @@ export interface FAQRow {
   match: string;
   /** answer 是命中后注入给 AI 的回答依据。 */
   answer: string;
-  /** 未知扩展键在编辑与回写时原样保留。 */
-  [key: string]: unknown;
-}
-
-// CatalogRow 是在售清单一行的已知字段与可保留的扩展字段。
-export interface CatalogRow {
-  /** title 是在售商品标题。 */
-  title: string;
-  /** detail 是商品补充详情，例如季数与发货方式。 */
-  detail: string;
   /** 未知扩展键在编辑与回写时原样保留。 */
   [key: string]: unknown;
 }
@@ -173,17 +159,6 @@ function normalizeFaqRow(raw: unknown): FAQRow {
   };
 }
 
-// normalizeCatalogRow 把在售清单原始行归一为表单已知字段，未知键原样保留。
-function normalizeCatalogRow(raw: unknown): CatalogRow {
-  // source 是待归一的原始行对象；非对象回退空对象。
-  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-  return {
-    ...source,
-    title: typeof source.title === 'string' ? source.title : '',
-    detail: typeof source.detail === 'string' ? source.detail : '',
-  };
-}
-
 // normalizeIntentRow 把意图原始行归一为表单已知字段，未知键原样保留。
 function normalizeIntentRow(raw: unknown): IntentRow {
   // source 是待归一的原始行对象；非对象回退空对象。
@@ -200,11 +175,6 @@ function normalizeIntentRow(raw: unknown): IntentRow {
 // createEmptyFaq 构造新增 FAQ 行的空初始数据。
 function createEmptyFaq(): FAQRow {
   return { category: '', match: '', answer: '' };
-}
-
-// createEmptyCatalog 构造新增在售清单行的空初始数据。
-function createEmptyCatalog(): CatalogRow {
-  return { title: '', detail: '' };
 }
 
 // createEmptyIntent 构造新增意图行的空初始数据。
@@ -285,8 +255,6 @@ interface PolicyPatch {
 interface KnowledgePatch {
   /** faq 是 FAQ 问答列表。 */
   faq?: FAQRow[];
-  /** catalog 是在售清单列表。 */
-  catalog?: CatalogRow[];
 }
 
 // ScopePatch 是边界表单写回草稿的已知字段补丁。
@@ -370,18 +338,17 @@ export const PolicyConfigForm: React.FC<AIConfigBlockProps> = ({ settings, onCha
   );
 };
 
-// KnowledgeConfigForm 编辑语料配置：FAQ 问答与在售清单两个可增删列表。
+// KnowledgeConfigForm 编辑语料配置：仅 FAQ 问答可增删列表；
+// 在售商品与库存由系统自动查询注入，旧配置的 catalog 键只随草稿原样保留不提供编辑。
 export const KnowledgeConfigForm: React.FC<AIConfigBlockProps> = ({ settings, onChange }) => {
   // raw 是语料配置 JSON 草稿原文，缺省空串。
   const raw = typeof settings.ai_knowledge_config === 'string' ? settings.ai_knowledge_config : '';
-  // parsed 是语料配置对象；未知键在后续序列化时原样写回。
+  // parsed 是语料配置对象；未知键（含旧配置 catalog）在后续序列化时原样写回。
   const parsed = parseConfigObject(raw);
   // faqRows 是 FAQ 列表的表单行数据。
   const faqRows = parseRowArray(parsed, 'faq', normalizeFaqRow) as FAQRow[];
-  // catalogRows 是在售清单的表单行数据。
-  const catalogRows = parseRowArray(parsed, 'catalog', normalizeCatalogRow) as CatalogRow[];
-  // isEmptyKnowledge 表示两列表都为空，决定是否展示推荐填充按钮。
-  const isEmptyKnowledge = faqRows.length === 0 && catalogRows.length === 0;
+  // isEmptyKnowledge 表示 FAQ 列表为空，决定是否展示推荐填充按钮。
+  const isEmptyKnowledge = faqRows.length === 0;
 
   // applyKnown 把已知列表字段写回草稿对象并序列化，未触碰的未知键原样保留。
   const applyKnown = (patch: KnowledgePatch) => {
@@ -390,17 +357,17 @@ export const KnowledgeConfigForm: React.FC<AIConfigBlockProps> = ({ settings, on
     onChange({ ai_knowledge_config: JSON.stringify(next, null, 2) });
   };
 
-  // fillRecommended 把推荐 FAQ 与在售清单写入已知字段，保留已存在的未知键。
+  // fillRecommended 把推荐 FAQ 写入已知字段，保留已存在的未知键与旧 catalog。
   const fillRecommended = () => {
-    applyKnown({ faq: FAQ_RECOMMENDED.map(/* rowCopier 复制推荐 FAQ 行，避免共享可变对象。 */ row => ({ ...row })), catalog: CATALOG_RECOMMENDED.map(/* rowCopier 复制推荐在售行，避免共享可变对象。 */ row => ({ ...row })) });
+    applyKnown({ faq: FAQ_RECOMMENDED.map(/* rowCopier 复制推荐 FAQ 行，避免共享可变对象。 */ row => ({ ...row })) });
   };
 
   return (
     <ConfigBlock
       icon={<Sparkles className="w-4 h-4" />}
-      title="语料（FAQ 与在售清单）"
-      hint="faq 的 match 命中后把 answer 注入给 AI 作回答依据；catalog 是在售清单，买家问有没有/第几季时 AI 依此作答。"
-      placeholder={JSON.stringify({ faq: FAQ_RECOMMENDED, catalog: CATALOG_RECOMMENDED }, null, 2)}
+      title="语料（FAQ 问答）"
+      hint="faq 的 match 命中后把 answer 注入给 AI 作回答依据；在售商品与库存由系统自动查询注入。"
+      placeholder={JSON.stringify({ faq: FAQ_RECOMMENDED }, null, 2)}
       value={raw}
       onChange={/* value 是语料配置 JSON 草稿原文，直接写回系统配置。 */ value => onChange({ ai_knowledge_config: value })}
     >
@@ -449,36 +416,6 @@ export const KnowledgeConfigForm: React.FC<AIConfigBlockProps> = ({ settings, on
                   placeholder="命中后注入给 AI 的回答依据"
                   aria-label={`第 ${index + 1} 行回答`}
                   className="w-full ios-input px-3 py-2 rounded-lg text-sm h-20 resize-y"
-                />
-              </div>
-            )}
-          />
-        </div>
-        <div className="ios-card rounded-xl p-5 bg-white space-y-3">
-          <label className="block text-sm font-bold text-gray-800">在售清单</label>
-          <EditableList
-            rows={catalogRows}
-            onChange={/* rows 是变更后的在售清单，整体写回语料草稿。 */ rows => applyKnown({ catalog: rows })}
-            createRow={createEmptyCatalog}
-            getRowKey={/* rowKeyProvider 用行索引拼出在售行 React key。 */ (_row, index) => `catalog-${index}`}
-            addButtonText="添加商品"
-            emptyText="暂无在售商品，可点「填入推荐语料」后改成自家在售"
-            rowNamePrefix="在售"
-            renderRow={/* renderRow 渲染当前列表行的编辑控件。 */ (row, index, update) => (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  value={row.title}
-                  onChange={/* 输入变化更新在售行标题。 */ event => update({ title: event.target.value })}
-                  placeholder="标题，如 糯糯下山"
-                  aria-label={`第 ${index + 1} 行标题`}
-                  className="w-full ios-input px-3 py-2 rounded-lg text-sm"
-                />
-                <input
-                  value={row.detail}
-                  onChange={/* 输入变化更新在售行详情。 */ event => update({ detail: event.target.value })}
-                  placeholder="详情，如 1-3季全，网盘发货"
-                  aria-label={`第 ${index + 1} 行详情`}
-                  className="w-full ios-input px-3 py-2 rounded-lg text-sm"
                 />
               </div>
             )}

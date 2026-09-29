@@ -37,7 +37,7 @@ export interface SystemSettings {
   'captcha.remote_pass_cookies'?: boolean | string;
   /** 边界配置 JSON：意图白名单与负向组合词，决定 AI 接管范围。 */
   ai_scope_config?: string;
-  /** 语料配置 JSON：FAQ 问答与在售清单，供 AI 有据作答。 */
+  /** 语料配置 JSON：FAQ 问答（在售商品与库存由系统自动查询注入），供 AI 有据作答。 */
   ai_knowledge_config?: string;
   /** 策略配置 JSON：报价与拒绝兜底话术模板。 */
   ai_policy_config?: string;
