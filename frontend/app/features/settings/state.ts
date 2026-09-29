@@ -67,3 +67,66 @@ export const createCredentials = (username = ''): CredentialsForm => ({
 
 /** 创建凭据保存结果提示。 */
 export const createCredentialsMessage = (type: 'success' | 'error', text: string): CredentialsMessage => ({ type, text });
+
+/** 发货内容门禁配置：控制出站发货文本的违禁词拒发与链接健康检查。 */
+export type DeliveryGuardConfig = {
+  /** enabled 表示发货内容违禁词门禁是否启用，缺省视为启用。 */
+  enabled: boolean;
+  /** link_check 表示发货前链接健康检查是否启用，缺省视为启用。 */
+  link_check: boolean;
+  /** extra_block_words 是用户额外违禁词原文，支持逗号或竖线分隔。 */
+  extra_block_words: string;
+};
+
+/** 发货内容门禁默认配置：两项检查默认启用，且不附加额外违禁词。 */
+export const DEFAULT_DELIVERY_GUARD_CONFIG: DeliveryGuardConfig = {
+  enabled: true,
+  link_check: true,
+  extra_block_words: '',
+};
+
+/** coerceGuardFlag 归一门禁 JSON 中的布尔开关；缺失或类型不符时回退默认值。 */
+const coerceGuardFlag = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+};
+
+/** 门禁 JSON 解析结果：配置对象与是否需要向用户提示非法 JSON。 */
+export type DeliveryGuardParseResult = {
+  /** config 是解析或回退后的门禁配置。 */
+  config: DeliveryGuardConfig;
+  /** invalid 表示原文非法需要提示；缺失或空白不算非法。 */
+  invalid: boolean;
+};
+
+/** 解析设置草稿中的门禁 JSON；缺失视为默认配置，非法 JSON 回退默认并要求页面提示。 */
+export const parseDeliveryGuardConfig = (raw: unknown): DeliveryGuardParseResult => {
+  // isBlank 表示服务端尚未写过该键或值为空白文本，此时按默认配置展示且无需告警。
+  const isBlank = raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '');
+  if (isBlank) return { config: { ...DEFAULT_DELIVERY_GUARD_CONFIG }, invalid: false };
+  if (typeof raw !== 'string') return { config: { ...DEFAULT_DELIVERY_GUARD_CONFIG }, invalid: true };
+  try {
+    // parsed 是解析后的门禁 JSON 值，只有普通对象形态才继续读取已知字段。
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { config: { ...DEFAULT_DELIVERY_GUARD_CONFIG }, invalid: true };
+    }
+    // source 是可安全取字段的门禁 JSON 对象。
+    const source = parsed as Record<string, unknown>;
+    return {
+      config: {
+        enabled: coerceGuardFlag(source.enabled, DEFAULT_DELIVERY_GUARD_CONFIG.enabled),
+        link_check: coerceGuardFlag(source.link_check, DEFAULT_DELIVERY_GUARD_CONFIG.link_check),
+        extra_block_words: typeof source.extra_block_words === 'string' ? source.extra_block_words : DEFAULT_DELIVERY_GUARD_CONFIG.extra_block_words,
+      },
+      invalid: false,
+    };
+  } catch {
+    return { config: { ...DEFAULT_DELIVERY_GUARD_CONFIG }, invalid: true };
+  }
+};
+
+/** 将门禁配置序列化为设置草稿存储的 JSON 字符串，供保存系统配置时提交。 */
+export const serializeDeliveryGuardConfig = (config: DeliveryGuardConfig): string => JSON.stringify(config);

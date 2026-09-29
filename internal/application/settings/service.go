@@ -499,6 +499,25 @@ func validateSystemValue(key, value string) error {
 		default:
 			return errors.New("ai_reply_review_mode 必须是布尔开关值")
 		}
+	case "delivery_content_guard":
+		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
+		if trimmed == "" {
+			return nil
+		}
+		// 门禁配置必须是 JSON 对象，其余形状一律拒绝落库。
+		if !strings.HasPrefix(trimmed, "{") {
+			return fmt.Errorf("%s 必须是 JSON 对象", key)
+		}
+		// parsed 保存按门禁配置形状解析的字段；字段类型不匹配或非法 JSON 一律拒绝落库。
+		var parsed struct {
+			Enabled         *bool  `json:"enabled"`
+			LinkCheck       *bool  `json:"link_check"`
+			ExtraBlockWords string `json:"extra_block_words"`
+		}
+		if // err 是门禁配置 JSON 的解析错误；非法 JSON 或字段类型不匹配一律拒绝落库。
+		err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+			return fmt.Errorf("%s 必须是合法 JSON 对象", key)
+		}
 	case "mcp.servers":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
 		if trimmed == "" {

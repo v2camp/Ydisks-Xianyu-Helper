@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import { LOG_LEVELS } from '../constants';
+import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
 import { useSettings } from '../hooks';
 
 // Settings 展示系统配置与登录凭据编辑页面；AI 相关配置已拆分到独立的 AI 设置页。
@@ -165,6 +166,9 @@ const Settings: React.FC = () => {
                 <p className="text-xs text-gray-500">业务表持续无事件超过该时长即告警；0 表示关闭看门狗。保存后需重启服务生效，未配置回落 180 分钟。</p>
               </div>
             </div>
+
+            {/* 发货内容门禁配置卡：违禁词拒发与链接健康检查开关及额外违禁词，保存后随系统配置一起提交。 */}
+            <DeliveryGuardCard settings={settings} onChange={/* patch 合并进系统配置草稿，由统一保存按钮提交。 */ patch => setSettings({ ...settings, ...patch })} />
           </section>
         </div>
 

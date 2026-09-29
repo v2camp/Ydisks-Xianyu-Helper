@@ -699,6 +699,53 @@ func TestValidateSystemValue(t *testing.T) {
 	}
 }
 
+// TestValidateSystemValueDeliveryContentGuard 验证发货内容门禁设置的 JSON 形状校验。
+func TestValidateSystemValueDeliveryContentGuard(t *testing.T) {
+	// ctx 是设置写入共用的请求上下文。
+	ctx := context.Background()
+	// repository 是保存系统设置的内存 Port。
+	repository := &settingsRepositoryFake{}
+	// service 是注入内存 Port 的设置应用服务。
+	service := NewService(repository, nil)
+	// cases 覆盖门禁配置的合法与非法 JSON 形状，并确认普通设置键不受影响。
+	cases := []struct {
+		// name 是当前用例名称。
+		name string
+		// key 是待写入的设置键。
+		key string
+		// value 是待写入的设置值。
+		value string
+		// wantErr 表示期望是否拒绝写入。
+		wantErr bool
+	}{
+		{name: "合法完整对象", key: "delivery_content_guard", value: `{"enabled":true,"link_check":true,"extra_block_words":"a|b"}`, wantErr: false},
+		{name: "合法局部对象", key: "delivery_content_guard", value: `{"enabled":false}`, wantErr: false},
+		{name: "合法空串表示清空", key: "delivery_content_guard", value: "", wantErr: false},
+		{name: "合法纯空白表示清空", key: "delivery_content_guard", value: "   ", wantErr: false},
+		{name: "合法空对象", key: "delivery_content_guard", value: `{}`, wantErr: false},
+		{name: "非法JSON", key: "delivery_content_guard", value: `{"enabled":`, wantErr: true},
+		{name: "非对象数组", key: "delivery_content_guard", value: `[{"enabled":true}]`, wantErr: true},
+		{name: "非对象字符串", key: "delivery_content_guard", value: `"enabled"`, wantErr: true},
+		{name: "布尔字段类型非法", key: "delivery_content_guard", value: `{"enabled":"yes"}`, wantErr: true},
+		{name: "额外词字段类型非法", key: "delivery_content_guard", value: `{"extra_block_words":123}`, wantErr: true},
+		{name: "其它键不受影响", key: "theme_color", value: "blue", wantErr: false},
+	}
+	// tc 表示当前遍历过程中的用例。
+	for _, tc := range cases {
+		// err 是当前设置写入的业务校验结果。
+		err := service.SetSystem(ctx, 7, tc.key, tc.value, "")
+		// gotErr 表示实际是否拒绝写入。
+		gotErr := err != nil
+		if gotErr != tc.wantErr {
+			t.Fatalf("%s: SetSystem(%q,%q) 错误=%v，期望 wantErr=%v", tc.name, tc.key, tc.value, err, tc.wantErr)
+		}
+		// 门禁配置的拒绝原因必须带键名，便于定位非法配置来源。
+		if tc.wantErr && !strings.Contains(err.Error(), tc.key) {
+			t.Fatalf("%s: 错误信息未包含键名 %q: %v", tc.name, tc.key, err)
+		}
+	}
+}
+
 // TestValidateSystemValueMCPServers 验证 mcp.servers 设置键的服务端 JSON 形状校验。
 func TestValidateSystemValueMCPServers(t *testing.T) {
 	// ctx 是设置写入共用的请求上下文。

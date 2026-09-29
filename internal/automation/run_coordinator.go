@@ -475,6 +475,27 @@ func (r automationRunCoordinator) executeRunActionLoop(ctx context.Context, task
 		// n 表示本动作已明确完成的外部结果数量。
 		n := actionResult.sent
 		if actionErr != nil {
+			// 发货内容门禁或链接健康检查拦截：确定未发送且禁止自动重放，直接隔离为人工核对。
+			if isDeliveryGuardError(actionErr) {
+				// reason 说明门禁拦截原因；正文只含规则标签，可安全进入通知与运行记录。
+				reason := "发货内容门禁拦截，已禁止自动重放，请人工处理: " + actionErr.Error()
+				// quarantineProof 合并运行既有与本动作已产生的凭证；被拦截的正文不会进入凭证。
+				quarantineProof := mergeShipmentDeliveryProof(deliveryProof, actionResult.proof)
+				quarantineProof = mergeShipmentDeliveryProof(quarantineProof, actionResult.reviewProof)
+				// proofInput 是需要加密写入人工核对记录的既有发货凭证。
+				proofInput := persistedDeliveryProofIfAny(persistDeliveryProof, quarantineProof)
+				// quarantineCtx 保证门禁拦截后的隔离状态在调用方取消后仍能落库。
+				quarantineCtx, quarantineCancel := newAutomationRunCompensationContext(ctx)
+				// quarantineErr 保存门禁拦截运行的人工核对状态写入错误。
+				quarantineErr := r.store.Automation.QuarantineRunResultWithProof(quarantineCtx, run.ID, run.AttemptCount, sent+n, reason, proofInput)
+				quarantineCancel()
+				if quarantineErr != nil {
+					r.logger.Error("保存发货门禁拦截的人工核对状态失败", "run_id", run.ID, "err", quarantineErr)
+					return sent + n, false, errors.Join(errAutomationNeedsReview, errAutomationQuarantine, actionErr, quarantineErr)
+				}
+				// 双 %w 保留门禁哨兵错误链，调用方可继续用 errors.Is 识别不可重试原因。
+				return sent + n, false, fmt.Errorf("%w: %w", errAutomationNeedsReview, actionErr)
+			}
 			// uncertain 标记外部系统可能已经执行动作但本地无法确认的错误。
 			var uncertain *uncertainActionError
 			if n > 0 || errors.As(actionErr, &uncertain) {
@@ -630,6 +651,28 @@ func mergeShipmentDeliveryProof(current, next shipmentDeliveryProof) shipmentDel
 	current.refillPending = current.refillPending || next.refillPending
 	current.skippedTemplateMessages = append(current.skippedTemplateMessages, next.skippedTemplateMessages...)
 	return current
+}
+
+// persistedDeliveryProofIfAny 在需要持久化且凭证非空时导出仓储凭证模型，否则返回 nil。
+func persistedDeliveryProofIfAny(persistDeliveryProof bool, proof shipmentDeliveryProof) *db.AutomationDeliveryProof {
+	if !persistDeliveryProof {
+		return nil
+	}
+	if !proof.refillPending && proof.tradeText == "" && len(proof.picList) == 0 && len(proof.messages) == 0 && len(proof.skippedTemplateMessages) == 0 {
+		return nil
+	}
+	// persistedProof 是数据库仓储使用的导出凭证模型。
+	persistedProof := &db.AutomationDeliveryProof{
+		TradeText:               proof.tradeText,
+		PicList:                 append([]string(nil), proof.picList...),
+		Messages:                append([]db.AutomationDeliveryMessage(nil), proof.messages...),
+		ExpectedUnits:           proof.expectedUnits,
+		PreparedUnits:           proof.preparedUnits,
+		UnknownUnits:            proof.unknownUnits,
+		RefillPending:           proof.refillPending,
+		SkippedTemplateMessages: append([]db.AutomationDeliverySkip(nil), proof.skippedTemplateMessages...),
+	}
+	return persistedProof
 }
 
 // tagTemplateDeliverySkips 将当前模板动作内的跳过消息下标绑定到运行计划动作下标，防止多模板动作之间产生歧义。

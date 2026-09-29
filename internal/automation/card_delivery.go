@@ -132,6 +132,10 @@ func (e *automationActionExecutor) sendAPICardWithProof(ctx context.Context, tas
 		}
 		// sendErr 保存已取得卡密后向买家发送消息的结果；此时失败不能安全重放 API 请求。
 		if sendErr := e.sendText(ctx, task, result.Content); sendErr != nil {
+			// 发货内容门禁拦截是确定未发送的不可重试错误，不得包装为结果未知。
+			if isDeliveryGuardError(sendErr) {
+				return actionExecutionResult{sent: sent, proof: proof}, sendErr
+			}
 			// reviewProof 保存 API 已返回的唯一内容；即使发送结果未知也只能重发该快照，不能再次调用 API。
 			reviewProof := shipmentDeliveryProof{unknownUnits: 1, tradeText: result.Content, messages: []db.AutomationDeliveryMessage{{Kind: "text", Content: result.Content}}}
 			return actionExecutionResult{sent: sent, proof: proof, reviewProof: reviewProof}, uncertainAction(sendErr)

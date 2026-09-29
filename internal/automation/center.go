@@ -438,12 +438,17 @@ func (c *Center) handleBargainPending(ctx context.Context, task Task) (bool, err
 	// status 保存可重试的明确失败、需要人工核对的未知结果或成功终态。
 	status := "succeeded"
 	if actionErr != nil {
-		// uncertain 用于识别可能已被平台执行、因而不能自动再次提交的免拼结果。
-		var uncertain *uncertainActionError
-		if errors.As(actionErr, &uncertain) {
+		if isDeliveryGuardError(actionErr) {
+			// 发货内容门禁拦截确定未发送且禁止自动重试，必须停在人工核对终态。
 			status = "needs_review"
 		} else {
-			status = "failed"
+			// uncertain 用于识别可能已被平台执行、因而不能自动再次提交的免拼结果。
+			var uncertain *uncertainActionError
+			if errors.As(actionErr, &uncertain) {
+				status = "needs_review"
+			} else {
+				status = "failed"
+			}
 		}
 		c.logger.Warn("自动免拼失败，已保存阶段状态", "account", task.AccountID, "order_id", task.OrderID, "status", status, "err", actionErr)
 	} else {
