@@ -10,14 +10,18 @@ import (
 )
 
 // freeShipBargain 在砍价“待刀成”阶段调用独立免拼接口；它不发送卡密、不确认发货，也不修改订单已发货状态。
-// 免拼前按账号级安抚模板（bargain_soothe_template）尽力给买家发送一条安抚文案：发送失败只记日志不阻断免拼。
+// 免拼前按账号级安抚模板（bargain_soothe_template）尽力给买家发送一条安抚文案：
+// 普通发送失败只记日志不阻断免拼；安抚文案命中发货内容门禁时必须停止免拼并转人工核对。
 func (e *automationActionExecutor) freeShipBargain(ctx context.Context, task Task) error {
 	// template 保存账号配置的免拼安抚模板；读取失败按未配置处理，不阻断免拼。
 	if template, readErr := e.store.Cookies.GetBargainSootheTemplate(ctx, task.AccountID); readErr == nil {
 		// sootheText 是渲染后的安抚文案；空模板或缺少会话、买家标识时不发送。
 		if sootheText := strings.TrimSpace(renderTemplate(template, task)); sootheText != "" && task.ChatID != "" && task.BuyerID != "" {
-			// sootheErr 是发送安抚消息的错误；发送失败只记日志不阻断免拼。
+			// sootheErr 是发送安抚消息的错误；门禁拦截必须上抛，其他失败只记日志不阻断免拼。
 			if sootheErr := e.sendText(ctx, task, sootheText); sootheErr != nil {
+				if isDeliveryGuardError(sootheErr) {
+					return sootheErr
+				}
 				e.logger.Warn("免拼安抚消息发送失败，继续执行免拼", "account", task.AccountID, "order_id", task.OrderID, "err", sootheErr)
 			}
 		}

@@ -583,6 +583,7 @@ func appendTradeText(current, next string) string {
 }
 
 // sendText 向账号在线发送器发送文字消息，并保留确定未发送的错误标记。
+// 出站前统一执行发货内容门禁与链接健康检查，覆盖文字、卡密、模板与安抚话术等全部文本路径。
 func (e *automationActionExecutor) sendText(ctx context.Context, task Task, text string) error {
 	// executionErr 在平台副作用前拒绝已取消或失去数据库执行权的旧动作。
 	if executionErr := checkRunExecution(ctx); executionErr != nil {
@@ -599,6 +600,10 @@ func (e *automationActionExecutor) sendText(ctx context.Context, task Task, text
 	sender, senderOK := e.senders.Sender(task.AccountID)
 	if !senderOK {
 		return fmt.Errorf("%w: 账号未在线，无法发送自动化消息", ErrMessageNotSent)
+	}
+	// guardErr 是发货内容门禁或链接健康检查拦截结果；命中时禁止出站且错误确定未发送。
+	if guardErr := e.guardOutboundText(ctx, task.AccountID, text); guardErr != nil {
+		return guardErr
 	}
 	return sender.SendText(ctx, task.ChatID, task.BuyerID, text)
 }

@@ -96,6 +96,15 @@ func (e *automationActionExecutor) sendTemplate(ctx context.Context, task Task, 
 		}
 		// sendErr 保存模板消息发送错误。
 		if sendErr := e.sendText(ctx, task, text); sendErr != nil {
+			// 发货内容门禁拦截是确定未发送，必须恢复本消息库存并保持不可重试错误链。
+			if isDeliveryGuardError(sendErr) {
+				// restoreErr 保存门禁拦截后恢复本消息批量库存的错误。
+				if restoreErr := e.restoreTemplateReservations(ctx, reservations); restoreErr != nil {
+					result.proof.refillPending = true
+					return result, uncertainAction(errors.Join(sendErr, restoreErr))
+				}
+				return result, sendErr
+			}
 			if result.sent == 0 && errors.Is(sendErr, ErrMessageNotSent) && !state.apiFetched {
 				// restoreErr 保存确定未发送时的库存恢复错误。
 				if restoreErr := e.restoreTemplateReservations(ctx, reservations); restoreErr != nil {
