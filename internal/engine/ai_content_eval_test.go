@@ -1,7 +1,7 @@
 // ai_content_eval_test.go 客服 Agent 内容层评测（确定性部分）：测「接管后回复质量」。
 // 三类断言全部用 mock OpenAI server 走完整 Reply 链路，零账号可执行：
 //  1. FAQ 命中率：命中的 FAQ 答案注入 system prompt，且回复文本包含知识答案；
-//  2. 在售清单引用率：涉及库存/在售的回复引用了清单条目；
+//  2. 在售清单引用率：动态商品列表注入 prompt，涉及库存/在售的回复引用列表条目；
 //  3. 策略话术覆盖率：报价越过折扣边界时回复套用 min_price_reply/no_discount_reply，
 //     且 {amount} 占位被替换为实际最低价。
 //
@@ -26,11 +26,21 @@ import (
 const (
 	// aiContentKindFAQ 是 FAQ 命中类：知识答案注入提示词且回复包含答案。
 	aiContentKindFAQ = "faq"
-	// aiContentKindCatalog 是在售清单引用类：回复引用了清单条目。
+	// aiContentKindCatalog 是在售清单引用类：动态商品列表注入且回复引用列表条目。
 	aiContentKindCatalog = "catalog"
 	// aiContentKindPolicy 是策略话术类：报价越界时套用配置话术。
 	aiContentKindPolicy = "policy"
 )
+
+// aiContentEvalItem 是评测夹具写入 item_info 的在售商品。
+type aiContentEvalItem struct {
+	// ID 是商品 ID，用于消息关联。
+	ID string
+	// Title 是商品标题，进入动态在售列表行。
+	Title string
+	// Price 是价格文本，与标题拼成「- 标题（价格）」。
+	Price string
+}
 
 // aiContentEvalCase 是一条内容层评测用例。
 type aiContentEvalCase struct {
@@ -48,9 +58,9 @@ type aiContentEvalCase struct {
 	WantReplyAbsent []string
 	// WantReplyExact 是策略话术类用例的整句期望（{amount} 已替换）；空串表示不检查。
 	WantReplyExact string
-	// WantSystemContains 是 system prompt 必须包含的片段，验证 FAQ/清单知识确实注入。
+	// WantSystemContains 是 system prompt 必须包含的片段，验证 FAQ/动态列表确实注入。
 	WantSystemContains []string
-	// WantSystemAbsent 是 system prompt 必须不包含的片段，验证未命中 FAQ 不注入。
+	// WantSystemAbsent 是 system prompt 必须不包含的片段，验证未命中 FAQ 不注入或手工 catalog 不回落。
 	WantSystemAbsent []string
 }
 
@@ -60,10 +70,12 @@ type aiContentEvalGroup struct {
 	Name string
 	// ScopeConfig 是写入 ai_scope_config 的 JSON（意图白名单 + 负向词）。
 	ScopeConfig string
-	// KnowledgeConfig 是写入 ai_knowledge_config 的 JSON（FAQ + 在售清单）。
+	// KnowledgeConfig 是写入 ai_knowledge_config 的 JSON（FAQ + 手工 catalog 兼容字段）。
 	KnowledgeConfig string
 	// PolicyConfig 是写入 ai_policy_config 的 JSON（min_price_reply/no_discount_reply）。
 	PolicyConfig string
+	// Items 是写入 item_info 的在售商品夹具，驱动动态列表注入。
+	Items []aiContentEvalItem
 	// ItemPrice 是写入 item_info 的商品标价文本。
 	ItemPrice string
 	// MaxDiscountPercent 与 MaxDiscountAmount 是 AI 回复设置里的折扣上限，共同决定最低价。
@@ -83,7 +95,7 @@ const aiContentScopeJSON = `{"intents":[
 ],"negative":"退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|违规|扣分|封号|申诉"}`
 
 // aiContentKnowledgeJSON 是内容层评测的语料配置：五条 FAQ 覆盖发货/资源码/下载/音频/文字版，
-// 两条在售清单用于引用断言，与升级计划第六节语料形态一致。
+// 手工 catalog 仅作历史兼容字段（动态列表非空时不得注入），与升级计划第六节语料形态一致。
 const aiContentKnowledgeJSON = `{"faq":[
 	{"category":"发货方式","match":"发货|网盘|夸克","answer":"本店支持百度网盘、夸克、迅雷发货。"},
 	{"category":"资源码","match":"资源码|提取码","answer":"资源码在订单详情页查看，复制后到网盘输入即可。"},
@@ -92,8 +104,7 @@ const aiContentKnowledgeJSON = `{"faq":[
 	{"category":"文字版","match":"文字版","answer":"文字版购买后同步发送。"}
 ],
 "catalog":[
-	{"title":"糯糯下山","detail":"1-3季全"},
-	{"title":"梦遇崔郎","detail":"92集完整版"}
+	{"title":"旧手工条目","detail":"不应注入"}
 ]}`
 
 // aiContentPolicyJSON 是内容层评测的策略配置：最低价话术带 {amount} 占位，
@@ -101,7 +112,7 @@ const aiContentKnowledgeJSON = `{"faq":[
 const aiContentPolicyJSON = `{"min_price_reply":"亲，最低 {amount} 元哦","no_discount_reply":"抱歉，已经是最低价了，暂时不能再优惠了。"}`
 
 // aiContentEvalSetV1 是内容层评测集 v1：FAQ 命中 6 条（含 1 条不应注入的负控制）、
-// 在售清单引用 5 条（含 1 条未在清单内的负控制）、策略话术 6 条（最低价 4 + 拒绝 2），
+// 在售清单引用 5 条（动态商品列表注入 + 1 条未在列表内的负控制）、策略话术 6 条（最低价 4 + 拒绝 2），
 // 共 17 条。分组设计：知识语料与最低价话术共享折扣设置，拒绝话术单独用零折扣场景。
 var aiContentEvalSetV1 = []aiContentEvalGroup{
 	{
@@ -109,6 +120,10 @@ var aiContentEvalSetV1 = []aiContentEvalGroup{
 		ScopeConfig:        aiContentScopeJSON,
 		KnowledgeConfig:    aiContentKnowledgeJSON,
 		PolicyConfig:       aiContentPolicyJSON,
+		Items: []aiContentEvalItem{
+			{ID: "item-nuonuo", Title: "糯糯下山", Price: "25"},
+			{ID: "item-mengyu", Title: "梦遇崔郎", Price: "30"},
+		},
 		ItemPrice:          "100",
 		MaxDiscountPercent: 10,
 		MaxDiscountAmount:  20,
@@ -137,23 +152,27 @@ var aiContentEvalSetV1 = []aiContentEvalGroup{
 				ModelReply:        "是的，正版哦",
 				WantReplyContains: []string{"正版"},
 				WantSystemAbsent:  []string{"本店支持百度网盘"}},
-			{Name: "清单季数引用", Text: "有第三季了吗", Kind: aiContentKindCatalog,
+			{Name: "动态列表季数引用", Text: "有第三季了吗", Kind: aiContentKindCatalog,
 				ModelReply:         "有的，糯糯下山有 1-3 季全在售哦",
 				WantReplyContains:  []string{"糯糯下山"},
-				WantSystemContains: []string{"糯糯下山（1-3季全）"}},
-			{Name: "清单单买引用", Text: "可以单买第二季吗", Kind: aiContentKindCatalog,
+				WantSystemContains: []string{liveCatalogInstruction, "- 糯糯下山（25）", "- 梦遇崔郎（30）"},
+				WantSystemAbsent:   []string{"旧手工条目"}},
+			{Name: "动态列表单买引用", Text: "可以单买第二季吗", Kind: aiContentKindCatalog,
 				ModelReply:         "可以单买哦，梦遇崔郎可以单买",
 				WantReplyContains:  []string{"梦遇崔郎"},
-				WantSystemContains: []string{"梦遇崔郎（92集完整版）"}},
-			{Name: "清单全集引用", Text: "是全集吗", Kind: aiContentKindCatalog,
+				WantSystemContains: []string{liveCatalogInstruction, "- 梦遇崔郎（30）"},
+				WantSystemAbsent:   []string{"旧手工条目"}},
+			{Name: "动态列表全集引用", Text: "是全集吗", Kind: aiContentKindCatalog,
 				ModelReply:         "糯糯下山是全集在售哦",
 				WantReplyContains:  []string{"糯糯下山"},
-				WantSystemContains: []string{"糯糯下山（1-3季全）"}},
-			{Name: "清单夸克版引用", Text: "有夸克版的吗", Kind: aiContentKindCatalog,
+				WantSystemContains: []string{"- 糯糯下山（25）"},
+				WantSystemAbsent:   []string{"旧手工条目"}},
+			{Name: "动态列表夸克版引用", Text: "有夸克版的吗", Kind: aiContentKindCatalog,
 				ModelReply:         "有的，梦遇崔郎有夸克版哦",
 				WantReplyContains:  []string{"夸克", "梦遇崔郎"},
-				WantSystemContains: []string{"梦遇崔郎（92集完整版）"}},
-			{Name: "清单未在售不引用", Text: "有第五季了吗", Kind: aiContentKindCatalog,
+				WantSystemContains: []string{"- 梦遇崔郎（30）"},
+				WantSystemAbsent:   []string{"旧手工条目"}},
+			{Name: "动态列表未在售不引用", Text: "有第五季了吗", Kind: aiContentKindCatalog,
 				ModelReply:      "这个暂时没有哦",
 				WantReplyAbsent: []string{"糯糯下山", "梦遇崔郎"}},
 			{Name: "策略最低价话术一", Text: "能便宜点吗", Kind: aiContentKindPolicy,
@@ -262,6 +281,16 @@ func contentStore(t *testing.T, g aiContentEvalGroup, apiURL string) *db.Store {
 	if _, err := s.DB.ExecContext(ctx, `INSERT INTO item_info
 		(cookie_id, item_id, item_title, item_price, item_description) VALUES ('cid', 'item-eval', '测试商品', ?, '测试描述')`, g.ItemPrice); err != nil {
 		t.Fatalf("写入商品失败: %v", err)
+	}
+	// 写入动态在售清单夹具商品，驱动 live catalog 注入断言。
+	// fixture 表示当前遍历到的在售商品夹具。
+	for _, fixture := range g.Items {
+		// err 是商品夹具写入错误。
+		if _, err := s.DB.ExecContext(ctx, `INSERT INTO item_info
+			(cookie_id, item_id, item_title, item_price, item_description) VALUES ('cid', ?, ?, ?, '')`,
+			fixture.ID, fixture.Title, fixture.Price); err != nil {
+			t.Fatalf("写入在售商品夹具 %s 失败: %v", fixture.Title, err)
+		}
 	}
 	// settings 是待写入的三层配置键值对；空值跳过。
 	settings := map[string]string{

@@ -106,16 +106,20 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	if !withinBargainLimit {
 		systemPrompt += "\n当前买家已经超过最大砍价轮次。不得继续降价，只能礼貌说明价格不再优惠。"
 	}
-	// knowledge 是语料配置（FAQ 问答与在售清单）。
+	// knowledge 是语料配置（FAQ 问答与手工在售清单兼容字段）。
 	knowledge, err := a.loadKnowledge(ctx)
 	if err != nil {
 		return nil, err
 	}
+	// live 是动态注入数据（在售列表/库存摘要/发货推断），查询失败已降级为空。
+	live := a.loadLiveKnowledge(ctx, m.ItemID)
 	// knowledgeCtx 是命中 FAQ 与在售清单拼装的知识上下文；非空时注入 system 让 AI 有据可答。
-	knowledgeCtx := knowledge.buildKnowledgeContext(m.Text)
+	knowledgeCtx := knowledge.buildKnowledgeContext(m.Text, live)
 	if knowledgeCtx != "" {
 		systemPrompt += "\n\n" + knowledgeCtx
 	}
+	// 发货方式回答约束始终注入，防止模型声称全店统一渠道。
+	systemPrompt += "\n\n" + deliveryAnswerConstraint
 	// policy 是策略配置（报价/拒绝兜底话术），未配置时回落内置文案。
 	policy, err := a.loadPolicy(ctx)
 	if err != nil {

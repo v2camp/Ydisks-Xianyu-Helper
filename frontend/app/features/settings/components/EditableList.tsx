@@ -1,5 +1,5 @@
 // EditableList 是可增删行的通用列表容器：行内容由调用方渲染，
-// 容器负责新增、删除与行内校验错误展示，供 FAQ / 在售清单 / 意图 / MCP 四处复用。
+// 容器负责新增、删除与行内校验错误展示，供 FAQ / 意图 / MCP 三处复用。
 
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
