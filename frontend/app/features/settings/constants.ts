@@ -42,6 +42,7 @@ export const SYSTEM_SETTING_KEYS = new Set([
   'captcha.remote_service_url',
   'captcha.remote_secret_key',
   'captcha.remote_pass_cookies',
+  'delivery_content_guard',
 ]);
 
 /** AI 设置页允许保存的字段白名单；命中后仍会经过省略键与空值过滤。 */

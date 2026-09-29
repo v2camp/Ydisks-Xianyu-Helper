@@ -1,0 +1,176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DeliveryGuardCard > 渲染快照包含门禁标题、开关说明与占位示例 1`] = `
+<div>
+  <div>
+    <div
+      class="ios-card rounded-xl p-6 bg-white space-y-5"
+    >
+      <div
+        class="flex items-start gap-2"
+      >
+        <div
+          class="p-1.5 rounded-lg bg-red-500 text-white mt-0.5"
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-shield-alert w-4 h-4"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+            />
+            <path
+              d="M12 8v4"
+            />
+            <path
+              d="M12 16h.01"
+            />
+          </svg>
+        </div>
+        <div>
+          <h4
+            class="text-sm font-bold text-gray-800"
+          >
+            发货内容门禁
+          </h4>
+          <p
+            class="text-xs text-gray-500 mt-0.5"
+          >
+            出站发货文本统一过门禁，命中即拒发并转人工处理。
+          </p>
+        </div>
+      </div>
+      <label
+        class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer"
+        for="delivery-guard-enabled"
+      >
+        <input
+          aria-label="发货内容违禁词门禁"
+          checked=""
+          class="mt-1"
+          id="delivery-guard-enabled"
+          type="checkbox"
+        />
+        <span>
+          <span
+            class="block text-sm font-bold text-amber-900"
+          >
+            发货内容违禁词门禁
+          </span>
+          <span
+            class="mt-1 block text-xs leading-5 text-amber-800"
+          >
+            自动发货文本命中联系方式/引流链接/违禁词时拒发并转人工处理。
+          </span>
+        </span>
+      </label>
+      <label
+        class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer"
+        for="delivery-guard-link-check"
+      >
+        <input
+          aria-label="发货前链接健康检查"
+          checked=""
+          class="mt-1"
+          id="delivery-guard-link-check"
+          type="checkbox"
+        />
+        <span>
+          <span
+            class="block text-sm font-bold text-amber-900"
+          >
+            发货前链接健康检查
+          </span>
+          <span
+            class="mt-1 block text-xs leading-5 text-amber-800"
+          >
+            发送前校验网盘链接可达性，失效不发并转人工（4xx 反爬不拦截）。
+          </span>
+        </span>
+      </label>
+      <div
+        class="space-y-2"
+      >
+        <label
+          class="block text-sm font-bold text-gray-800"
+          for="delivery-guard-extra-words"
+        >
+          额外违禁词
+        </label>
+        <textarea
+          aria-label="额外违禁词"
+          class="w-full ios-input px-4 py-3 rounded-xl h-24 text-sm leading-6 resize-y"
+          id="delivery-guard-extra-words"
+          placeholder="例如：加微信, 扫码进群 | 站外引流"
+        />
+        <p
+          class="text-xs text-gray-500 flex items-center gap-1"
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-ban w-3.5 h-3.5"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M4.929 4.929 19.07 19.071"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+            />
+          </svg>
+          逗号或竖线分隔多个词条，命中即与内置规则同样拒发。
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-link2 lucide-link-2 w-3.5 h-3.5 ml-1.5"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M9 17H7A5 5 0 0 1 7 7h2"
+            />
+            <path
+              d="M15 7h2a5 5 0 1 1 0 10h-2"
+            />
+            <line
+              x1="8"
+              x2="16"
+              y1="12"
+              y2="12"
+            />
+          </svg>
+          仅额外补充，不影响内置联系方式/外链检测。
+        </p>
+      </div>
+    </div>
+    <pre
+      data-testid="draft"
+    />
+  </div>
+</div>
+`;
