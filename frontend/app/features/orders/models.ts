@@ -131,6 +131,22 @@ export interface Order {
   created_at?: string;
   /** 订单更新时间。 */
   updated_at?: string;
+  /** 付款时间 ISO 文本，未付款或旧数据缺失时为空。 */
+  paid_at?: string | null;
+  /** 发货时间 ISO 文本，未发货时为空。 */
+  shipped_at?: string | null;
+  /** 生效的发货 SLA 分钟数，0 表示未启用。 */
+  sla_minutes?: number;
+  /** 付款时间加 SLA 的截止时刻 ISO 文本，未启用时为空。 */
+  sla_deadline?: string | null;
+}
+
+/** 发货 SLA 配置卡使用的账号下拉选项，只含非敏感展示字段。 */
+export interface SlaAccountOption {
+  /** 账号 cookie_id，作为 delivery_sla_config per_account 的覆盖键。 */
+  cookie_id: string;
+  /** 账号备注名，缺失时回退昵称或 cookie_id。 */
+  label: string;
 }
 
 /** 由当前 feature adapter 归一后的 Item UI 模型；不直接暴露 HTTP DTO。 */

@@ -108,7 +108,7 @@ export const AppContent: React.FC<AppContentProps> = ({
       case 'dashboard': return <Dashboard />;
       case 'accounts': return <AccountList />;
       case 'chat': return <Chat />;
-      case 'orders': return <OrderList />;
+      case 'orders': return <OrderList isAdmin={isAdmin} />;
       case 'cards': return <CardList />;
       case 'items': return <ItemList onConfigureDelivery={handleConfigureDelivery} publishSpecsEditor={PublishSpecsEditor} publishImagesEditor={PublishImagesEditor} />;
       case 'rules': return <Rules

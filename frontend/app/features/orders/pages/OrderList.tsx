@@ -3,7 +3,9 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { formatLocalDateTime } from '../../../../dateTime';
 import type { OrderStatus } from '../api';
+import { DeliverySlaConfigCard } from '../components/DeliverySlaConfigCard';
 import { OrderFilterBar } from '../components/OrderFilterBar';
+import { SlaCountdownCell } from '../components/SlaCountdownCell';
 import { useOrderQuery } from '../hooks';
 import { useOrderActions } from '../orderActions';
 
@@ -38,8 +40,14 @@ const StatusBadge: React.FC<{ /** status 表示状态。 */ status: OrderStatus 
   );
 };
 
+// OrderListProps 描述订单页面的授权输入。
+interface OrderListProps {
+  /** isAdmin 表示当前用户是否为管理员，仅管理员可见发货 SLA 配置卡。 */
+  isAdmin?: boolean;
+}
+
 // OrderList 渲染订单列表组件。
-const OrderList: React.FC = () => {
+const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
   // orderQuery 负责订单查询、筛选、分页和展示辅助数据。
   const orderQuery = useOrderQuery();
   // { 解构得到当前 Hook 返回的状态和操作函数。
@@ -106,6 +114,9 @@ const OrderList: React.FC = () => {
         </div>
       </div>
 
+      {/* 发货 SLA 配置卡仅管理员可见，负责默认分钟数与账号覆盖。 */}
+      <DeliverySlaConfigCard visible={isAdmin} />
+
       <div className="ios-card rounded-xl overflow-hidden shadow-lg border-0 bg-white">
         <OrderFilterBar
           filter={filter}
@@ -123,11 +134,12 @@ const OrderList: React.FC = () => {
           <table className="w-full text-left border-collapse table-fixed">
             <thead>
               <tr className="bg-white text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-50">
-                <th className="px-6 py-5" style={{width: '28%'}}>订单信息</th>
-                <th className="px-6 py-5" style={{width: '26%'}}>买家信息</th>
-                <th className="px-6 py-5" style={{width: '11%'}}>实付金额</th>
-                <th className="px-6 py-5" style={{width: '13%'}}>当前状态</th>
-                <th className="px-6 py-5 text-right" style={{width: '22%'}}>操作</th>
+                <th className="px-6 py-5" style={{width: '24%'}}>订单信息</th>
+                <th className="px-6 py-5" style={{width: '21%'}}>买家信息</th>
+                <th className="px-6 py-5" style={{width: '10%'}}>实付金额</th>
+                <th className="px-6 py-5" style={{width: '11%'}}>当前状态</th>
+                <th className="px-6 py-5" style={{width: '14%'}}>发货倒计时</th>
+                <th className="px-6 py-5 text-right" style={{width: '20%'}}>操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -184,6 +196,9 @@ const OrderList: React.FC = () => {
                   </td>
                   <td className="px-6 py-5">
                     <StatusBadge status={order.status} />
+                  </td>
+                  <td className="px-6 py-5">
+                    <SlaCountdownCell slaDeadline={order.sla_deadline} slaMinutes={order.sla_minutes} />
                   </td>
                   <td className="px-6 py-5 text-right">
                     {order.status === 'pending_ship' && (

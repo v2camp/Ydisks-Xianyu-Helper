@@ -9,9 +9,11 @@ OrderDTOResponse,
 OrderRefreshJobCancelResponse,
 OrderRefreshResponse,
 OrderSingleRefreshResponse,
-PaginatedResponse
+PaginatedResponse,
+SlaAccountOption
 } from './models';
 import { contractClient,  runContractRequest } from '../../../shared/api-contract/client';
+import { normalizeSystemSettingsUpdate } from '../../../shared/api-contract/settings';
 import { type RequestControlOptions } from '../../../shared/http/client';
 import { collectionFrom, objectFrom } from '../../../shared/http/contract';
 export type * from './models';
@@ -77,6 +79,39 @@ export const getAccountDetails = async (options?: RequestControlOptions): Promis
   }));
 };
 
+/** 发货 SLA 配置卡的账号下拉数据：ID 清单来自 /api/v1/accounts，备注名来自现有账号摘要契约。 */
+export const getSlaAccounts = async (options?: RequestControlOptions): Promise<SlaAccountOption[]> => {
+  // ids 与 details 并行读取账号 ID 清单和非敏感摘要；摘要失败时仍可按 ID 展示。
+  const [ids, details] = await Promise.all([
+    runContractRequest(/* signal 控制账号 ID 清单请求的取消和超时。 */ signal => contractClient.GET('/api/v1/accounts', { signal }), options),
+    getAccountDetails(options).catch(/* summaryError 是账号摘要读取失败原因，降级为无备注名。 */ () => [] as AccountDetail[]),
+  ]);
+  // detailIndex 按 cookie_id 索引账号摘要，供下拉补备注名。
+  const detailIndex = new Map(details.map(/* detail 是当前账号摘要。 */ detail => [detail.id, detail]));
+  return (Array.isArray(ids) ? ids : []).map(
+    /* id 是 GET /api/v1/accounts 返回的账号 cookie_id。 */ (id): SlaAccountOption => {
+    // detail 是该 cookie_id 对应的账号摘要，缺失时下拉只展示 ID。
+    const detail = detailIndex.get(id);
+    return { cookie_id: id, label: detail?.remark || detail?.nickname || id };
+  });
+};
+
+/** 读取系统设置里的 delivery_sla_config JSON 原文；未配置时返回空串。 */
+export const getDeliverySlaConfigRaw = async (options?: RequestControlOptions): Promise<string> => {
+  // response 是系统设置键值映射，SLA 配置以 JSON 字符串保存在 delivery_sla_config 键下。
+  const response = await runContractRequest(/* signal 控制系统设置读取的取消和超时。 */ signal => contractClient.GET('/api/v1/settings/system', { signal }), options) as unknown as Record<string, unknown>;
+  // raw 是 delivery_sla_config 的原始字符串值，缺失或类型不符回退空串。
+  const raw = response?.delivery_sla_config;
+  return typeof raw === 'string' ? raw : '';
+};
+
+/** 将 SLA 配置 JSON 串写入系统设置的 delivery_sla_config 键。 */
+export const updateDeliverySlaConfig = async (rawJson: string, options?: RequestControlOptions): Promise<OperationResponse> =>
+  runContractRequest(/* signal 控制系统设置更新请求的取消和超时。 */ signal => contractClient.PUT('/api/v1/settings/system', {
+    body: normalizeSystemSettingsUpdate({ delivery_sla_config: rawJson }),
+    signal,
+  }), options);
+
 /** 订单关联商品展示读取当前商品索引。 */
 export const getItems = async (accountID?: string, options?: RequestControlOptions): Promise<Item[]> => runContractRequest(/* signal 控制订单页商品读取的取消和超时。 */ signal => contractClient.GET('/api/v1/items', { params: { query: { cookie_id: accountID } }, signal }), options) as unknown as Promise<Item[]>;
 
@@ -92,6 +127,26 @@ const normalizeOrderStatus = (value: unknown): Order['status'] => {
   return ['processing', 'pending_ship', 'shipped', 'completed', 'cancelled', 'refunding'].includes(status)
     ? status as Order['status']
     : 'unknown';
+};
+
+// normalizeSlaFields 归一订单 SLA 字段；生成类型未包含新字段时按可选扩展读取，缺失回退空值。
+const normalizeSlaFields = (item: Partial<Order>): Pick<Order, 'paid_at' | 'shipped_at' | 'sla_minutes' | 'sla_deadline'> => {
+  // raw 是待读取 SLA 扩展字段的订单传输对象视图。
+  const raw = item as Record<string, unknown>;
+  // paidAt 是付款时间 ISO 文本，缺失回退空值。
+  const paidAt = typeof raw.paid_at === 'string' ? raw.paid_at : null;
+  // shippedAt 是发货时间 ISO 文本，缺失回退空值。
+  const shippedAt = typeof raw.shipped_at === 'string' ? raw.shipped_at : null;
+  // deadline 是 SLA 截止时刻 ISO 文本，缺失回退空值。
+  const deadline = typeof raw.sla_deadline === 'string' ? raw.sla_deadline : null;
+  // minutes 是生效的 SLA 分钟数，非法值回退 0 表示未启用。
+  const minutesValue = Number(raw.sla_minutes);
+  return {
+    paid_at: paidAt,
+    shipped_at: shippedAt,
+    sla_minutes: Number.isFinite(minutesValue) && minutesValue > 0 ? Math.floor(minutesValue) : 0,
+    sla_deadline: deadline,
+  };
 };
 
 // getOrders 读取订单列表。
@@ -128,6 +183,7 @@ export const getOrders = async (
     order_status: normalizeOrderStatus(item.order_status),
     status: normalizeOrderStatus(item.status || item.order_status),
     quantity: Number(item.quantity || 1),
+    ...normalizeSlaFields(item),
   }));
   return {
     success: true,
