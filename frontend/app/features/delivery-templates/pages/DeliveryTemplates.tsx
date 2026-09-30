@@ -1,6 +1,7 @@
-import { Edit3, FileStack, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Edit3, FileStack, Plus, Save, Trash2, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { COPY_RISK_BANNER_TEXT, DUPLICATE_COPY_WARNING, collectOtherTemplateMessages, isDuplicateAcrossTemplates } from '../copyRisk';
 import { useDeliveryTemplates } from '../hooks';
 import type { DeliveryTemplate, DeliveryTemplateDraft } from '../types';
 
@@ -17,6 +18,8 @@ const DeliveryTemplates: React.FC = () => {
   const [editingID, setEditingID] = useState<number | null>(null);
   // editorOpen 表示模板编辑器是否由用户明确打开，避免空白新建草稿被条件渲染误判为关闭。
   const [editorOpen, setEditorOpen] = useState(false);
+  // otherTemplateMessages 保存除当前编辑模板外其它模板的全部消息，供重复话术风控比对。
+  const otherTemplateMessages = collectOtherTemplateMessages(templates, editingID);
   // 首屏加载由 Hook 自动触发；页面只负责展示真实错误。
   React.useEffect(/* 当前副作用在页面挂载时加载模板，并在卸载后由 Hook 取消请求。 */ () => { void loadTemplates().catch(/* error 是首屏列表请求失败原因，Hook 已保存用户可见错误。 */ () => undefined); }, [loadTemplates]);
 
@@ -150,6 +153,11 @@ const DeliveryTemplates: React.FC = () => {
             </div>
 
             <div className="modal-body space-y-5">
+              {/* 话术风控提示条固定在编辑器顶部，提醒固定话术高频重复的营销风险。 */}
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-medium leading-5 text-amber-800">{COPY_RISK_BANNER_TEXT}</p>
+              </div>
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
                 <section className="space-y-5" aria-label="模板内容编辑">
                   <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -165,7 +173,15 @@ const DeliveryTemplates: React.FC = () => {
                     {draft.messages.map(/* message 是正在编辑的模板消息。 */ (message, index) => (
                       <div key={index} className="flex gap-2 rounded-2xl border border-gray-200 bg-gray-50/70 p-3">
                         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-white text-xs font-black text-gray-400">{index + 1}</div>
-                        <textarea value={message.content} onChange={/* callback 更新当前消息正文。 */ event => updateMessageContent(index, event)} placeholder="例如：感谢购买，您的卡密是 {{cards.main}}" className="ios-input min-h-24 flex-1 resize-y rounded-xl bg-white px-4 py-3" />
+                        <div className="flex min-w-0 flex-1 flex-col gap-2">
+                          <textarea value={message.content} onChange={/* callback 更新当前消息正文。 */ event => updateMessageContent(index, event)} placeholder="例如：感谢购买，您的卡密是 {{cards.main}}" className="ios-input min-h-24 w-full resize-y rounded-xl bg-white px-4 py-3" />
+                          {isDuplicateAcrossTemplates(message.content, otherTemplateMessages) && (
+                            <p className="flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium leading-5 text-amber-800">
+                              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                              {DUPLICATE_COPY_WARNING}
+                            </p>
+                          )}
+                        </div>
                         <button type="button" disabled={draft.messages.length === 1} onClick={/* callback 删除当前消息。 */ () => removeMessage(index)} aria-label={`删除第 ${index + 1} 条消息`} className="self-start rounded-lg p-2 text-red-500 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     ))}
