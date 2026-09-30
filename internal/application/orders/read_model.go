@@ -44,6 +44,10 @@ type OrderRow struct {
 	CreatedAt string
 	// UpdatedAt 是订单更新时间。
 	UpdatedAt string
+	// PaidAt 是订单付款时间文本；未付款时为空串。
+	PaidAt string
+	// ShippedAt 是订单发货时间文本；未发货时为空串。
+	ShippedAt string
 }
 
 // Order 是订单详情和发货用例使用的纯业务实体。

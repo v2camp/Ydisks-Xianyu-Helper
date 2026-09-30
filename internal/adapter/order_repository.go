@@ -54,6 +54,7 @@ func orderRowsFromDB(rows []db.OrderRow) []orderapp.OrderRow {
 			SystemShipped: row.SystemShipped, ReceiverName: row.ReceiverName,
 			ReceiverPhone: row.ReceiverPhone, ReceiverAddr: row.ReceiverAddr,
 			ReceiverCity: row.ReceiverCity, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			PaidAt: row.PaidAt, ShippedAt: row.ShippedAt,
 		})
 	}
 	return converted

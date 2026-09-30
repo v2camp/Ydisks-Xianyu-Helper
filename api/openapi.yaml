@@ -8590,6 +8590,10 @@ components:
         receiver_city: {type: string}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+        paid_at: {type: [string, 'null'], format: date-time}
+        shipped_at: {type: [string, 'null'], format: date-time}
+        sla_minutes: {type: integer}
+        sla_deadline: {type: [string, 'null'], format: date-time}
     OrderListResponse:
       type: object
       required: [success, data, total, page, page_size, total_pages]

@@ -2962,6 +2962,13 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at?: string;
+            /** Format: date-time */
+            paid_at?: string | null;
+            /** Format: date-time */
+            shipped_at?: string | null;
+            sla_minutes?: number;
+            /** Format: date-time */
+            sla_deadline?: string | null;
         };
         OrderListResponse: {
             success: boolean;

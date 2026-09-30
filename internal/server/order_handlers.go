@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -51,14 +52,38 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "查询失败")
 		return
 	}
+	// cfg 是发货 SLA 配置；读取失败时为零值，SLA 自动关闭。
+	cfg := s.readDeliverySLAConfig(r.Context(), sess.UserID)
+	// orders 是补充 SLA 字段后的订单响应列表。
+	orders := result.Orders
+	// i 是当前遍历的订单下标。
+	for i := range orders {
+		applyDeliverySLA(&orders[i], cfg)
+	}
 	writeJSON(w, http.StatusOK, orderListResponse{
 		Success:    true,
-		Data:       result.Orders,
+		Data:       orders,
 		Total:      result.Total,
 		Page:       result.Page,
 		PageSize:   result.PageSize,
 		TotalPages: result.TotalPages,
 	})
+}
+
+// readDeliverySLAConfig 读取系统设置 delivery_sla_config 并解析。
+// 设置读取失败或内容非法时返回空配置，保证列表不被 SLA 配置阻断。
+func (s *Server) readDeliverySLAConfig(ctx context.Context, userID int64) deliverySLAConfig {
+	// settings 是系统设置应用服务。
+	settings := s.settingsApplication()
+	if settings == nil {
+		return deliverySLAConfig{}
+	}
+	// values 是管理员可见的脱敏系统设置集合；读取失败时降级为未启用。
+	values, err := settings.GetSystem(ctx, userID)
+	if err != nil {
+		return deliverySLAConfig{}
+	}
+	return parseDeliverySLAConfig(values["delivery_sla_config"])
 }
 
 // getOrder 订单详情。
@@ -77,8 +102,11 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// orderView 是补充 SLA 字段后的订单详情响应。
+	orderView := result.Order
+	applyDeliverySLA(&orderView, s.readDeliverySLAConfig(r.Context(), sess.UserID))
 	writeJSON(w, http.StatusOK, orderDetailResponse{
-		orderDTO: result.Order, Success: true, Data: result.Order,
+		orderDTO: orderView, Success: true, Data: orderView,
 	})
 }
 

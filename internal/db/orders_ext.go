@@ -31,6 +31,8 @@ type OrderRow struct {
 	ReceiverCity  string
 	CreatedAt     string
 	UpdatedAt     string
+	PaidAt        string
+	ShippedAt     string
 }
 
 // OrderListFilter 是订单列表分页查询条件。
@@ -103,7 +105,7 @@ func (o *Orders) ListForUser(ctx context.Context, f OrderListFilter) ([]OrderRow
 		        o.buyer_id, o.spec_name, o.spec_value, o.quantity, o.amount,
 		        o.order_status, o.cookie_id, o.is_bargain, o.system_shipped,
 		        o.receiver_name, o.receiver_phone, o.receiver_address, o.receiver_city,
-		        o.created_at, o.updated_at
+		        o.created_at, o.updated_at, COALESCE(o.paid_at,''), COALESCE(o.shipped_at,'')
 		   FROM orders o
 		   JOIN cookies c ON c.id=o.cookie_id
 		   LEFT JOIN item_info i ON i.cookie_id=o.cookie_id AND i.item_id=o.item_id
@@ -126,7 +128,7 @@ func (o *Orders) ListForUser(ctx context.Context, f OrderListFilter) ([]OrderRow
 		if // err 用于本次流程后续判断的err
 		err := rows.Scan(&r.OrderID, &itemID, &itemTitle, &itemDetail, &buyerID, &specName, &specValue, &qty, &amount,
 			&r.OrderStatus, &r.CookieID, &isBargain, &sysShipped, &receiverName, &receiverPhone, &receiverAddr,
-			&receiverCity, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			&receiverCity, &r.CreatedAt, &r.UpdatedAt, &r.PaidAt, &r.ShippedAt); err != nil {
 			return nil, 0, err
 		}
 		r.ItemID = itemID.String
