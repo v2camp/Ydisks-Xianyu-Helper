@@ -99,6 +99,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// 发货 SLA 看门狗随调度循环自动启停；defer 保证先停扫描协程再关闭 done，关停路径可完整等待。
+		s.center.sla.Start(ctx)
+		defer s.center.sla.Stop()
 		// generalTicker 驱动分钟级的账号、恢复与求评价扫描。
 		generalTicker := time.NewTicker(s.interval)
 		defer generalTicker.Stop()

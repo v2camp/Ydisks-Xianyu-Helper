@@ -121,6 +121,8 @@ type Center struct {
 	dependencies centerDependencies
 	// silence 是业务静默看门狗；未装配活动读取函数时为 nil，扫描循环跳过检查。
 	silence *silenceWatchdog
+	// sla 是发货 SLA 超时提醒看门狗；由 Scheduler 启停，配置关闭时扫描自动跳过。
+	sla *deliverySLAWatchdog
 }
 
 // centerDependencies 集中拥有自动化中心构造后不可变的外部依赖。
@@ -192,6 +194,9 @@ func NewWithDependencies(store *db.Store, senders SenderProvider, logger *slog.L
 	// 业务静默看门狗在构造期装配：活动读取函数未注入时返回 nil，扫描循环跳过检查。
 	// 阈值从系统设置读取（数据库优先），未配置回落环境变量，再回落默认 180 分钟。
 	center.silence = newSilenceWatchdog(center.store, center.dependencies.silenceActivity, center.dependencies.silenceAlerter, center.logger)
+	// 发货 SLA 看门狗在构造期装配：每轮扫描读取系统设置，缺省或非法配置自动关闭；
+	// 通知器未实现账号事件能力时降级为只记日志。
+	center.sla = newDeliverySLAWatchdog(center.store, deliverySLANotifierFrom(center.dependencies.notifier), center.logger)
 	if // recoverer、ok 保存订单详情查询器提供的凭证恢复能力及类型判断结果
 	recoverer, ok := center.dependencies.fetcher.(CredentialRecoverer); ok {
 		center.dependencies.recoverer = recoverer
