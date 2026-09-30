@@ -189,6 +189,7 @@ func orderDTOFromRow(row orderapp.OrderRow) orderDTO {
 		ReceiverName: row.ReceiverName, ReceiverPhone: row.ReceiverPhone,
 		ReceiverAddress: row.ReceiverAddr, ReceiverCity: row.ReceiverCity,
 		CreatedAt: normalizeOrderTimestamp(row.CreatedAt), UpdatedAt: normalizeOrderTimestamp(row.UpdatedAt),
+		PaidAt: nullableOrderTime(row.PaidAt), ShippedAt: nullableOrderTime(row.ShippedAt),
 	}
 }
 
@@ -210,6 +211,7 @@ func orderDTOFromOrder(order *orderapp.Order, item *orderapp.ItemInfo) orderDTO 
 		ReceiverName: order.ReceiverName, ReceiverPhone: order.ReceiverPhone,
 		ReceiverAddress: order.ReceiverAddress, ReceiverCity: order.ReceiverCity,
 		CreatedAt: normalizeOrderTimestamp(order.CreatedAt), UpdatedAt: normalizeOrderTimestamp(order.UpdatedAt),
+		PaidAt: nullableOrderTime(order.PaidAt), ShippedAt: nullableOrderTime(order.ShippedAt),
 	}
 }
 

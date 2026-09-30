@@ -518,6 +518,35 @@ func validateSystemValue(key, value string) error {
 		err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
 			return fmt.Errorf("%s 必须是合法 JSON 对象", key)
 		}
+	case "delivery_sla_config":
+		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
+		if trimmed == "" {
+			return nil
+		}
+		// SLA 配置必须是 JSON 对象，其余形状一律拒绝落库。
+		if !strings.HasPrefix(trimmed, "{") {
+			return fmt.Errorf("%s 必须是 JSON 对象", key)
+		}
+		// parsed 保存按 SLA 配置形状解析的字段；字段类型不匹配或非法 JSON 一律拒绝落库。
+		var parsed struct {
+			DefaultMinutes *int           `json:"default_minutes"`
+			PerAccount     map[string]int `json:"per_account"`
+		}
+		if // err 是 SLA 配置 JSON 的解析错误；非法 JSON 或字段类型不匹配一律拒绝落库。
+		err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+			return fmt.Errorf("%s 必须是合法 JSON 对象", key)
+		}
+		// default_minutes 缺省视为 0；显式提供时必须非负。
+		if parsed.DefaultMinutes != nil && *parsed.DefaultMinutes < 0 {
+			return fmt.Errorf("%s 的 default_minutes 必须是非负整数", key)
+		}
+		// cookieID 是 per_account 中的账号标识，minutes 是对应覆盖分钟数。
+		for cookieID, minutes := range parsed.PerAccount {
+			// 账号覆盖值必须非负，负数意味着关闭而非反向配置。
+			if minutes < 0 {
+				return fmt.Errorf("%s 的 per_account[%s] 必须是非负整数", key, cookieID)
+			}
+		}
 	case "mcp.servers":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
 		if trimmed == "" {

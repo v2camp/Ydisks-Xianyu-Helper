@@ -286,6 +286,14 @@ type orderDTO struct {
 	CreatedAt string `json:"created_at"`
 	// UpdatedAt 是订单更新时间。
 	UpdatedAt string `json:"updated_at"`
+	// PaidAt 是订单付款时间；未付款时为 null。
+	PaidAt *string `json:"paid_at"`
+	// ShippedAt 是订单发货时间；未发货时为 null。
+	ShippedAt *string `json:"shipped_at"`
+	// SLAMinutes 是生效的发货 SLA 分钟数；0 表示未启用。
+	SLAMinutes int `json:"sla_minutes"`
+	// SLADeadline 是付款时间加 SLA 的截止时刻；未启用或无法计算时为 null。
+	SLADeadline *string `json:"sla_deadline"`
 }
 
 // orderListResponse 是订单分页接口的具名响应 DTO。
