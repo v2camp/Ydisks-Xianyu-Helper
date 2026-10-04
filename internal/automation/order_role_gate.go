@@ -229,3 +229,54 @@ func sameOrderIdentity(left, right string) bool {
 	right = strings.TrimSuffix(strings.TrimSpace(right), "@goofish")
 	return left != "" && right != "" && left == right
 }
+
+// roleVerificationMarker 取出历史未知角色任务已固化的防重键；不存在或非字符串时返回空串。
+// buildTriggerKey 必须优先沿用它，避免同一事件在补齐订单号前后被算成两条不同的延期任务。
+func roleVerificationMarker(task Task) string {
+	if task.Raw == nil {
+		return ""
+	}
+	// marker、ok 保存历史任务快照中的稳定键及其类型判断结果。
+	marker, ok := task.Raw[roleVerificationTaskKeyField].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(marker)
+}
+
+// authorizeWebSocketSellerRoleGate 对 WebSocket 交易事件执行一次卖家身份门禁，并承担未放行时的收口动作。
+// verifiedTask 是核验通过后的任务；proceed 表示调用方是否应视为已处理成功；handled 为真时调用方必须立即返回，不再写订单事实。
+// 数据库等外部错误经 err 上抛，不得降级为「安全地忽略」，以免丢失后续重试机会。
+func (c *Center) authorizeWebSocketSellerRoleGate(ctx context.Context, task Task) (verifiedTask Task, proceed bool, handled bool, err error) {
+	// unknownRoleTask 标记本次事件是否未携带明确角色；仅该类事件需要记录本地卖家事实核验的放行日志。
+	unknownRoleTask := task.OrderRole == OrderRoleUnknown && isWebSocketSellerOrderTask(task)
+	// checked、sellerVerified、rejectReason 保存本地卖家核验结果；失败时在事实写入前停止，避免把买家订单落到卖家账号。
+	checked, sellerVerified, rejectReason, roleErr := c.authorizeWebSocketSellerTask(ctx, task)
+	if roleErr != nil {
+		return task, false, false, roleErr
+	}
+	if sellerVerified {
+		if unknownRoleTask && c.logger != nil {
+			c.logger.Info("未知角色交易事件已通过本地卖家核验，继续执行自动化", "account", checked.AccountID, "order_id", checked.OrderID, "item_id", checked.ItemID, "trigger", checked.TriggerType, "source", checked.Source)
+		}
+		return checked, true, false, nil
+	}
+	if roleVerificationRetryable(rejectReason) {
+		if isDeferredReplay(task) {
+			// 未知角色延期任务再次没有本地证据时交给统一退避；达到上限后由调度器发送人工处理通知。
+			return task, false, false, errSellerRoleEvidencePending
+		}
+		// deferErr 保存首条未知角色事件写入延期队列的错误；写入失败不能伪装成已安全处理。
+		if deferErr := c.deferUnknownRoleTask(ctx, task, rejectReason); deferErr != nil {
+			return task, false, false, deferErr
+		}
+		if c.logger != nil {
+			c.logger.Info("未知角色发货事件已保存，等待本地卖家事实", "account", task.AccountID, "order_id", task.OrderID, "trigger", task.TriggerType, "reason", rejectReason)
+		}
+		return task, true, true, nil
+	}
+	if c.logger != nil {
+		c.logger.Info("未知角色发货事件未通过本地卖家核验，未执行外部动作", "account", task.AccountID, "order_id", task.OrderID, "trigger", task.TriggerType, "reason", rejectReason)
+	}
+	return task, false, true, nil
+}
