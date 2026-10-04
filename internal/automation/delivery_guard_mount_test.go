@@ -441,7 +441,9 @@ func TestBargainPendingSootheGuardNeedsReview(t *testing.T) {
 	// center 是注入免拼替身与发送器的自动化中心。
 	center := NewWithDependencies(store, testSenderProvider{sender: sender}, nil, CenterDependencies{MTop: client})
 	// handleErr 保存待刀成任务的处理结果，门禁拦截应上抛。
-	handleErr := center.HandleTask(ctx, Task{Source: "ws", AccountID: "cid", TriggerType: TriggerBargainPending, OrderID: "bargain-guard-stage", ItemID: "item", BuyerID: "buyer", ChatID: "chat"})
+	// 显式标注卖家角色：缺失买卖方向的 WS 事件会先进入延期待核验（由 TestBargainPendingWithoutRoleIsDeferred 覆盖），
+	// 本用例只验证安抚话术内容门禁，必须越过角色门禁才能触达内容门禁。
+	handleErr := center.HandleTask(ctx, Task{Source: "ws", AccountID: "cid", TriggerType: TriggerBargainPending, OrderRole: OrderRoleSeller, OrderID: "bargain-guard-stage", ItemID: "item", BuyerID: "buyer", ChatID: "chat"})
 	if !isDeliveryGuardError(handleErr) {
 		t.Fatalf("待刀成门禁拦截未上抛: %v", handleErr)
 	}
@@ -456,6 +458,46 @@ func TestBargainPendingSootheGuardNeedsReview(t *testing.T) {
 	}
 	if stageStatus != "needs_review" {
 		t.Fatalf("免拼阶段应进入人工核对: %q", stageStatus)
+	}
+}
+
+// TestBargainPendingWithoutRoleIsDeferred 验证待刀成系统卡片缺少买卖方向时先延期待核验，既不执行免拼也不发送消息。
+func TestBargainPendingWithoutRoleIsDeferred(t *testing.T) {
+	// store、cleanup 保存测试数据库和清理函数。
+	store, cleanup := newAutomationTestStore(t)
+	defer cleanup()
+	// ctx 限制砍价待刀成事件的处理生命周期。
+	ctx := context.Background()
+	// admin 是账号设置的所有者。
+	admin, _ := store.Users.GetByUsername(ctx, "admin")
+	// enabled 是本测试显式开启的独立自动免拼开关。
+	enabled := true
+	// settingsErr 保存写入账号设置时的数据库错误。
+	if _, settingsErr := store.Cookies.UpdateSettings(ctx, "cid", db.AccountSettingsUpdate{UserID: admin.ID, AutoBargain: &enabled}); settingsErr != nil {
+		t.Fatal(settingsErr)
+	}
+	// client 是若被错误调用即可暴露抢跑的 MTOP 替身。
+	client := &fakeMTop{freeShippingOK: true}
+	// sender 记录任何被误发出的消息。
+	sender := &testSender{}
+	// center 是注入免拼替身与发送器的自动化中心。
+	center := NewWithDependencies(store, testSenderProvider{sender: sender}, nil, CenterDependencies{MTop: client})
+	// handleErr 保存缺角色待刀成事件的处理结果；延期待核验属于安全忽略，不应上抛错误。
+	handleErr := center.HandleTask(ctx, Task{Source: "ws", AccountID: "cid", TriggerType: TriggerBargainPending, OrderID: "bargain-no-role", ItemID: "item", BuyerID: "buyer", ChatID: "chat"})
+	if handleErr != nil {
+		t.Fatalf("缺角色待刀成事件应延期待核验而不上抛错误: %v", handleErr)
+	}
+	// pendingCount 保存延期队列中的待核验任务数量，证明事件未被丢弃。
+	var pendingCount int
+	// queryErr 保存延期任务表计数查询错误。
+	if queryErr := store.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM automation_pending_tasks`).Scan(&pendingCount); queryErr != nil {
+		t.Fatal(queryErr)
+	}
+	if pendingCount != 1 {
+		t.Fatalf("缺角色待刀成事件应写入一条延期任务: pending=%d", pendingCount)
+	}
+	if client.freeShippingCalls != 0 || len(sender.texts) != 0 {
+		t.Fatalf("待核验期间不应执行免拼或发送: free=%d texts=%v", client.freeShippingCalls, sender.texts)
 	}
 }
 
