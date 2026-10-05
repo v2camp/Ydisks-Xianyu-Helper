@@ -53,6 +53,57 @@ func TestActionPlannerMultiSKUSelectsOnlyExactCombination(t *testing.T) {
 	}
 }
 
+// TestActionPlannerAccountWideRuleMatchesAnyOrderSpec 验证已确认的账号级付款规则能匹配带规格订单，而未授权任务仍拒绝空规格通配。
+func TestActionPlannerAccountWideRuleMatchesAnyOrderSpec(t *testing.T) {
+	// actions 保存账号级规则的空规格发卡动作和确认发货动作。
+	actions := []db.AutomationAction{
+		{ID: 1, ActionType: ActionSendCard, Enabled: true, ConfigJSON: `{}`},
+		{ID: 2, ActionType: ActionConfirmShipment, Enabled: true},
+	}
+	// allowedTask 表示用户已明确确认适用于全部商品的账号级付款任务。
+	allowedTask := Task{TriggerType: TriggerOrderPaid, SpecName: "套餐", SpecValue: "90天", AllowAllItems: true}
+	// allowedPlan 保存授权任务生成的动作计划。
+	allowedPlan := (actionPlanner{}).plan(allowedTask, actions)
+	// got 保存授权动作计划中的动作顺序，确认发卡位于确认发货之前。
+	if got := []int64{allowedPlan[0].ID, allowedPlan[1].ID}; !reflect.DeepEqual(got, []int64{1, 2}) {
+		t.Fatalf("账号级全商品动作计划=%v want [1 2]", got)
+	}
+	// restrictedTask 表示没有全商品授权的商品级任务，空规格动作不得覆盖带规格订单。
+	restrictedTask := allowedTask
+	restrictedTask.AllowAllItems = false
+	// plan 保存未授权任务过滤规格后的动作计划。
+	if plan := (actionPlanner{}).plan(restrictedTask, actions); len(plan) != 1 || plan[0].ID != 2 {
+		t.Fatalf("未授权空规格动作不应匹配带规格订单: %+v", plan)
+	}
+}
+
+// TestRuleAllowsAllItemsRequiresExplicitAccountPaidConfirmation 验证全商品通配只接受账号级付款规则中的布尔 true。
+func TestRuleAllowsAllItemsRequiresExplicitAccountPaidConfirmation(t *testing.T) {
+	// cases 覆盖商品级、非付款、缺失授权和明确授权四种规则范围。
+	cases := []struct {
+		// name 是当前规则范围场景名称。
+		name string
+		// rule 保存待判断的自动化规则。
+		rule db.AutomationRule
+		// want 表示是否应允许空规格匹配任意订单规格。
+		want bool
+	}{
+		{name: "item rule", rule: db.AutomationRule{ItemID: "item-1", TriggerType: TriggerOrderPaid, ConfigJSON: `{"allow_all_items":true}`}},
+		{name: "review rule", rule: db.AutomationRule{TriggerType: TriggerBuyerReviewed, ConfigJSON: `{"allow_all_items":true}`}},
+		{name: "missing confirmation", rule: db.AutomationRule{TriggerType: TriggerOrderPaid, ConfigJSON: `{}`}},
+		{name: "confirmed account rule", rule: db.AutomationRule{TriggerType: TriggerOrderPaid, ConfigJSON: `{"allow_all_items":true}`}, want: true},
+	}
+	// tc 表示当前待验证的规则范围案例。
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// got 表示当前规则是否通过全商品授权门禁。
+			if got := ruleAllowsAllItems(tc.rule, TriggerOrderPaid); got != tc.want {
+				t.Fatalf("ruleAllowsAllItems=%v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestEventFactRecorderWithoutOrderIsNoOp 验证没有订单事实时记录组件不执行任何持久化动作。
 func TestEventFactRecorderWithoutOrderIsNoOp(t *testing.T) {
 	// recorder 未注入数据库时应对无订单任务安全忽略。

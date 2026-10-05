@@ -54,7 +54,21 @@ func (a *Adapter) ChatSessionRole(ctx context.Context, accountID, chatID, itemID
 	return a.chat.SessionRole(ctx, accountID, chatID, itemID)
 }
 
-// SaveChatSessionRole 保存一次平台发布者核验得到的会话角色，不修改 Cookie 或 Token。
+// ItemBelongsToAccount 判断商品是否仍在当前账号的有效本地商品集合中。
+// 本地归属是自动回复识别卖家角色的确定证据；查询只返回存在性，不读取或解密 Cookie、Token 等敏感字段。
+func (a *Adapter) ItemBelongsToAccount(ctx context.Context, accountID, itemID string) (bool, error) {
+	if a == nil || a.store == nil || a.store.Items == nil {
+		return false, errors.New("商品归属仓储未初始化")
+	}
+	// _, lookupErr 只读取账号和商品主键；商品不存在代表当前账号不能安全地作为卖家自动回复。
+	_, lookupErr := a.store.Items.GetByCookieItem(ctx, accountID, itemID)
+	if errors.Is(lookupErr, db.ErrNotFound) {
+		return false, nil
+	}
+	return lookupErr == nil, lookupErr
+}
+
+// SaveChatSessionRole 保存一次本地商品归属核验得到的会话角色，不修改 Cookie 或 Token。
 func (a *Adapter) SaveChatSessionRole(ctx context.Context, accountID, chatID, itemID, accountRole, buyerUserID, sellerUserID, roleSource string) error {
 	if a == nil || a.chat == nil {
 		return errors.New("聊天服务未初始化")

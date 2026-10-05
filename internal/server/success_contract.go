@@ -744,13 +744,13 @@ type orderRefreshSummary struct {
 	ListUpdated int `json:"list_updated"`
 	// SoftDeleted 是标记删除的订单数量。
 	SoftDeleted int `json:"soft_deleted"`
-	// DetailTotal 是需要补全详情的订单数量。
+	// DetailTotal 是兼容旧任务契约的详情补全数量；批量列表同步固定为零。
 	DetailTotal int `json:"detail_total"`
-	// Total 是本次处理订单总数。
+	// Total 是兼容旧任务契约的详情处理总数；批量列表同步固定为零。
 	Total int `json:"total"`
-	// Updated 是状态发生变化的订单数量。
+	// Updated 是兼容旧任务契约的详情刷新变化数量；批量列表字段变化计入 ListUpdated。
 	Updated int `json:"updated"`
-	// NoChange 是状态未发生变化的订单数量。
+	// NoChange 是兼容旧任务契约的详情刷新未变化数量；批量列表同步固定为零。
 	NoChange int `json:"no_change"`
 	// Failed 是刷新失败数量。
 	Failed int `json:"failed"`

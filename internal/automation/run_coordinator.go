@@ -185,6 +185,8 @@ func (r automationRunCoordinator) executeRule(ctx context.Context, task Task, ru
 
 // prepareRuleRun 先补全任务事实和动作计划，再恢复既有运行或原子创建新的幂等运行；skipped 为 true 表示重复事件或已失效恢复任务无需执行。
 func (r automationRunCoordinator) prepareRuleRun(ctx context.Context, task Task, rule db.AutomationRule) (preparedTask Task, run *db.AutomationRun, skipped bool, err error) {
+	// AllowAllItems 固化当前规则的显式全商品授权；恢复历史运行时仍以当前有效规则授权为准，不从订单规格推断通配范围。
+	task.AllowAllItems = ruleAllowsAllItems(rule, task.TriggerType)
 	if len(task.ActionPlan) == 0 && task.TriggerType != TriggerOrderPaid {
 		task.ActionPlan = r.planner.plan(task, rule.Actions)
 	}
