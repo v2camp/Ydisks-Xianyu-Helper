@@ -211,7 +211,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
 	}
 	// 应用服务集合就绪后把各域工具注册到同一个 MCP 协议服务器。
-	RegisterMCPTools(mcpEndpoint, services.TransportPorts())
+	RegisterMCPTools(mcpEndpoint, services.TransportPorts(), services.LifecycleContext)
 	// serverDependencies、dependenciesErr 分别是投影给 HTTP transport 的依赖快照及其构造错误。
 	serverDependencies, dependenciesErr := ServerDependencies(services, HTTPDependencies{
 		Auth: &auth.Service{Store: infrastructure.Store, Logger: infrastructure.Logger, Secure: options.SecureCookie}, WebDir: options.WebDir, Addr: options.Addr,

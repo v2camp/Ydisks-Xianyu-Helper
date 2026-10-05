@@ -9,7 +9,9 @@ import (
 	"context"
 
 	accountapp "xianyu-go/internal/application/account"
+	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
+	orderapp "xianyu-go/internal/application/orders"
 )
 
 // AccountPorts 聚合账号域工具所需的账号用例集合。
@@ -42,8 +44,54 @@ type AccountPorts interface {
 	RunAccountTask(ctx context.Context, cookieID, taskType string) (automationapp.TaskSummary, error)
 }
 
+// OrderPorts 聚合订单查询、刷新、手动发货与刷新任务用例。
+type OrderPorts interface {
+	// List 按条件分页查询订单。
+	List(ctx context.Context, query orderapp.ListQuery) (orderapp.ListResult, error)
+	// Get 读取单个归属订单详情。
+	Get(ctx context.Context, userID int64, orderID string) (*orderapp.Order, error)
+	// RefreshSingle 向平台刷新单个订单。
+	RefreshSingle(ctx context.Context, userID int64, orderID string) (orderapp.SingleRefreshResult, error)
+	// Refresh 按账号或状态批量向平台刷新订单。
+	Refresh(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshResult, error)
+	// ManualShip 执行手动发货；只改本地状态或执行完整发货链路由 shipMode 决定。
+	ManualShip(ctx context.Context, request orderapp.ManualShipRequest) (orderapp.ManualShipResult, error)
+	// CreateRefreshJob 创建并启动后台批量刷新任务。
+	CreateRefreshJob(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshJobStartResult, error)
+	// GetRefreshJob 查询刷新任务快照。
+	GetRefreshJob(ctx context.Context, userID int64, jobID string) (*orderapp.RefreshJob, error)
+	// CancelRefreshJob 取消排队或运行中的刷新任务。
+	CancelRefreshJob(ctx context.Context, userID int64, jobID string) (orderapp.RefreshJobCancelResult, error)
+}
+
+// AnalyticsPorts 聚合仪表盘与订单分析用例。
+type AnalyticsPorts interface {
+	// DashboardStats 返回首页非敏感计数；不接受日期范围。
+	DashboardStats(ctx context.Context, userID int64) (analyticsapp.DashboardStats, error)
+	// OrderAnalytics 返回收益、按日与按状态聚合。
+	OrderAnalytics(ctx context.Context, query analyticsapp.Query) (analyticsapp.OrderAnalytics, error)
+	// ValidOrders 分页返回参与分析的有效订单明细。
+	ValidOrders(ctx context.Context, query analyticsapp.Query, page, pageSize int) (analyticsapp.ValidOrders, error)
+}
+
+// IssuePorts 聚合自动化异常与死信延期任务的查询和人工处理用例。
+type IssuePorts interface {
+	// ListIssues 返回待人工处理的运行异常与死信任务。
+	ListIssues(ctx context.Context, userID int64) ([]automationapp.RunIssue, []automationapp.DeferredIssue, error)
+	// ResolveRunIssue 对异常运行执行人工处理动作。
+	ResolveRunIssue(ctx context.Context, userID, runID int64, resolution string) error
+	// ResolveDeferredIssue 对死信延期任务执行 retry 或 dismiss。
+	ResolveDeferredIssue(ctx context.Context, userID, taskID int64, resolution string) error
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
 	Account AccountPorts
+	// Orders 是订单履约域端口。
+	Orders OrderPorts
+	// Analytics 是仪表盘分析域端口。
+	Analytics AnalyticsPorts
+	// Issues 是自动化异常处理域端口。
+	Issues IssuePorts
 }
