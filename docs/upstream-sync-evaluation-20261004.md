@@ -2,7 +2,8 @@
 
 - 上游：`origin` = https://github.com/Christ9038/Ydisks-Xianyu-Helper.git
 - 本地基线：`29026cb`（tag `v1.0.18-local-20260930`）
-- **执行状态：第 1 批（`34eda75` + `c2c41f2`）已于 2026-10-04 完成并合入 `main`，详见第七节。** 第 2、3 批待执行。
+- **执行状态：四个上游提交已全部处置完毕并合入 `main`（2026-10-05）。** 第 1 批见第七节、第 2 批见第八节、第 3 批见第九节。
+- 对应本地 tag：`v1.0.19-local-20261005`（两个缺陷修复）、`v1.0.20-local-20261005`（订单同步三项收紧）、`v1.0.21-local-20261005`（多商品关键词）。
 - 位置：`main...origin/main` **ahead 152 / behind 4**
 - 合并基：`643c702` v1.0.13 Release Note（2026-09-17）
 
@@ -212,7 +213,55 @@ go test -count=1 ./...                            # 54 个包全部 ok
 | 全仓 Go 单测 | 54 个包全部通过 |
 | 阶段二架构门禁 | 仍为基线 4 项历史违规，**无新增**；`engine/account.go` 由 812 降至 809 行 |
 
-### 8.4 下一步
+### 8.4 教训
 
-- 第 3 批：`1672791`（PR54 多商品关键词），feature，需人工解 5 个 Go 文件冲突（`account/manager.go`、`adapter/adapter.go`、`engine/account.go`、`engine/reply.go`、`engine/reply_extra_test.go`）。此前评估为「按需」，未执行。
-- **教训**：评估阶段的静态判断（尤其依赖 `grep` 的结论）必须由编译或测试实证，不能以「看起来无引用」作为可合并的依据。
+评估阶段的静态判断（尤其依赖 `grep` 的结论）必须由编译或测试实证，不能以「看起来无引用」作为可合并的依据。
+
+## 九、第 3 批执行记录（2026-10-05）
+
+### 9.1 关键发现：PR54 夹带了一次不相关的架构重构
+
+`1672791` 名为「支持多商品关键词」，实际混合了两类改动：
+
+| 类别 | 文件 | 处置 |
+|---|---|---|
+| 多商品关键词（feature） | `keywords/service.go`、`server/keyword_handlers.go`、`api/openapi.yaml`、前端规则页与 `ItemMultiSelect` 组件 | **采纳** |
+| 回复发送架构重构 | 把回复服务发送端口由 `engine.MessageSender` 换成 `engine.ReplyDelivery`，新增 `chat_sending.go` 聊天应用投递，删除 `reply_image_dimensions.go`，波及 `account/manager.go`、`adapter/adapter.go`、`engine/account.go`、`engine/reply.go` 等 | **跳过** |
+
+**证据**：cherry-pick 产生的 13 处冲突全部集中在第二类文件；第一类文件全部自动合并成功。这说明两类改动彼此独立，可以分离。
+
+**跳过重构的理由**：本地回复链路有插件层 find_stuff 回复、AI 回复人工确认闸门、图片尺寸处理、分段重试等自有投入（`PluginReplier`、`ReplyReviewNotifier`、`resolveReplyImageDimensions`），与上游 `MessageSender → ReplyDelivery` 的替换正面冲突。收益（发送能力换一种实现）不足以抵偿风险（重写本地已验证的回复链路）。
+
+**做法**：`git cherry-pick -n` 应用全部改动后，把第二类文件 `git checkout HEAD --` 回退，只保留第一类。
+
+### 9.2 结果
+
+| 项 | 结果 |
+|---|---|
+| 分支 | `.worktree/upstream-p3` → `upstream/sync-p3` |
+| 提交 | `229310d` |
+| 合入 `main` | `920df39`，`--no-ff`；tag `v1.0.21-local-20261005` |
+| 改动规模 | 53 文件，+1150 / -221（含前端产物重建） |
+
+### 9.3 验证证据
+
+| 检查 | 结果 |
+|---|---|
+| `go build ./...` / `go vet ./...` | 通过 |
+| Go commentlint / 前端 commentlint | 通过 |
+| `tsc --noEmit` | 通过 |
+| 前端契约检查 `api:check` | 通过 |
+| 规则相关前端用例 | 8 文件 46 测试全通过（含新增 `ItemMultiSelect.test.tsx`） |
+| 前端架构门禁 `featureArchitecture` | 11/11 通过，本次新增组件未违反依赖边界 |
+| Go 全仓单测 | 54 个包全部通过 |
+| 阶段二架构门禁 | 维持基线 4 项历史违规，**无新增** |
+
+前端产物已按新源码重新构建（旧 hash 文件删除、新 hash 生成），否则嵌入的 Web UI 不会包含多选组件。
+
+### 9.4 关于前端全量 vitest 的说明
+
+本机跑全量前端测试存在 vitest worker 启动超时：基线（未含本次改动）为 `featureArchitecture` 8 项失败，本次为 10 项失败。分目录重跑确认 `featureArchitecture` 实际 **11/11 通过**、规则相关全绿，故判定为资源竞争导致的超时，**非本次改动引入**。
+
+### 9.5 最终同步状态
+
+四个上游提交全部处置完毕。注意：因采用 cherry-pick 而非 merge，`main` 与 `origin/main` 的提交对象不同，`git status` 仍会显示「behind 4」——这是 cherry-pick 工作流的正常表现，**内容已全部引入**，勿据此重复合并。
