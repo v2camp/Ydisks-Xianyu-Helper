@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"time"
 
+	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/mcp"
 	"xianyu-go/internal/server"
+	appversion "xianyu-go/internal/version"
 )
 
 // MCPRoutePattern 是 MCP 端点在主路由树上的精确挂载路径。
@@ -84,10 +86,42 @@ func (a mcpAuditAdapter) AddAudit(ctx context.Context, entry mcp.AuditEntry) err
 		CookieID:    entry.CookieID,
 		Arguments:   entry.ArgumentsJSON,
 		Success:     entry.Success,
-		ErrorClass:  string(entry.ErrorClass),
+		ErrorClass:  entry.ErrorClass,
 		DurationMS:  entry.DurationMS,
 	}
 	return a.store.AddMCPAudit(ctx, record)
+}
+
+// ListAudits 分页查询调用审计并把数据库行映射为 MCP 传输模型。
+func (a mcpAuditAdapter) ListAudits(ctx context.Context, filter mcp.AuditFilter) (mcp.AuditPage, error) {
+	// dbFilter 是对应的数据库过滤条件。
+	dbFilter := db.MCPAuditFilter{
+		Limit: filter.Limit, Offset: filter.Offset, Category: filter.Category,
+		Name: filter.Name, CookieID: filter.CookieID, SuccessState: filter.SuccessState,
+	}
+	// page、err 是数据库分页结果。
+	page, err := a.store.ListMCPAudit(ctx, dbFilter)
+	if err != nil {
+		return mcp.AuditPage{}, err
+	}
+	// records 是 MCP 视图切片。
+	records := make([]mcp.AuditEntry, 0, len(page.Records))
+	// row 是当前数据库审计行。
+	for _, row := range page.Records {
+		records = append(records, mcp.AuditEntry{
+			UserID:        row.UserID,
+			Source:        mcp.TokenSource(row.TokenSource),
+			Category:      row.Category,
+			Name:          row.Name,
+			CookieID:      row.CookieID,
+			ArgumentsJSON: row.Arguments,
+			Success:       row.Success,
+			ErrorClass:    row.ErrorClass,
+			DurationMS:    row.DurationMS,
+			CreatedAt:     row.CreatedAt,
+		})
+	}
+	return mcp.AuditPage{Total: page.Total, Records: records}, nil
 }
 
 // BuildMCPEndpoint 装配 MCP 协议端点并返回对应的主路由挂载条目。
@@ -97,17 +131,32 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 	if store == nil || store.MCP == nil || store.Users == nil {
 		return nil, server.ExtraRoute{}, fmt.Errorf("MCP 端点缺少数据库仓储")
 	}
+	// audit 是同时支持写入与分页查询的审计适配器。
+	audit := mcpAuditAdapter{store: store.MCP}
 	// endpoint、err 是协议端点及其构造错误。
 	endpoint, err := mcp.NewEndpoint(mcp.EndpointConfig{
 		Config:           mcpConfigAdapter{store: store.MCP},
 		Identity:         &mcpIdentityAdapter{users: store.Users},
-		Audit:            mcpAuditAdapter{store: store.MCP},
+		Audit:            audit,
+		AuditLister:      audit,
+		SystemVersion:    appversion.Version,
 		EnvironmentToken: environmentToken,
 	})
 	if err != nil {
 		return nil, server.ExtraRoute{}, err
 	}
+	// 自检工具不依赖业务域，随端点立即可用。
+	endpoint.RegisterSystemTools()
 	// route 是挂进主 chi 路由树的条目；处理器已内含 Bearer 与 loopback 安全门。
 	route := server.ExtraRoute{Pattern: MCPRoutePattern, Handler: endpoint.Handler()}
 	return endpoint, route, nil
+}
+
+// RegisterMCPTools 在应用服务集合就绪后注册全部域工具；每域端口为 nil 时跳过该域。
+func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts) {
+	if endpoint == nil {
+		return
+	}
+	// account 是账号域端口投影。
+	endpoint.RegisterAccountTools(newMCPAccountPorts(ports))
 }

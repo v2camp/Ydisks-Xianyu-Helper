@@ -7,6 +7,7 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	mcpproto "github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,10 @@ type EndpointConfig struct {
 	Identity IdentityPort
 	// Audit 是调用审计端口；nil 时允许不审计但装配处必须显式知晓（生产装配禁止为 nil）。
 	Audit AuditPort
+	// AuditLister 是审计分页查询端口；nil 时 mcp_audit_list 工具返回未配置错误。
+	AuditLister AuditListPort
+	// SystemVersion 是 system_version 工具返回的应用版本字符串。
+	SystemVersion string
 	// EnvironmentToken 是 XIANYU_MCP_TOKEN 引导令牌；空白表示未配置。
 	EnvironmentToken string
 	// Now 是可注入时钟；nil 时使用墙钟。
@@ -42,10 +47,20 @@ type EndpointConfig struct {
 type Endpoint struct {
 	// guard 是 Bearer/loopback/启用门安全守卫。
 	guard *Guard
+	// audit 是工具/资源/提示调用审计端口；写失败只记日志不影响业务结果。
+	audit AuditPort
+	// auditLister 是审计分页查询端口，供 mcp_audit_list 使用。
+	auditLister AuditListPort
+	// systemVersion 是 system_version 工具返回的应用版本。
+	systemVersion string
 	// mcpServer 是 mcp-go 协议服务器，工具/资源/提示注册到该实例。
 	mcpServer *mcpserver.MCPServer
 	// streamable 是实现 http.Handler 的 Streamable HTTP 传输。
 	streamable *mcpserver.StreamableHTTPServer
+	// registryMu 保护 toolDefs 的并发注册与读取；持锁期间不做外部 I/O。
+	registryMu sync.RWMutex
+	// toolDefs 是已注册工具的定义清单，供工具清单对照与禁能力面测试。
+	toolDefs map[string]ToolDef
 }
 
 // NewEndpoint 校验必需依赖并构造协议端点；此时未注册任何业务工具。
@@ -81,7 +96,15 @@ func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 	// 启用有状态会话：2025 版协议的 Harness 回落 initialize 握手后需要 Mcp-Session-Id 校验，
 	// 2026-07-28 无状态核心的请求按协议版本逐请求识别、不受该开关影响；本应用固定单实例部署，无粘滞问题。
 	streamable := mcpserver.NewStreamableHTTPServer(mcpInstance, mcpserver.WithStateful(true))
-	return &Endpoint{guard: guard, mcpServer: mcpInstance, streamable: streamable}, nil
+	return &Endpoint{
+		guard:        guard,
+		audit:        cfg.Audit,
+		auditLister:  cfg.AuditLister,
+		systemVersion: cfg.SystemVersion,
+		mcpServer:    mcpInstance,
+		streamable:   streamable,
+		toolDefs:     make(map[string]ToolDef),
+	}, nil
 }
 
 // Guard 返回安全守卫，供管理接口在令牌/开关变更后调用 Invalidate。

@@ -38,20 +38,26 @@ type IdentityPort interface {
 
 // AuditEntry 是一次 MCP 调用写入审计的非敏感字段；参数 JSON 在持久化层强制脱敏。
 type AuditEntry struct {
+	// CreatedAt 是调用发生时间（Unix 秒）。
+	CreatedAt int64 `json:"created_at"`
+	// UserID 是执行调用的固定管理员本地用户标识。
+	UserID int64 `json:"user_id"`
+	// Source 是本次调用的令牌来源（persisted/environment）。
+	Source TokenSource `json:"token_source"`
 	// Category 是调用类别：tool、resource 或 prompt。
-	Category string
+	Category string `json:"category"`
 	// Name 是被调用的工具、资源或提示名称。
-	Name string
+	Name string `json:"name"`
 	// CookieID 是调用目标账号标识；无账号归属时为空串。
-	CookieID string
+	CookieID string `json:"cookie_id"`
 	// ArgumentsJSON 是原始参数 JSON，落库前由持久化层按白名单脱敏，调用方不得预先加密。
-	ArgumentsJSON string
+	ArgumentsJSON string `json:"arguments"`
 	// Success 表示调用是否成功完成。
-	Success bool
+	Success bool `json:"success"`
 	// ErrorClass 是失败类别的稳定标识；成功时为空串。
-	ErrorClass string
+	ErrorClass string `json:"error_class,omitempty"`
 	// DurationMS 是调用耗时（毫秒）。
-	DurationMS int64
+	DurationMS int64 `json:"duration_ms"`
 }
 
 // AuditPort 定义调用审计写入能力；实现不得因审计失败而重放业务动作。
@@ -59,6 +65,46 @@ type AuditPort interface {
 	// AddAudit 在调用方 Context 内写入一条非敏感审计。
 	AddAudit(ctx context.Context, entry AuditEntry) error
 }
+
+// AuditFilter 是 MCP 审计查询的分页与过滤条件；零值字段不参与过滤。
+type AuditFilter struct {
+	// Limit 是单页条数；非正时取默认值，超过上限截断。
+	Limit int
+	// Offset 是跳过条数。
+	Offset int
+	// Category 非空时按调用类别过滤。
+	Category string
+	// Name 非空时按工具名精确过滤。
+	Name string
+	// CookieID 非空时按账号归属过滤。
+	CookieID string
+	// SuccessState 为 0 时不过滤；1 只看成功；-1 只看失败。
+	SuccessState int
+}
+
+// AuditPage 是审计分页结果。
+type AuditPage struct {
+	// Total 是满足过滤条件的总记录数。
+	Total int `json:"total"`
+	// Records 是当前页非敏感审计记录。
+	Records []AuditEntry `json:"records"`
+}
+
+// AuditListPort 定义审计分页查询能力，供 mcp_audit_list 工具与 REST 管理接口共用。
+type AuditListPort interface {
+	// ListAudits 按条件分页返回非敏感审计记录。
+	ListAudits(ctx context.Context, filter AuditFilter) (AuditPage, error)
+}
+
+// MCP 审计调用类别常量，与数据库层落库值保持一致。
+const (
+	// AuditCategoryTool 是 tools/call 调用类别。
+	AuditCategoryTool = "tool"
+	// AuditCategoryResource 是 resources/read 调用类别。
+	AuditCategoryResource = "resource"
+	// AuditCategoryPrompt 是 prompts/get 调用类别。
+	AuditCategoryPrompt = "prompt"
+)
 
 // CallIdentity 是鉴权成功后注入请求上下文的调用者身份视图。
 type CallIdentity struct {

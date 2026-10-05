@@ -24,8 +24,8 @@ type fakeConfig struct {
 	allowNonLoopback bool
 	// hasToken 是持久化令牌存在性返回值。
 	hasToken bool
-	// verifyResult 是持久化令牌校验结果。
-	verifyResult bool
+	// validToken 是唯一被接受的持久化令牌；空串或其他值一律拒绝。
+	validToken string
 	// verifyCalls 记录持久化校验调用次数。
 	verifyCalls int
 }
@@ -39,10 +39,10 @@ func (f *fakeConfig) AllowNonLoopback(context.Context) (bool, error) { return f.
 // HasPersistedToken 返回预置持久化令牌存在性。
 func (f *fakeConfig) HasPersistedToken(context.Context) (bool, error) { return f.hasToken, nil }
 
-// VerifyPersistedToken 记录调用并返回预置校验结果。
-func (f *fakeConfig) VerifyPersistedToken(_ context.Context, _ string) (bool, error) {
+// VerifyPersistedToken 记录调用，并且只接受预置的非空持久化令牌。
+func (f *fakeConfig) VerifyPersistedToken(_ context.Context, token string) (bool, error) {
 	f.verifyCalls++
-	return f.verifyResult, nil
+	return f.validToken != "" && token == f.validToken, nil
 }
 
 // 编译期断言 fakeConfig 始终满足 ConfigPort。
@@ -77,9 +77,9 @@ func newGuardHarness(t *testing.T, envToken string, now func() time.Time) *guard
 	t.Helper()
 	// h 是逐步填充的堆上夹具，下游闭包与调用方共享同一实例。
 	h := &guardHarness{}
-	// cfg 是默认开启、默认拒绝非本机、存在持久化令牌但令牌校验默认失败的假配置；
-	// 需要放行的用例显式把 verifyResult 置真，避免错误令牌被假实现意外接受。
-	h.cfg = &fakeConfig{enabled: true, hasToken: true, verifyResult: false}
+	// cfg 是默认开启、默认拒绝非本机、存在持久化令牌的假配置；
+	// 只有显式等于 validToken 的持久化令牌才被接受，环境令牌由夹具参数另行配置。
+	h.cfg = &fakeConfig{enabled: true, hasToken: true, validToken: "correct"}
 	// guard、err 是被测守卫及其构造错误。
 	guard, err := NewGuard(GuardConfig{
 		Config:           h.cfg,
@@ -214,9 +214,8 @@ func TestGuardAuthAndRateLimit(t *testing.T) {
 	if blocked.Code != http.StatusTooManyRequests {
 		t.Fatalf("超阈值来源应被 429 封禁，实际 %d", blocked.Code)
 	}
-	// 推进时钟越过失败窗口，使假配置对正确令牌放行，并使配置快照失效。
+	// 推进时钟越过失败窗口，并使配置快照失效后用正确持久化令牌重试。
 	current = current.Add(authFailureWindow + time.Second)
-	h.cfg.verifyResult = true
 	h.guard.Invalidate()
 	// recovered 是窗口过期后的请求，正确令牌应放行并注入身份。
 	recovered := httptest.NewRecorder()
