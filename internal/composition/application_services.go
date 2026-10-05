@@ -611,6 +611,12 @@ func readBatchImageFile(uploadDir, reference string) ([]byte, string, string, er
 	return data, contentType, filepath.Base(relativePath), nil
 }
 
+// DownloadPublishImageURL 仅从公网地址下载受大小和媒体类型限制的发布图片。
+// 导出供 MCP 单商品发布等组合层适配器复用，统一公网出站与图片安全限制。
+func DownloadPublishImageURL(ctx context.Context, rawURL string) ([]byte, string, error) {
+	return downloadImageURL(ctx, rawURL)
+}
+
 // downloadImageURL 仅从公网地址下载受大小和媒体类型限制的发布图片。
 func downloadImageURL(ctx context.Context, rawURL string) ([]byte, string, error) {
 	// request、requestErr 分别是受调用方取消控制的公网图片下载请求及其构造错误。

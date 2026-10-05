@@ -211,6 +211,30 @@ func (a Arguments) StringArray(name string) ([]string, error) {
 	return items, nil
 }
 
+// OptionalStringArray 读取可选字符串数组；缺失时返回空切片。
+func (a Arguments) OptionalStringArray(name string) []string {
+	// value、ok 是原始入参值及其存在性。
+	value, ok := a[name]
+	if !ok {
+		return []string{}
+	}
+	// raw 是数组形态。
+	raw, ok := value.([]any)
+	if !ok {
+		return []string{}
+	}
+	// items 收集字符串元素。
+	items := make([]string, 0, len(raw))
+	// element 是当前数组元素。
+	for _, element := range raw {
+		// text、ok 是元素的字符串值及其类型断言结果。
+		if text, ok := element.(string); ok {
+			items = append(items, text)
+		}
+	}
+	return items
+}
+
 // asInt 把 JSON 反序列化产生的数字值安全转换为整数。
 func asInt(name string, value any) (int, error) {
 	// number 是通用数字形态；JSON 数字经 encoding/json 到达时为 float64。

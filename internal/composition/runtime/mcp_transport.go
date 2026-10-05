@@ -171,4 +171,6 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 		issues = &mcpIssuePorts{service: ports.AutomationIssues}
 	}
 	endpoint.RegisterOrderTools(newMCPOrderPorts(ports, lifecycleContext), analytics, issues)
+	// 商品域工具：账号端口同时用于本地商品写入前的归属复核。
+	endpoint.RegisterItemTools(newMCPAccountPorts(ports), newMCPItemPorts(ports))
 }
