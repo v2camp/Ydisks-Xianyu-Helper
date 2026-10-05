@@ -14,6 +14,7 @@ import (
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/heartbeat"
+	"xianyu-go/internal/mcp"
 	"xianyu-go/internal/netguard"
 	"xianyu-go/internal/renewal"
 	"xianyu-go/internal/server"
@@ -29,6 +30,8 @@ type RuntimeOptions struct {
 	WebDir string
 	// Addr 是 HTTP 监听地址。
 	Addr string
+	// MCPEnvironmentToken 是 XIANYU_MCP_TOKEN 引导令牌；空白表示不配置环境令牌。
+	MCPEnvironmentToken string
 }
 
 // RuntimeInfrastructure 是 cmd 打开后交给组合根的基础设施资源。
@@ -45,6 +48,8 @@ type Runtime struct {
 	HTTPServer *server.Server
 	// Lifecycle 是 cmd 独占启动和关闭的后台组件协调器。
 	Lifecycle *lifecycle.Coordinator
+	// MCPEndpoint 是已挂载到 /mcp 的协议端点，供后续注册工具与设置变更后失效缓存。
+	MCPEndpoint *mcp.Endpoint
 }
 
 // BuildRuntime 构造全部基础设施适配器、应用服务和生命周期组件，但不启动任何 worker。
@@ -200,10 +205,16 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if buildErr != nil {
 		return Runtime{}, fmt.Errorf("构造应用服务集合失败: %w", buildErr)
 	}
+	// mcpEndpoint、mcpRoute、mcpErr 分别是 MCP 协议端点、/mcp 挂载条目与装配错误。
+	mcpEndpoint, mcpRoute, mcpErr := BuildMCPEndpoint(infrastructure.Store, options.MCPEnvironmentToken)
+	if mcpErr != nil {
+		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
+	}
 	// serverDependencies、dependenciesErr 分别是投影给 HTTP transport 的依赖快照及其构造错误。
 	serverDependencies, dependenciesErr := ServerDependencies(services, HTTPDependencies{
 		Auth: &auth.Service{Store: infrastructure.Store, Logger: infrastructure.Logger, Secure: options.SecureCookie}, WebDir: options.WebDir, Addr: options.Addr,
 		Logger: infrastructure.Logger, DatabaseHealth: databaseHealth,
+		ExtraRoutes: []server.ExtraRoute{mcpRoute},
 	}, sessionRecovery)
 	if dependenciesErr != nil {
 		return Runtime{}, dependenciesErr
@@ -220,5 +231,5 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 			return Runtime{}, fmt.Errorf("登记应用 worker 生命周期组件 %q 失败: %w", component.Name, addErr)
 		}
 	}
-	return Runtime{HTTPServer: httpServer, Lifecycle: lifecycleCoordinator}, nil
+	return Runtime{HTTPServer: httpServer, Lifecycle: lifecycleCoordinator, MCPEndpoint: mcpEndpoint}, nil
 }
