@@ -46,6 +46,8 @@ type Store struct {
 	AccountTasks  *AccountTaskStore
 	Admin         *AdminQueries
 	Analytics     *AnalyticsQueries
+	// MCP 保存对外开放 MCP 服务的开关、令牌哈希与调用审计仓储。
+	MCP *MCPAuthStore
 
 	credentialMu    sync.Mutex
 	credentialLocks map[string]*credentialLockEntry
@@ -109,6 +111,7 @@ func NewStore(db *sql.DB, dialect Dialect) *Store {
 		AccountTasks:      &AccountTaskStore{DB: db, Dialect: dialect},
 		Admin:             &AdminQueries{DB: db},
 		Analytics:         &AnalyticsQueries{DB: db, Dialect: dialect},
+		MCP:               NewMCPAuthStore(db, dialect),
 		credentialLocks:   make(map[string]*credentialLockEntry),
 	}
 }
