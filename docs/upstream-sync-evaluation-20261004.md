@@ -70,10 +70,12 @@ internal/application/items/single_publish.go  ...
 
 **两种处置路线**：
 
-- **路线 A（保留本地文件，推荐）**：只采纳 a + b，冲突处置为「保留本地 `item_detail.go`」。文件继续被 analytics / catalog / publish 等调用；订单同步路径因 a 已改为走已售列表，不再调用详情接口，同样达到规避风控的目的。代价：保留了上游已删除的死代码路径。
+- **路线 A（保留本地文件，推荐，已采用）**：只采纳 a + b，冲突处置为「保留本地 `item_detail.go`」。文件继续被 analytics / catalog / publish 等调用；订单同步路径因 a 已改为走已售列表，不再调用详情接口，同样达到规避风控的目的。代价：保留了上游已删除的代码路径。
+  - ⚠️ **必要补充（执行后修正）**：仅保留文件**不足以编译**。上游同提交还删除了 `mtop.ItemDetailAPI` 常量与 `ClientImpl.ItemDetailURL` 字段，而 `item_detail.go:105/107` 正依赖这两个符号。路线 A 必须连带恢复它们，否则 `go build ./...` 直接失败。详见第八节。
 - **路线 B（跟随上游彻底删除）**：收益是彻底消除详情接口风控面；代价是要同步清理本地 20+ 个引用点，且需先确认 analytics / 商品发布链路是否有本地替代口径。**工作量显著，不建议与本次缺陷修复混做。**
 
-> 注：`item-detail-degrade` 分支（复用多规格探测结果降低详情接口风控风险）**已合入 main**，与上游 a 项是同一风控问题的两种不同解法，合并时须避免两边逻辑叠加导致订单同步路径出现双重降级。
+> ~~注：`item-detail-degrade` 与上游 a 项是同一风控问题的两种解法，须避免双重降级。~~
+> **执行后更正**：该判断不成立。本地 `item-detail-degrade`（`e389c1c`）改的是**商品同步** `internal/adapter/item_sync.go`（多规格探测复用），上游 a 项改的是**订单同步** `internal/application/orders/refresh_service.go`（仅用已售列表）。两者作用于不同链路，不存在叠加或双重降级，可共存。
 
 ### 3.4 `1672791` PR54 多商品关键词 —— 🟢 可暂缓
 
@@ -164,7 +166,53 @@ go test -count=1 ./internal/automation/... ./internal/xianyu/ws/...
 - `TestBargainPendingSootheGuardNeedsReview` 补 `OrderRole: OrderRoleSeller`，使其回归验证内容门禁的本意；**全部断言原样保留，未放宽任何判据**。
 - 新增 `TestBargainPendingWithoutRoleIsDeferred`，固化合并后的新行为：缺角色待刀成事件写入一条延期任务、不执行免拼、不发送消息。上游 `order_role_gate_test.go` 只覆盖 `TriggerOrderPaid` 与 `TriggerOrderCreated`，**砍价场景此前无覆盖**，此用例补上了这个缺口。
 
-### 7.4 下一步
+### 7.4 附带的架构门禁修复
 
-- 第 2 批：`42a476f`，按第三节 3.3 的**路线 A** 处置（保留本地 `item_detail.go`，冲突选 ours），并复核是否与已合入的 `item-detail-degrade` 形成双重降级。
-- 第 3 批：`1672791`（PR54），按需，需人工解 5 个 Go 文件冲突。
+全量验证时发现 `34eda75` 使 `internal/automation/center.go` 由 787 行增至 **824 行**，越过阶段二架构门禁的 800 行上限，属本次合并**引入的新违规**（基线另有 4 项历史违规）。
+
+处置：把门禁接线按职责抽到 `order_role_gate.go` —— 新增 `authorizeWebSocketSellerRoleGate`（收口核验、延期写入与拒绝日志三段分支）与 `roleVerificationMarker`（供 `buildTriggerKey` 沿用延期防重键）。行为等价，`center.go` 降至 **799 行**。修复后门禁违规项回落到基线的 4 项，**本次零新增**。
+
+## 八、第 2 批执行记录（2026-10-05）
+
+### 8.1 结果
+
+| 项 | 结果 |
+|---|---|
+| 分支 | `.worktree/upstream-p2` → `upstream/sync-p2` |
+| `git cherry-pick 42a476f` | 冲突仅 `item_detail.go` / `item_detail_test.go` 两处 modify/delete，与试算一致 |
+| 冲突处置 | 路线 A：`--ours` 保留本地文件 |
+| 提交 | `03b2192`（原作者 Christ 保留，提交信息追加本地处置说明） |
+| 合入 `main` | `f34017a`，`--no-ff`；tag `v1.0.20-local-20261005` |
+| 改动规模 | 30 文件，+456 / -558 |
+
+### 8.2 执行中发现的问题与处置
+
+**现象**：按路线 A 保留 `item_detail.go` 后，`go build ./...` 失败——
+
+```
+internal/xianyu/mtop/item_detail.go:105:16: c.ItemDetailURL undefined
+internal/xianyu/mtop/item_detail.go:107:14: undefined: ItemDetailAPI
+```
+
+**根因**：`42a476f` 不只删文件，还删除了 `mtop.ItemDetailAPI` 常量与 `ClientImpl.ItemDetailURL` 字段，而保留下来的 `item_detail.go` 正依赖它们。**评估阶段曾误判为「全仓无引用、路线 A 可行」，该结论由 `grep` 命令被 `&&` 短路而未真正执行验证所致**——编译才是唯一可靠的判据。
+
+**处置**：在 `client.go` 按 base 原貌恢复这两个符号，并补充中文注释说明本地为何保留。同时更正评估中「双重降级」的判断（见 3.3 更正注）。
+
+### 8.3 验证证据
+
+```bash
+go build ./...     # 通过
+go vet ./...       # 通过
+go run ./tools/commentlint -mode check -root .   # 通过
+go test -count=1 ./...                            # 54 个包全部 ok
+```
+
+| 检查 | 结果 |
+|---|---|
+| 全仓 Go 单测 | 54 个包全部通过 |
+| 阶段二架构门禁 | 仍为基线 4 项历史违规，**无新增**；`engine/account.go` 由 812 降至 809 行 |
+
+### 8.4 下一步
+
+- 第 3 批：`1672791`（PR54 多商品关键词），feature，需人工解 5 个 Go 文件冲突（`account/manager.go`、`adapter/adapter.go`、`engine/account.go`、`engine/reply.go`、`engine/reply_extra_test.go`）。此前评估为「按需」，未执行。
+- **教训**：评估阶段的静态判断（尤其依赖 `grep` 的结论）必须由编译或测试实证，不能以「看起来无引用」作为可合并的依据。
