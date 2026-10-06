@@ -212,3 +212,26 @@ func TestRuleServiceRejectsUninitializedListAndNormalize(t *testing.T) {
 		t.Fatalf("空规则服务规范化错误=%v", nilNormalizeErr)
 	}
 }
+
+// TestValidationErrorText 验证规则校验错误在空值与正常值时都返回稳定中文提示。
+func TestValidationErrorText(t *testing.T) {
+	// emptyMessage 是空接收者与空消息时的兜底提示。
+	if emptyMessage := (*ValidationError)(nil).Error(); emptyMessage != "自动化规则输入无效" {
+		t.Fatalf("空校验错误提示异常: %q", emptyMessage)
+	}
+	// blankErr 是消息为空的校验错误。
+	blankErr := &ValidationError{}
+	if blankErr.Error() != "自动化规则输入无效" {
+		t.Fatalf("空消息校验错误提示异常: %q", blankErr.Error())
+	}
+	// messageErr 是携带业务提示的规则校验错误。
+	_, messageErr := NewRuleService(&ruleRepositoryFake{}, &ruleOwnershipFake{}).Normalize(context.Background(), 7, RuleDraft{})
+	if messageErr == nil || messageErr.Error() != "不支持的触发类型" {
+		t.Fatalf("规则校验错误提示异常: %v", messageErr)
+	}
+	// validationErr 用于确认业务校验错误可由调用方按类型识别。
+	var validationErr *ValidationError
+	if !errors.As(messageErr, &validationErr) {
+		t.Fatalf("规则校验错误类型异常: %v", messageErr)
+	}
+}

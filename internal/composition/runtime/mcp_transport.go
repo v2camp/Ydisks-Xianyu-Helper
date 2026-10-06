@@ -175,4 +175,9 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	endpoint.RegisterItemTools(newMCPAccountPorts(ports), newMCPItemPorts(ports))
 	// 卡密库存域工具：明文卡密与 API 模板只在应用层内流转，MCP 侧仅注册非敏感视图与只写入口。
 	endpoint.RegisterCardTools(newMCPCardPorts(ports))
+	// 自动化配置域工具：规则校验与模板变量契约完全复用应用服务，MCP 只做透传。
+	endpoint.RegisterRuleTools(newMCPRulePorts(ports))
+	endpoint.RegisterDeliveryTemplateTools(newMCPDeliveryTemplatePorts(ports))
+	endpoint.RegisterDefaultReplyTools(newMCPDefaultReplyPorts(ports))
+	endpoint.RegisterKeywordTools(newMCPKeywordPorts(ports))
 }

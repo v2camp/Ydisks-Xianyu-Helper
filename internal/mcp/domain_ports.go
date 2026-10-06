@@ -12,7 +12,10 @@ import (
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
+	defaultreplyapp "xianyu-go/internal/application/defaultreply"
+	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	itemapp "xianyu-go/internal/application/items"
+	keywordsapp "xianyu-go/internal/application/keywords"
 	orderapp "xianyu-go/internal/application/orders"
 )
 
@@ -158,6 +161,79 @@ type CardPorts interface {
 	TestCardAPI(ctx context.Context, userID, cardID int64) (cardsapp.APIRequestTestResult, error)
 }
 
+// RulePorts 聚合自动化规则查询、规范化预览与写入用例。
+// 规则校验完全由 RuleService 的 Normalize/NormalizeForUpdate 负责，MCP 层不复制任何业务规则。
+type RulePorts interface {
+	// ListRules 返回用户全部自动化规则。
+	ListRules(ctx context.Context, userID int64) ([]automationapp.Rule, error)
+	// ListRulesPage 按过滤条件分页返回规则与总数。
+	ListRulesPage(ctx context.Context, filter automationapp.RuleFilter) ([]automationapp.Rule, int, error)
+	// CountRulesByTrigger 返回按触发类型统计的规则数量。
+	CountRulesByTrigger(ctx context.Context, filter automationapp.RuleFilter) (map[string]int, error)
+	// NormalizeRule 校验并规范化创建草稿；只返回校验结果，不产生任何写入。
+	NormalizeRule(ctx context.Context, userID int64, draft automationapp.RuleDraft) (automationapp.RuleInput, error)
+	// NormalizeRuleForUpdate 校验并规范化更新草稿，允许保留规则已引用的停用模板。
+	NormalizeRuleForUpdate(ctx context.Context, userID, ruleID int64, draft automationapp.RuleDraft) (automationapp.RuleInput, error)
+	// CreateRule 持久化已规范化的规则并返回新标识。
+	CreateRule(ctx context.Context, input automationapp.RuleInput) (int64, error)
+	// UpdateRule 更新用户拥有的规则。
+	UpdateRule(ctx context.Context, userID, ruleID int64, input automationapp.RuleInput) error
+	// DeleteRule 删除用户拥有的规则。
+	DeleteRule(ctx context.Context, userID, ruleID int64) error
+}
+
+// DeliveryTemplatePorts 聚合发货模板 CRUD 用例。
+type DeliveryTemplatePorts interface {
+	// ListTemplates 返回用户全部发货模板。
+	ListTemplates(ctx context.Context, userID int64) ([]deliveryapp.Template, error)
+	// GetTemplate 读取单个归属发货模板。
+	GetTemplate(ctx context.Context, userID, templateID int64) (deliveryapp.Template, error)
+	// CreateTemplate 创建发货模板并返回新标识。
+	CreateTemplate(ctx context.Context, userID int64, draft deliveryapp.Draft) (int64, error)
+	// UpdateTemplate 更新用户拥有的发货模板。
+	UpdateTemplate(ctx context.Context, userID, templateID int64, draft deliveryapp.Draft) error
+	// DeleteTemplate 删除用户拥有的发货模板。
+	DeleteTemplate(ctx context.Context, userID, templateID int64) error
+}
+
+// DefaultReplyPorts 聚合默认回复配置读写与投递记录清理用例。
+type DefaultReplyPorts interface {
+	// ListDefaultReplies 返回用户全部账号的默认回复配置。
+	ListDefaultReplies(ctx context.Context, userID int64) ([]defaultreplyapp.Summary, error)
+	// GetDefaultReply 读取指定账号的默认回复配置。
+	GetDefaultReply(ctx context.Context, userID int64, cookieID string) (defaultreplyapp.Reply, error)
+	// UpsertDefaultReply 保存或覆盖指定账号的默认回复配置。
+	UpsertDefaultReply(ctx context.Context, userID int64, cookieID string, reply defaultreplyapp.Reply) error
+	// DeleteDefaultReply 删除指定账号的默认回复配置。
+	DeleteDefaultReply(ctx context.Context, userID int64, cookieID string) error
+	// ClearDefaultReplyRecords 清空指定账号的默认回复投递记录。
+	ClearDefaultReplyRecords(ctx context.Context, userID int64, cookieID string) error
+}
+
+// KeywordPorts 聚合关键词回复与指定商品回复用例。
+type KeywordPorts interface {
+	// ListKeywords 返回指定账号的关键词回复列表。
+	ListKeywords(ctx context.Context, userID int64, cookieID string) ([]keywordsapp.Keyword, error)
+	// AddKeyword 新增一条关键词回复并返回标识。
+	AddKeyword(ctx context.Context, userID int64, cookieID string, draft keywordsapp.Draft) (int64, error)
+	// ReplaceKeywords 原子替换指定账号的全部关键词回复。
+	ReplaceKeywords(ctx context.Context, userID int64, cookieID string, drafts []keywordsapp.Draft) error
+	// UpdateKeyword 更新指定标识的关键词回复。
+	UpdateKeyword(ctx context.Context, userID int64, cookieID string, keywordID int64, draft keywordsapp.Draft) error
+	// DeleteKeywordByID 按标识删除关键词回复。
+	DeleteKeywordByID(ctx context.Context, userID int64, cookieID string, keywordID int64) error
+	// DeleteKeywordByIndex 按列表零基索引删除关键词回复。
+	DeleteKeywordByIndex(ctx context.Context, userID int64, cookieID string, index int) error
+	// ListItemReplies 返回用户全部账号的指定商品回复。
+	ListItemReplies(ctx context.Context, userID int64) ([]keywordsapp.ItemReply, error)
+	// GetItemReply 读取指定账号与商品的回复。
+	GetItemReply(ctx context.Context, userID int64, cookieID, itemID string) (keywordsapp.ItemReply, error)
+	// SetItemReply 覆盖指定账号与商品的回复。
+	SetItemReply(ctx context.Context, userID int64, cookieID, itemID, content string) error
+	// DeleteItemReply 删除指定账号与商品的回复。
+	DeleteItemReply(ctx context.Context, userID int64, cookieID, itemID string) error
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -172,4 +248,12 @@ type DomainPorts struct {
 	Items ItemPorts
 	// Cards 是卡密库存域端口。
 	Cards CardPorts
+	// Rules 是自动化规则域端口。
+	Rules RulePorts
+	// DeliveryTemplates 是发货模板域端口。
+	DeliveryTemplates DeliveryTemplatePorts
+	// DefaultReplies 是默认回复配置域端口。
+	DefaultReplies DefaultReplyPorts
+	// Keywords 是关键词与指定商品回复域端口。
+	Keywords KeywordPorts
 }

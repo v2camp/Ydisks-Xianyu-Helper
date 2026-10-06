@@ -10,7 +10,11 @@ import (
 	"strings"
 
 	adminapp "xianyu-go/internal/application/admin"
+	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
+	defaultreplyapp "xianyu-go/internal/application/defaultreply"
+	deliveryapp "xianyu-go/internal/application/deliverytemplate"
+	keywordsapp "xianyu-go/internal/application/keywords"
 	settingsapp "xianyu-go/internal/application/settings"
 )
 
@@ -81,6 +85,16 @@ func Classify(err error) (ErrorClass, string) {
 	if errors.As(err, &validation) {
 		return ClassInvalidArgument, validation.Message
 	}
+	// 自动化规则与关键词回复的业务校验错误同样携带可直接展示的中文提示。
+	var ruleValidation *automationapp.ValidationError
+	if errors.As(err, &ruleValidation) {
+		return ClassInvalidArgument, ruleValidation.Message
+	}
+	// keywordValidation 是关键词回复的稳定输入错误。
+	var keywordValidation *keywordsapp.ValidationError
+	if errors.As(err, &keywordValidation) {
+		return ClassInvalidArgument, keywordValidation.Message
+	}
 	// 归属与身份类哨兵统一映射为越权/未认证/未找到中文提示。
 	switch {
 	case errors.Is(err, cardsapp.ErrNotFound):
@@ -97,6 +111,43 @@ func Classify(err error) (ErrorClass, string) {
 		return ClassInvalidArgument, "只有 api（接口取卡）类型卡券组支持连通性测试"
 	case errors.Is(err, cardsapp.ErrAPITesterUnavailable):
 		return ClassInternal, "API 连通性测试组件当前不可用，请稍后重试或在服务端检查装配"
+	case errors.Is(err, automationapp.ErrRuleNotFound):
+		return ClassNotFound, "自动化规则不存在或不属于当前管理员"
+	case errors.Is(err, automationapp.ErrRuleActive):
+		return ClassInvalidArgument, "自动化规则仍有待处理的运行，请先在 Web 端处理运行记录后再删除"
+	case errors.Is(err, automationapp.ErrPricingModeConflict):
+		return ClassInvalidArgument, "该账号已启用 AI 议价，不能同时启用自动化规则改价"
+	case errors.Is(err, automationapp.ErrDeliveryTemplateUnavailable):
+		return ClassInvalidArgument, "发货模板不存在或已停用，请重新选择后保存"
+	case errors.Is(err, automationapp.ErrInvalidInput):
+		return ClassInternal, "自动化规则服务未就绪，请检查服务端装配"
+	case errors.Is(err, deliveryapp.ErrNotFound):
+		return ClassNotFound, "发货模板不存在或不属于当前管理员"
+	case errors.Is(err, deliveryapp.ErrReferenced):
+		return ClassInvalidArgument, "发货模板仍被自动化规则引用，请先删除或调整引用它的规则"
+	case errors.Is(err, deliveryapp.ErrVariableConflict):
+		return ClassInvalidArgument, "发货模板变量契约冲突：变量键已被自动化规则引用，请保持原名不变"
+	case errors.Is(err, deliveryapp.ErrInvalidInput):
+		// 发货模板校验错误只包含稳定的中文业务提示，可直接展示；不携带数据库或凭证细节。
+		return ClassInvalidArgument, err.Error()
+	case errors.Is(err, defaultreplyapp.ErrForbidden):
+		return ClassForbidden, "无权操作该账号的默认回复"
+	case errors.Is(err, defaultreplyapp.ErrAccountNotFound):
+		return ClassNotFound, "目标账号不存在"
+	case errors.Is(err, defaultreplyapp.ErrInvalidCookieID):
+		return ClassInvalidArgument, "账号标识不能为空"
+	case errors.Is(err, defaultreplyapp.ErrConfigNotFound):
+		return ClassNotFound, "该账号尚未配置默认回复"
+	case errors.Is(err, defaultreplyapp.ErrInvalidUser):
+		return ClassUnauthorized, "管理员身份无效，请检查 MCP 令牌与本地管理员账号"
+	case errors.Is(err, keywordsapp.ErrNotFound):
+		return ClassNotFound, "关键词或指定商品回复不存在"
+	case errors.Is(err, keywordsapp.ErrForbidden):
+		return ClassForbidden, "无权操作该关键词回复"
+	case errors.Is(err, keywordsapp.ErrInvalidUser):
+		return ClassUnauthorized, "管理员身份无效，请检查 MCP 令牌与本地管理员账号"
+	case errors.Is(err, keywordsapp.ErrInvalidInput):
+		return ClassInvalidArgument, "关键词回复参数无效，请检查账号标识与回复内容"
 	case errors.Is(err, settingsapp.ErrForbidden):
 		return ClassForbidden, "无权操作该资源：目标账号或配置不属于当前管理员"
 	case errors.Is(err, settingsapp.ErrAccountNotFound):
