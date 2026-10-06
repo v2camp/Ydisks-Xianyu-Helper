@@ -11,6 +11,7 @@ import (
 	accountapp "xianyu-go/internal/application/account"
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
+	cardsapp "xianyu-go/internal/application/cards"
 	itemapp "xianyu-go/internal/application/items"
 	orderapp "xianyu-go/internal/application/orders"
 )
@@ -138,6 +139,25 @@ type SinglePublishInput struct {
 	CatID string
 }
 
+// CardPorts 聚合卡券库存 CRUD、追加卡密与 API 配置连通性测试用例。
+type CardPorts interface {
+	// ListCards 返回用户全部卡券组（应用模型含明文，MCP 层负责裁剪）。
+	ListCards(ctx context.Context, userID int64) ([]cardsapp.Card, error)
+	// GetCard 返回单个归属卡券组。
+	GetCard(ctx context.Context, userID, cardID int64) (cardsapp.Card, error)
+	// CreateCard 创建卡券组并返回新标识。
+	CreateCard(ctx context.Context, userID int64, draft cardsapp.Draft) (int64, error)
+	// UpdateCard 更新卡券组；库存正文仅在 draft.DataContentSet 时覆盖。
+	UpdateCard(ctx context.Context, userID, cardID int64, draft cardsapp.Draft) error
+	// DeleteCard 删除卡券组。
+	DeleteCard(ctx context.Context, userID, cardID int64) error
+	// AppendCardData 向 data 卡券组追加逐行卡密，返回新增行数。
+	AppendCardData(ctx context.Context, userID, cardID int64, content string) (int, error)
+	// TestCardAPI 用已保存的完整配置对归属 API 卡券组发起一次受控连通性测试；
+	// 完整请求模板由应用层内部读取，不经过 MCP 层，诊断结果只含非敏感字段。
+	TestCardAPI(ctx context.Context, userID, cardID int64) (cardsapp.APIRequestTestResult, error)
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -150,4 +170,6 @@ type DomainPorts struct {
 	Issues IssuePorts
 	// Items 是商品货架与批量发布域端口。
 	Items ItemPorts
+	// Cards 是卡密库存域端口。
+	Cards CardPorts
 }

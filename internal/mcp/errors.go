@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	adminapp "xianyu-go/internal/application/admin"
+	cardsapp "xianyu-go/internal/application/cards"
 	settingsapp "xianyu-go/internal/application/settings"
 )
 
@@ -75,8 +76,27 @@ func Classify(err error) (ErrorClass, string) {
 	if errors.As(err, &classified) {
 		return classified.Class, classified.PublicMessage
 	}
+	// 卡券业务校验错误携带稳定中文提示，可直接作为入参类错误展示，不回传基础设施细节。
+	var validation *cardsapp.ValidationError
+	if errors.As(err, &validation) {
+		return ClassInvalidArgument, validation.Message
+	}
 	// 归属与身份类哨兵统一映射为越权/未认证/未找到中文提示。
 	switch {
+	case errors.Is(err, cardsapp.ErrNotFound):
+		return ClassNotFound, "卡券组不存在"
+	case errors.Is(err, cardsapp.ErrForbidden):
+		return ClassForbidden, "无权操作该卡券组：目标卡券组不属于当前管理员"
+	case errors.Is(err, cardsapp.ErrInvalidUser):
+		return ClassUnauthorized, "管理员身份无效，请检查 MCP 令牌与本地管理员账号"
+	case errors.Is(err, cardsapp.ErrInvalidCardID):
+		return ClassInvalidArgument, "卡券组标识无效"
+	case errors.Is(err, cardsapp.ErrNotDataType):
+		return ClassInvalidArgument, "只有 data（逐行卡密）类型卡券组支持追加卡密"
+	case errors.Is(err, cardsapp.ErrNotAPIType):
+		return ClassInvalidArgument, "只有 api（接口取卡）类型卡券组支持连通性测试"
+	case errors.Is(err, cardsapp.ErrAPITesterUnavailable):
+		return ClassInternal, "API 连通性测试组件当前不可用，请稍后重试或在服务端检查装配"
 	case errors.Is(err, settingsapp.ErrForbidden):
 		return ClassForbidden, "无权操作该资源：目标账号或配置不属于当前管理员"
 	case errors.Is(err, settingsapp.ErrAccountNotFound):

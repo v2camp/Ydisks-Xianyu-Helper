@@ -299,3 +299,24 @@ func TestSanitizeMCPAuditArgumentsInvalidInputs(t *testing.T) {
 		t.Fatalf("截断结果应以省略号与 JSON 收尾: %s", out)
 	}
 }
+
+// TestSanitizeMCPAuditArgumentsCardSecrets 验证卡密域工具入参中的明文卡密、API 配置与密钥不进审计摘要。
+func TestSanitizeMCPAuditArgumentsCardSecrets(t *testing.T) {
+	// raw 是 card_create / card_append_data / card_test_api 入参混合形态，含明文卡密与请求头密钥。
+	raw := `{"card_id":10,"type":"data","name":"视频会员","data_content":"ZM-SECRET-7421-月卡\nZM-SECRET-8830-季卡",
+		"api_config":"{\"headers\":{\"X-Api-Key\":\"AKIASECRETBAR9911\"}}","text_content":"您的卡密","confirm":true}`
+	// out 是落库前的脱敏摘要。
+	out := SanitizeMCPAuditArguments(raw)
+	// secret 是绝不允许写入审计的秘密或业务内容片段。
+	for _, secret := range []string{"ZM-SECRET-7421", "ZM-SECRET-8830", "AKIASECRETBAR9911", "X-Api-Key", "视频会员", "您的卡密", "api_config", "data_content"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("卡密审计摘要泄漏 %q: %s", secret, out)
+		}
+	}
+	// safe 是允许保留的白名单标识与确认键。
+	for _, safe := range []string{`"card_id":10`, `"type":"data"`, `"confirm":true`} {
+		if !strings.Contains(out, safe) {
+			t.Fatalf("卡密审计摘要应保留白名单键 %q，实际 %s", safe, out)
+		}
+	}
+}

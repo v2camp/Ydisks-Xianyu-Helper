@@ -286,6 +286,28 @@ func (s *Service) AppendData(ctx context.Context, userID, cardID int64, content 
 	return s.repository.AppendData(ctx, cardID, content)
 }
 
+// TestSavedAPI 读取归属卡券组的完整 API 配置并发起一次受控连通性测试。
+// tester 由调用方在用例期注入，避免服务构造期绑定外部 HTTP 组件；
+// 完整请求模板只在应用层内部短暂流转，不进入返回模型与传输日志。
+func (s *Service) TestSavedAPI(ctx context.Context, userID, cardID int64, tester APIRequestTester) (APIRequestTestResult, error) {
+	// err 表示用户身份或应用仓储未满足执行条件的错误。
+	if err := s.validateUser(userID); err != nil {
+		return APIRequestTestResult{}, err
+	}
+	if tester == nil {
+		return APIRequestTestResult{}, ErrAPITesterUnavailable
+	}
+	// card、err 是含完整 API 模板的归属卡券组及读取错误；配置不得作为普通响应外发。
+	card, err := s.ownedCardFull(ctx, userID, cardID)
+	if err != nil {
+		return APIRequestTestResult{}, err
+	}
+	if card.Type != "api" {
+		return APIRequestTestResult{}, ErrNotAPIType
+	}
+	return tester.Test(ctx, APIRequestTestInput{Config: card.APIConfig})
+}
+
 // validateUser 检查应用服务及用户身份是否具备执行卡券用例的条件。
 func (s *Service) validateUser(userID int64) error {
 	if s == nil || s.repository == nil {
