@@ -12,6 +12,7 @@ import (
 	adminapp "xianyu-go/internal/application/admin"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
+	chatapp "xianyu-go/internal/application/chat"
 	defaultreplyapp "xianyu-go/internal/application/defaultreply"
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	keywordsapp "xianyu-go/internal/application/keywords"
@@ -148,6 +149,28 @@ func Classify(err error) (ErrorClass, string) {
 		return ClassUnauthorized, "管理员身份无效，请检查 MCP 令牌与本地管理员账号"
 	case errors.Is(err, keywordsapp.ErrInvalidInput):
 		return ClassInvalidArgument, "关键词回复参数无效，请检查账号标识与回复内容"
+	case errors.Is(err, chatapp.ErrSendUncertain):
+		return ClassUncertain, "消息发送结果不确定，请先在闲鱼核对是否已经发出，确认未发出后再重试"
+	case errors.Is(err, chatapp.ErrStatusSave):
+		return ClassUncertain, "消息可能已经发出，但本地状态保存失败，请先人工核对后再决定是否重发"
+	case errors.Is(err, chatapp.ErrOffline):
+		return ClassInvalidArgument, "发送账号当前离线，请先在 Web 端确认账号运行状态后重试"
+	case errors.Is(err, chatapp.ErrSend):
+		return ClassInternal, "平台消息发送失败，请稍后重试或在服务端查看日志"
+	case errors.Is(err, chatapp.ErrSessionForbidden), errors.Is(err, chatapp.ErrMetadataForbidden), errors.Is(err, chatapp.ErrChatItemForbidden):
+		return ClassForbidden, "无权访问该聊天账号或会话"
+	case errors.Is(err, chatapp.ErrChatSessionNotFound):
+		return ClassNotFound, "聊天会话不存在或尚未同步，请先刷新联系人"
+	case errors.Is(err, chatapp.ErrQuickReplyNotFound):
+		return ClassNotFound, "快捷回复不存在"
+	case errors.Is(err, chatapp.ErrQuickReplyLimitReached):
+		return ClassInvalidArgument, "该账号的快捷回复数量已达上限，请先删除不再使用的快捷回复"
+	case errors.Is(err, chatapp.ErrSessionUnavailable), errors.Is(err, chatapp.ErrRefreshUnavailable), errors.Is(err, chatapp.ErrSubscriptionUnavailable), errors.Is(err, chatapp.ErrMetadataUnavailable), errors.Is(err, chatapp.ErrUnavailable), errors.Is(err, chatapp.ErrChatItemUnavailable), errors.Is(err, chatapp.ErrChatItemCreate):
+		return ClassInternal, "聊天服务未启用或尚未装配，请检查服务端配置"
+	case errors.Is(err, chatapp.ErrRefreshPersist):
+		return ClassInternal, "平台聊天数据已拉取但本地保存失败，请重试刷新"
+	case errors.Is(err, chatapp.ErrInvalidInput), errors.Is(err, chatapp.ErrSendInvalidInput), errors.Is(err, chatapp.ErrChatItemInvalid):
+		return ClassInvalidArgument, "聊天参数无效，请检查账号、会话与消息内容"
 	case errors.Is(err, settingsapp.ErrForbidden):
 		return ClassForbidden, "无权操作该资源：目标账号或配置不属于当前管理员"
 	case errors.Is(err, settingsapp.ErrAccountNotFound):

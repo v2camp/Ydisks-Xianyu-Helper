@@ -12,6 +12,7 @@ import (
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
+	chatapp "xianyu-go/internal/application/chat"
 	defaultreplyapp "xianyu-go/internal/application/defaultreply"
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	itemapp "xianyu-go/internal/application/items"
@@ -234,6 +235,39 @@ type KeywordPorts interface {
 	DeleteItemReply(ctx context.Context, userID int64, cookieID, itemID string) error
 }
 
+// ChatPorts 聚合会话、消息、发送、快捷回复、买家备注与聊天商品用例。
+// 平台回显、结果不确定与代次隔离语义完全由 chat 应用服务负责，MCP 层只做透传与脱敏。
+type ChatPorts interface {
+	// ListSessionPage 按用户归属读取账号本地会话的稳定键集分页页面。
+	ListSessionPage(ctx context.Context, userID int64, accountID string, cursor *chatapp.SessionCursor, limit int) (chatapp.SessionPage, error)
+	// FindSession 读取指定账号下的单个归属会话；找不到时返回零值会话。
+	FindSession(ctx context.Context, userID int64, accountID, chatID string) (chatapp.Session, error)
+	// ListStoredMessages 查询本地已落库的聊天消息。
+	ListStoredMessages(ctx context.Context, userID int64, accountID, chatID string, beforeID int64, limit int) (chatapp.Page, error)
+	// RefreshConversations 向平台拉取并落库账号联系人页。
+	RefreshConversations(ctx context.Context, accountID string, cursor int64, limit int) (chatapp.ConversationPage, error)
+	// RefreshHistory 向平台拉取并落库指定会话消息页。
+	RefreshHistory(ctx context.Context, accountID, chatID string, cursor int64, limit int, session chatapp.Session) (chatapp.HistoryPage, error)
+	// SendText 创建并发送一条文字消息。
+	SendText(ctx context.Context, input chatapp.OutgoingInput) (*chatapp.Message, error)
+	// SendImage 上传并发送一条图片消息。
+	SendImage(ctx context.Context, input chatapp.ImageInput) (*chatapp.Message, error)
+	// MarkRead 将归属会话标记为已读并尽力上报平台。
+	MarkRead(ctx context.Context, userID int64, accountID, chatID string) error
+	// DeleteConversation 隐藏归属会话并清空其展示消息。
+	DeleteConversation(ctx context.Context, userID int64, accountID, chatID string) error
+	// FetchChatImage 从公网地址下载受大小与媒体类型限制的聊天图片，返回字节与媒体类型。
+	FetchChatImage(ctx context.Context, rawURL string) ([]byte, string, error)
+	// 快捷回复与买家备注。
+	ListQuickReplies(ctx context.Context, userID int64, accountID string) ([]chatapp.QuickReply, error)
+	CreateQuickReply(ctx context.Context, userID int64, accountID, content string) (chatapp.QuickReply, error)
+	DeleteQuickReply(ctx context.Context, userID int64, accountID string, quickReplyID int64) error
+	GetBuyerNote(ctx context.Context, userID int64, accountID, buyerID string) (chatapp.BuyerNote, error)
+	SaveBuyerNote(ctx context.Context, userID int64, accountID, buyerID, content string) (chatapp.BuyerNote, error)
+	// ListChatItems 按账号与会话查询可发送的聊天商品卡片。
+	ListChatItems(ctx context.Context, input chatapp.ChatItemQuery) (chatapp.ChatItemPage, error)
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -256,4 +290,6 @@ type DomainPorts struct {
 	DefaultReplies DefaultReplyPorts
 	// Keywords 是关键词与指定商品回复域端口。
 	Keywords KeywordPorts
+	// Chat 是聊天会话、发送与元数据域端口。
+	Chat ChatPorts
 }

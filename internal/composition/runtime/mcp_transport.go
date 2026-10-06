@@ -180,4 +180,6 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	endpoint.RegisterDeliveryTemplateTools(newMCPDeliveryTemplatePorts(ports))
 	endpoint.RegisterDefaultReplyTools(newMCPDefaultReplyPorts(ports))
 	endpoint.RegisterKeywordTools(newMCPKeywordPorts(ports))
+	// 聊天域工具：发送与删除复用 chat 应用服务，图片下载复用组合层受控公网策略。
+	endpoint.RegisterChatTools(newMCPChatPorts(ports))
 }
