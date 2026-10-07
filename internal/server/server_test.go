@@ -373,6 +373,7 @@ func testServerDependencies(authentication *auth.Service, databaseHealth Databas
 		DeliveryTemplates:      ports.DeliveryTemplates,
 		PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies, Keywords: ports.Keywords,
 		Settings: ports.Settings, Admin: ports.Admin,
+		MCPAdmin: ports.MCPAdmin,
 	})}
 }
 

@@ -171,10 +171,17 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 			return Runtime{}, fmt.Errorf("登记二维码生命周期组件失败: %w", addErr)
 		}
 	}
+	// mcpEndpoint、mcpRoute、mcpErr 分别是 MCP 协议端点、/mcp 挂载条目与装配错误。
+	// 端点只依赖数据库仓储，先于应用服务装配，以便把安全守卫作为配置变更失效端口注入管理用例。
+	mcpEndpoint, mcpRoute, mcpErr := BuildMCPEndpoint(infrastructure.Store, options.MCPEnvironmentToken)
+	if mcpErr != nil {
+		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
+	}
 	// transportApplications、transportErr 分别是通知等共享应用服务集合及其构造错误。
 	transportApplications, transportErr := adapter.NewTransportApplicationServices(adapter.TransportApplicationServiceOptions{
 		AutomationDependencies: automationDependencies, MiscDependencies: miscDependencies, AdminSettingsDependencies: adminSettingsDependencies,
 		AdminRuntime: runtimeBundle.Manager, AccountTaskRunner: adapter.NewAccountTaskRunner(runtimeBundle.Automation), ChannelSender: runtimeBundle.Notifier, ModelClient: adapter.NewAIModelClient(), OutboundPolicy: netguard.DefaultPolicy(),
+		MCPInvalidator: mcpEndpoint.Guard(),
 	})
 	if transportErr != nil {
 		return Runtime{}, fmt.Errorf("构造 transport 应用服务失败: %w", transportErr)
@@ -204,11 +211,6 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	})
 	if buildErr != nil {
 		return Runtime{}, fmt.Errorf("构造应用服务集合失败: %w", buildErr)
-	}
-	// mcpEndpoint、mcpRoute、mcpErr 分别是 MCP 协议端点、/mcp 挂载条目与装配错误。
-	mcpEndpoint, mcpRoute, mcpErr := BuildMCPEndpoint(infrastructure.Store, options.MCPEnvironmentToken)
-	if mcpErr != nil {
-		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
 	}
 	// httpServerRef 保存 HTTP 服务构造完成后的引用，供 MCP 后台任务总览按调用时读取。
 	var httpServerRef *server.Server

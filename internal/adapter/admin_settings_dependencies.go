@@ -2,6 +2,7 @@ package adapter
 
 import (
 	adminapp "xianyu-go/internal/application/admin"
+	mcpadminapp "xianyu-go/internal/application/mcpadmin"
 	"xianyu-go/internal/db"
 )
 
@@ -33,4 +34,12 @@ func (d *AdminSettingsDependencies) NewSettingsRepository() *SettingsRepository 
 		return nil
 	}
 	return NewSettingsRepository(d.store)
+}
+
+// NewMCPAdminRepository 创建 MCP 管理仓储（状态、令牌与审计）适配器。
+func (d *AdminSettingsDependencies) NewMCPAdminRepository() mcpadminapp.Repository {
+	if d == nil {
+		return nil
+	}
+	return NewMCPAdminRepository(d.store)
 }

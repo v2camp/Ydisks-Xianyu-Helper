@@ -1268,6 +1268,246 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/mcp/status":
+    get:
+      operationId: getApiV1McpStatus
+      summary: getApiV1McpStatus
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpStatusResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/mcp/token":
+    post:
+      operationId: postApiV1McpToken
+      summary: postApiV1McpToken
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTokenResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteApiV1McpToken
+      summary: deleteApiV1McpToken
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/mcp/settings":
+    put:
+      operationId: putApiV1McpSettings
+      summary: putApiV1McpSettings
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpSettingsUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/mcp/audit":
+    get:
+      operationId: getApiV1McpAudit
+      summary: getApiV1McpAudit
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1}
+        - name: page_size
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200}
+        - name: category
+          in: query
+          required: false
+          schema: {type: string, enum: [tool, resource, prompt]}
+        - name: name
+          in: query
+          required: false
+          schema: {type: string}
+        - name: account_id
+          in: query
+          required: false
+          schema: {type: string}
+        - name: success
+          in: query
+          required: false
+          schema: {type: boolean}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpAuditResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/v1/admin/tasks":
     get:
       operationId: getApiV1AdminTasks
@@ -8888,6 +9128,57 @@ components:
           type: string
         is_new_account:
           type: boolean
+    McpStatusResponse:
+      type: object
+      required: [enabled, allow_non_loopback, has_token, token_created_at, token_last_used_at, has_previous_token, previous_token_expires_at, endpoint]
+      properties:
+        enabled: {type: boolean}
+        allow_non_loopback: {type: boolean}
+        has_token: {type: boolean}
+        token_created_at: {type: integer}
+        token_last_used_at: {type: integer}
+        has_previous_token: {type: boolean}
+        previous_token_expires_at: {type: integer}
+        endpoint: {type: string}
+    McpTokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token: {type: string}
+    McpSettingsUpdateRequest:
+      type: object
+      required: [enabled, allow_non_loopback]
+      properties:
+        enabled: {type: boolean}
+        allow_non_loopback: {type: boolean}
+    McpAuditEntry:
+      type: object
+      required: [id, created_at, user_id, token_source, category, name, cookie_id, arguments, success, error_class, duration_ms]
+      properties:
+        id: {type: integer}
+        created_at: {type: integer}
+        user_id: {type: integer}
+        token_source: {type: string}
+        category: {type: string}
+        name: {type: string}
+        cookie_id: {type: string}
+        arguments: {type: string}
+        success: {type: boolean}
+        error_class: {type: string}
+        duration_ms: {type: integer}
+    McpAuditResponse:
+      type: object
+      required: [success, data, total, page, page_size, total_pages]
+      properties:
+        success: {type: boolean}
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/McpAuditEntry'
+        total: {type: integer}
+        page: {type: integer}
+        page_size: {type: integer}
+        total_pages: {type: integer}
     ErrorResponse:
       type: object
       required: [code, message]
