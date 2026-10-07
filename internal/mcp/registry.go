@@ -298,7 +298,12 @@ func (e *Endpoint) registerOne(def ToolDef) {
 			mcpproto.WithDestructiveHintAnnotation(true),
 		)
 	} else {
-		options = append(options, mcpproto.WithReadOnlyHintAnnotation(true))
+		// mcp-go 默认把 destructiveHint 置为 true，只读工具必须显式覆盖为 false，
+		// 否则会同时声明只读与破坏性，误导 Harness 的自主决策。
+		options = append(options,
+			mcpproto.WithReadOnlyHintAnnotation(true),
+			mcpproto.WithDestructiveHintAnnotation(false),
+		)
 	}
 	// tool 是最终注册到 mcp-go 的工具元数据。
 	tool := mcpproto.NewTool(def.Name, options...)

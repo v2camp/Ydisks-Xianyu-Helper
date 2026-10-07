@@ -225,7 +225,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_get",
+			Name:        "account_get",
 			Description: "读取单个归属账号的非敏感详情；目标账号不存在或不属于调用者时返回错误。只读。",
 			Args:        []ArgSpec{accountID},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -243,7 +243,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_set_remark",
+			Name:        "account_set_remark",
 			Description: "更新账号备注（仅本地配置，不触达平台）。",
 			Args: []ArgSpec{
 				accountID,
@@ -271,7 +271,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_set_status",
+			Name:        "account_set_status",
 			Description: "启用或暂停账号的本地运行开关（停止/恢复该账号的自动化与长连接，不直接联系买家）。",
 			Args: []ArgSpec{
 				accountID,
@@ -297,7 +297,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_set_pause",
+			Name:        "account_set_pause",
 			Description: "设置账号暂停时长（分钟）；传 0 立即恢复。暂停期间该账号不执行自动化动作。",
 			Args: []ArgSpec{
 				accountID,
@@ -331,7 +331,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_get_pause",
+			Name:        "account_get_pause",
 			Description: "读取账号当前暂停时长与截止时间。只读。",
 			Args:        []ArgSpec{accountID},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -425,7 +425,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_get_long_login",
+			Name:        "account_get_long_login",
 			Description: "查询账号平台长登录可用与开启状态（平台只读查询，会更新本地会话但不修改业务数据）。",
 			Args:        []ArgSpec{accountID},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -443,7 +443,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_set_long_login",
+			Name:        "account_set_long_login",
 			Description: "向平台开启或关闭账号长登录（真实平台触达，会刷新会话）。必须显式 confirm=true。",
 			Destructive: true,
 			Args: []ArgSpec{
@@ -470,7 +470,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_runtime_status",
+			Name:        "account_runtime_status",
 			Description: "返回全部账号运行时状态总览（连接状态、失败计数、令牌阶段等非敏感诊断）。只读。",
 			Handler: func(ctx context.Context, _ *CallIdentity, _ Arguments) (any, error) {
 				// statuses、err 是按账号标识索引的运行时状态。
@@ -482,7 +482,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_restart",
+			Name:        "account_restart",
 			Description: "重启指定账号的运行实例（断开并重新建立长连接，真实平台触达）。必须显式 confirm=true。",
 			Destructive: true,
 			Args:        []ArgSpec{accountID},
@@ -500,7 +500,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_refresh_profile",
+			Name:        "account_refresh_profile",
 			Description: "向平台刷新账号昵称与头像资料（真实平台只读触达）。必须显式 confirm=true。",
 			Destructive: true,
 			Args:        []ArgSpec{accountID},
@@ -541,7 +541,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_task_get_settings",
+			Name:        "account_task_get_settings",
 			Description: "读取账号自动评价与每日擦亮配置。只读。",
 			Args:        []ArgSpec{accountID},
 			Handler: func(ctx context.Context, _ *CallIdentity, args Arguments) (any, error) {
@@ -559,7 +559,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_task_update_settings",
+			Name:        "account_task_update_settings",
 			Description: "更新账号自动评价开关/评价内容与每日擦亮开关/执行时间（仅本地配置）。",
 			Args: []ArgSpec{
 				accountID,
@@ -601,7 +601,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 			},
 		},
 		ToolDef{
-			Name: "account_task_list_runs",
+			Name:        "account_task_list_runs",
 			Description: "查询账号自动评价/擦亮的最近运行记录。只读。",
 			Args: []ArgSpec{
 				accountID,

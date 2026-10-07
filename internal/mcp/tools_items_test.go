@@ -37,10 +37,14 @@ func (f *fakeItemPorts) GetItem(context.Context, string, string) (itemapp.Catalo
 }
 
 // CreateItem 默认成功。
-func (f *fakeItemPorts) CreateItem(context.Context, string, itemapp.CatalogWriteInput) error { return nil }
+func (f *fakeItemPorts) CreateItem(context.Context, string, itemapp.CatalogWriteInput) error {
+	return nil
+}
 
 // UpdateItem 默认成功。
-func (f *fakeItemPorts) UpdateItem(context.Context, string, string, itemapp.CatalogPatchInput) error { return nil }
+func (f *fakeItemPorts) UpdateItem(context.Context, string, string, itemapp.CatalogPatchInput) error {
+	return nil
+}
 
 // DeleteItem 记录删除调用。
 func (f *fakeItemPorts) DeleteItem(_ context.Context, cookieID, itemID string) error {
@@ -69,7 +73,7 @@ func (f *fakeItemPorts) SyncItemsPage(context.Context, itemapp.SyncQuery) (itema
 func (f *fakeItemPorts) PublishSingle(_ context.Context, input SinglePublishInput) (itemapp.PublishOutcome, error) {
 	f.published = append(f.published, input.Title)
 	return itemapp.PublishOutcome{
-		Result:           &itemapp.PublishResult{ItemID: "new-1", ItemURL: "https://goofish.com/item/new-1", Title: input.Title, Quantity: input.Quantity},
+		Result:            &itemapp.PublishResult{ItemID: "new-1", ItemURL: "https://goofish.com/item/new-1", Title: input.Title, Quantity: input.Quantity},
 		ResponseCookieErr: nil,
 	}, nil
 }

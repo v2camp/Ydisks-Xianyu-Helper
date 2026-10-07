@@ -170,7 +170,7 @@ func invoke(e *Endpoint, ctx context.Context, name string, args map[string]any) 
 	def, ok := e.toolDefs[name]
 	if !ok {
 		// unknown、_ 是未注册工具的协议错误结果。
-		unknown, _ := ErrorResult(InvalidArgument("工具未注册: "+name))
+		unknown, _ := ErrorResult(InvalidArgument("工具未注册: " + name))
 		return unknown
 	}
 	// result、_ 是框架执行结果；业务错误已经被归一为 isError。

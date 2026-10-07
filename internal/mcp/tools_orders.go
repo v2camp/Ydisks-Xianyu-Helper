@@ -188,7 +188,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 	accountIDArg := ArgSpec{Name: "account_id", Type: ArgString, Description: "按账号标识过滤。"}
 	e.RegisterTools(
 		ToolDef{
-			Name: "order_list",
+			Name:        "order_list",
 			Description: "分页查询订单，支持状态、账号与关键词（订单号/商品/买家）过滤。只读，列表不含收货地址详情。",
 			Args: []ArgSpec{
 				{Name: "page", Type: ArgInteger, Description: "页码，从 1 开始。"},
@@ -221,7 +221,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 			},
 		},
 		ToolDef{
-			Name: "order_get",
+			Name:        "order_get",
 			Description: "读取单个订单详情，含规格、金额、状态与收货信息；不返回 Cookie 或会话字段。只读。",
 			Args:        []ArgSpec{{Name: "order_id", Type: ArgString, Required: true, Description: "目标订单标识。"}},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -239,7 +239,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 			},
 		},
 		ToolDef{
-			Name: "order_refresh_single",
+			Name:        "order_refresh_single",
 			Description: "向平台刷新单个订单的最新状态与详情（真实平台触达，受风控约束）。必须显式 confirm=true。",
 			Destructive: true,
 			Args:        []ArgSpec{{Name: "order_id", Type: ArgString, Required: true, Description: "目标订单标识。"}},
@@ -287,7 +287,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 			},
 		},
 		ToolDef{
-			Name: "order_refresh_job_create",
+			Name:        "order_refresh_job_create",
 			Description: "创建后台批量订单刷新任务并立即排队执行；返回任务 ID 供查询。",
 			Args: []ArgSpec{
 				{Name: "account_id", Type: ArgString, Description: "限定账号；空表示全部账号。"},
@@ -307,7 +307,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 			},
 		},
 		ToolDef{
-			Name: "order_refresh_job_get",
+			Name:        "order_refresh_job_get",
 			Description: "查询后台订单刷新任务的状态与失败原因。只读。",
 			Args:        []ArgSpec{{Name: "job_id", Type: ArgString, Required: true, Description: "任务标识。"}},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -328,7 +328,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 			},
 		},
 		ToolDef{
-			Name: "order_refresh_job_cancel",
+			Name:        "order_refresh_job_cancel",
 			Description: "取消排队或运行中的后台订单刷新任务；不回滚已经写入的订单数据。",
 			Args:        []ArgSpec{{Name: "job_id", Type: ArgString, Required: true, Description: "任务标识。"}},
 			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
@@ -402,12 +402,12 @@ func (e *Endpoint) registerAnalyticsTools(p AnalyticsPorts) {
 					return nil, err
 				}
 				return map[string]any{
-					"total_accounts":        stats.TotalCookies,
-					"active_accounts":       stats.ActiveCookies,
-					"total_cards":           stats.TotalCards,
-					"available_card_stock":  stats.AvailableCardStock,
-					"total_keywords":        stats.TotalKeywords,
-					"total_orders":          stats.TotalOrders,
+					"total_accounts":       stats.TotalCookies,
+					"active_accounts":      stats.ActiveCookies,
+					"total_cards":          stats.TotalCards,
+					"available_card_stock": stats.AvailableCardStock,
+					"total_keywords":       stats.TotalKeywords,
+					"total_orders":         stats.TotalOrders,
 				}, nil
 			},
 		},
@@ -430,7 +430,7 @@ func (e *Endpoint) registerAnalyticsTools(p AnalyticsPorts) {
 			},
 		},
 		ToolDef{
-			Name: "analytics_valid_orders",
+			Name:        "analytics_valid_orders",
 			Description: "分页查询参与经营分析的有效订单明细（已归一化状态与金额）。只读。",
 			Args: append(dateRangeArgs,
 				ArgSpec{Name: "page", Type: ArgInteger, Description: "页码，从 1 开始。"},
@@ -495,7 +495,7 @@ func (e *Endpoint) registerIssueTools(p IssuePorts) {
 			},
 		},
 		ToolDef{
-			Name: "issue_resolve_deferred",
+			Name:        "issue_resolve_deferred",
 			Description: "处理死信延期任务：retry 重新入队，dismiss 放弃。必须显式 confirm=true。",
 			Destructive: true,
 			Args: []ArgSpec{
@@ -598,7 +598,7 @@ func manualShipFromApp(result orderapp.ManualShipResult) manualShipResultDTO {
 	for _, item := range result.Results {
 		items = append(items, manualShipItemDTO{
 			OrderID: item.OrderID, Status: item.Status, Success: item.Success,
-			Message:             item.Message,
+			Message:               item.Message,
 			ReconciliationWarning: item.ReconciliationWarning,
 		})
 	}
