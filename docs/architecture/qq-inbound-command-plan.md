@@ -213,7 +213,9 @@ WS 收到事件
 ## 7. 实现记录
 
 > 本节记录 QQ 入站命令的落地情况：改动文件清单、测试覆盖、门禁证据与真实平台验证结论。
-> 当前为**草稿基线**：命令服务、入站网关、装配与前端开关已完成并通过本地门禁，但**未经真实 QQ 机器人凭据与平台联调验证**。
+> 当前为**已上生产、未接通真实机器人**状态：命令服务、入站网关、装配、前端开关与生产部署编排均已完成，
+> 并在生产环境用**伪造凭据**验证了「配置 → 加密落库 → 网关接线 → 主动连接 QQ」全链路；
+> 因尚无真实 AppID/AppSecret，**尚未完成「发命令 → 收到回复」的真实联调**。
 
 ### 7.1 改动文件清单
 
@@ -235,6 +237,22 @@ WS 收到事件
 | `frontend/app/features/settings/state.test.ts` | 修改 | 新增入站命令设置的保存裁剪用例 |
 | `frontend/routing.test.ts` | 修改 | 新增「入站命令默认关闭且需白名单授权」源码契约用例 |
 
+**生产验证阶段补充（7.7 节两个生产缺陷的修复）：**
+
+| 文件 | 性质 | 说明 |
+|---|---|---|
+| `internal/logsafe/logsafe.go` | 修改 | 新增 `quotedSecretPairPattern`，收敛 JSON 风格 `"键":"值"` 凭证对 |
+| `internal/logsafe/logsafe_test.go` | 修改 | 新增 `TestTextRedactsQuotedCredentialPairs`：请求体、响应体、`%+v` 结构体三种形态 |
+| `internal/logging/botgo.go` | 新增 | botgo Logger 适配器与 `InstallBotgoLogger`：先脱敏再转发，Info 降级为 Debug |
+| `internal/logging/botgo_test.go` | 新增 | 4 个用例：AppSecret 请求体、Access Token 响应体、等级路由、空参保护 |
+| `internal/composition/runtime/restart_loop.go` | 新增 | `serveWithRestart` 通用退避守护：5s 起、2 倍增长、上限 5min、稳定 60s 后重置 |
+| `internal/composition/runtime/restart_loop_test.go` | 新增 | 5 个用例：退避阶梯、稳定后重置、已取消不再启动、缺依赖静默、上限收敛 |
+| `internal/composition/runtime/qqbot_adapter.go` | 修改 | 网关由「单次 `Run`」改为「`serveWithRestart` 守护」，退出后自动重连 |
+| `cmd/server/main.go` | 修改 | 两处日志器创建点均调用 `InstallBotgoLogger`，覆盖入站与出站两条 QQ 链路 |
+| `frontend/app/features/settings/components/QQConnectorCard.tsx` | 修改 | 补充「重启生效 + 自动重连」提示文案 |
+| `frontend/app/features/settings/components/QQConnectorCard.test.tsx` | 修改 | 新增 1 个用例断言该提示存在（共 8 个） |
+| `frontend/bundleBoundary.test.ts` | 修改 | Settings 分片预算 30KiB → 35KiB（实测 33438 字节，含连接器卡片） |
+
 ### 7.2 测试覆盖
 
 命令层与入站层共 **29 个用例**，全部注入替身、**不触网**：
@@ -252,6 +270,22 @@ WS 收到事件
 | `TestParseInboundMessage*` | 官方单聊/群事件体往返，**锁定 `group_openid` 不丢失**；openid 缺失回退通用标识；三类坏报文报错 |
 | `TestRun*` | 单聊回复发送者并回传 msg_id；群场景回复群且剥离 @；开关关闭静默；未授权回显 openid；执行失败回兜底文案 |
 
+**生产缺陷修复新增 11 个用例**（全部注入替身、**不触网**）：
+
+| 用例 | 覆盖点 |
+|---|---|
+| `TestTextRedactsQuotedCredentialPairs` | JSON 请求体 / 响应体、`%+v` 结构体的令牌字段被脱敏；`clientSecret` 键名保留；`appId`、`expires_in` 等非敏感字段**不被改写**；普通 JSON 原样返回 |
+| `TestInstallBotgoLoggerRedactsTokenRequest` | 复刻生产泄漏行，断言 AppSecret 不出现在最终日志，且存在 `<redacted>` 占位 |
+| `TestInstallBotgoLoggerRedactsTokenResponse` | `access_token` / `RefreshToken` 两种形态均不泄漏 |
+| `TestInstallBotgoLoggerRoutesLevels` | SDK Info 降级为 Debug（默认 info 等级下不输出），Warn 仍输出 |
+| `TestInstallBotgoLoggerIgnoresNilLogger` | 传入空日志器时不替换 SDK 全局 logger |
+| `TestServeWithRestartRetriesWithBackoff` | 失败 2 次后按 `5s → 10s` 逐次翻倍；ctx 取消即停止；启动次数与退避序列精确断言 |
+| `TestServeWithRestartResetsBackoffAfterHealthyRun` | 单次运行超过 60s 稳定阈值后，退避回到初始值而非继续翻倍 |
+| `TestServeWithRestartStopsWhenContextAlreadyCancelled` | 进程已在关闭阶段时不再启动组件（启动次数保持 0） |
+| `TestServeWithRestartIgnoresMissingDependencies` | 缺 ctx 或运行体时静默返回，不 panic |
+| `TestNextRestartDelayCapsAtMaximum` | 翻倍、上限截断、非法零值回落到上限 |
+| `QQConnectorCard` 新增用例 | 前端显式告知「重启生效 + 自动重连」，避免误判「保存即已连上」 |
+
 ### 7.3 门禁证据
 
 | 命令 | 结果 |
@@ -262,21 +296,42 @@ WS 收到事件
 | `go test -race -count=1 ./internal/qqbot/` | 通过 |
 | `go run ./tools/architecturecheck` | 通过 |
 | `go run ./tools/commentlint -mode check -root .` | 通过 |
+| `golangci-lint run`（改动包） | 通过，0 issue |
 | `npm --prefix frontend run typecheck` | 通过 |
 | `npm --prefix frontend run comments:check` | 通过 |
-| `npm --prefix frontend test` | 通过（103 文件 / 650 用例） |
+| `npm --prefix frontend run api:check` + `go run ./tools/apicheck` | 通过 |
+| `npm --prefix frontend test` | 通过（103 文件 / **651** 用例） |
 
 ### 7.4 覆盖率与未覆盖例外
 
-- `internal/qqbot` 包语句覆盖率 **81.8%**。
+- `internal/qqbot` 包语句覆盖率 **81.3%**。
+- `internal/logsafe` 覆盖率 **100%**，`internal/logging` 覆盖率 **92.2%**。
+- 新增的 `restart_loop.go`：`serveWithRestart` **94.7%**、`logRestartAttempt` **100%**、`nextRestartDelay` **100%**（`internal/composition/runtime` 包整体 4.9%，该包以接线胶水代码为主，不单独立项）。
 - **例外一**：`newBotgoGatewayClient` 为 **0%**。该函数真实调用 `botgo.NewOpenAPI` 与 `StartRefreshAccessToken` 建立刷新链路，属「仅外部环境/真实平台」类不可覆盖分支；测试已通过 `newGatewayClient` 工厂替身隔离。
 - **例外二**：`startInboundSession` 的生产实现（含 `event.RegisterHandlers` 与 `SessionManager.Start`）为 **0%**，同样属外部环境分支；测试通过替换该变量注入事件，完整覆盖了事件处理与回复链路。
 
 ### 7.5 真实平台验证
 
-**未完成**。当前仅有本地替身测试与门禁证据，尚未用真实机器人凭据在 QQ 里实际发送命令并收到回复。
+**部分完成**：未接通真实 QQ 机器人，但已在**全新生产环境**（`docker compose` + PostgreSQL 17，commit `266b475`）完成可自动化部分的端到端验证。
 
-上线前需补充：① 在沙箱环境跑通一次「发命令 → 收到回复」，确认被动回复不撞主动配额；② 确认 WS 网关在当前账号下仍能连接（官方已声明不再维护）；③ 确认群 @ 场景下 `group_openid` 的实际字段与本文假设一致。
+已验证项：
+
+| 验证项 | 结果 |
+|---|---|
+| 服务启动与数据库迁移 | `/health` = `{"status":"ok","database":"ok","commit":"266b475"}`；goose 迁移至版本 57 |
+| 前端产物 | 首页 HTTP 200，加载重建后的 `index-Ud3-XcAc.js` |
+| 设置写入 | `PUT /api/v1/settings/system` 写入 `qqbot.app_id` / `qqbot.commands_enabled` / `qqbot.command_openids` + `secrets.qqbot.app_secret(action=replace)` → `{"success":true}` |
+| 敏感值不外泄 | `GET` 只返回 `qqbot.app_secret_configured=true`，响应体中**不含明文** |
+| 落库加密 | 直查数据库得 `qqbot.app_secret \| 67 \| enc:v1:MTJL2GZM5UgO7e5Zl`，确认为 AES-256-GCM 密文 |
+| 启用门禁 | 开关打开且凭据齐备后重启，网关**确实被接线**并主动连接 QQ；开关关闭时不产生任何对外连接 |
+
+未完成项（阻塞于缺少真实凭据）：
+
+- ① 未跑通「在 QQ 里发命令 → 收到回复」，被动回复不撞主动配额的结论仍为**设计推断**；
+- ② 未确认 WS 网关在真实账号下可连接（官方已声明不再维护）；
+- ③ 未确认群 @ 场景下 `group_openid` 的实际字段与本文假设一致（仅由官方事件体样本锁定）。
+
+**生产环境另外暴露了两个缺陷，已在 7.7 节修复。** 验证期间写入的伪造凭据（`qqbot.app_id=102012345`、`qqbot.app_secret=test-secret-value`）属测试数据，上线真实凭据前必须清除。
 
 ### 7.6 相对设计草案的实现调整
 
@@ -285,3 +340,45 @@ WS 收到事件
 - **装配期禁止裸 `Background`**：`NewQQBotGateway` 需要读系统设置，架构门禁 `checkUnboundedRootContexts` 不允许后台组件以裸 `Background` 为根，故把进程生命周期上下文作为首个参数显式传入。
 - **`BuildRuntime` 的 QQ 装配抽成 `addQQBotGatewayComponent`**：直接在 `BuildRuntime` 内联会让该函数触发架构门禁的「函数过大或分支过多」上限（187 行 / 复杂度 30），抽函数后 `BuildRuntime` 只增加一行调用。
 - **敏感凭据走 `Store.ReadSensitiveSetting` 而非 `settings.GetSystem`**：后者是脱敏视图，敏感键只返回 `_configured` 标记拿不到明文；入站网关复用出站连接器凭据时必须走带审计的敏感读取路径。
+
+### 7.7 生产环境暴露并修复的两个缺陷
+
+#### 缺陷一：botgo SDK 明文打印 AppSecret
+
+**现象**（生产容器 stdout 实测）：
+
+```
+[Debug] 2026-10-08 01:43:53 token_source.go:123:getNewToken
+retrieve access token URL:https://bots.qq.com/app/getAppAccessToken
+req:{"appId":"102012345","clientSecret":"test-secret-value"}
+```
+
+**根因**：`botgo` v0.2.1 在 `token/token_source.go:123` 用 `log.Debugf("retrieve access token URL:%v req:%v", url, string(data))` 原样打印换取令牌的请求体，`data` 是 `{AppID, ClientSecret}` 的 JSON。同类风险点还有 `:147` 的令牌响应体与 `:180` 的 `%+v` 结构体打印。业务侧无法关闭该调用点。
+
+**为什么原有的脱敏链路没挡住**：`logsafe.sensitiveValuePattern` 要求键名后**紧跟**冒号，而 JSON 形态是 `"clientSecret":"…"`，键名与冒号之间隔着引号，正则无法命中。这是本次新增 `quotedSecretPairPattern` 的直接原因。
+
+**修复**（两层，互为兜底）：
+
+1. `internal/logsafe` 新增 `quotedSecretPairPattern`：匹配 `"[…token|secret|password|credential…]"\s*:\s*"…"`，在 `Text` 与 `ExternalError` 中统一收敛。键名保留、只替换值，便于定位来源；非敏感字段（如 `appId`、`expires_in`）不受影响。
+2. `internal/logging` 新增 `InstallBotgoLogger`：把 SDK 的全局 `log.DefaultLogger` 换成先整体脱敏、再转发到项目 slog 的适配器。同时把 SDK 的 **Info 级降级为 Debug**——SDK 在 Info 级会打印**完整收发报文**（含用户消息正文与令牌字段），默认等级下不应进入生产日志。
+
+**接线位置**：`cmd/server/main.go` 两处创建日志器的地方（启动期 + 数据库日志格式覆盖后）。进程级只装一次，入站网关与出站通知共用同一 SDK，因此两条链路同时受保护。
+
+#### 缺陷二：网关退出后不再重连
+
+**现象**：伪造凭据导致 `QQ 入站网关退出 err="启动 QQ 入站 Access Token 刷新失败: strconv.ParseInt: parsing \"\": invalid syntax"`。退出后**再没有任何重启动作**，入站命令在进程重启前永久失效。
+
+**根因**：`addQQBotGatewayComponent` 的 `StartFunc` 只起了一个 goroutine 调一次 `gateway.Run(ctx)`，`Run` 返回即结束，没有任何守护。
+
+**修复**：新增 `internal/composition/runtime/restart_loop.go` 的 `serveWithRestart`，把「启动一次」改为「持续守护」：
+
+| 参数 | 取值 | 理由 |
+|---|---|---|
+| 首次重连间隔 | 5s | 短于常见网络抖动恢复时间，避免用户感知到断档 |
+| 退避策略 | 2 倍增长 | 同一组件无并发，纯指数退避足够 |
+| 间隔上限 | 5min | 长期失败时每分钟一次的无效请求也不可接受，但要比「永不重试」好 |
+| 稳定阈值 | 60s | 已稳定运行过的组件再次断开，多半是新一轮网络事件，退避应从头发起 |
+
+守护循环在 `ctx` 取消时立即退出，不引入新的关停路径；`restartSleep` / `restartNow` 抽象为包级变量以便测试注入可控时间。
+
+**已知边界**：网关凭据在**装配期读取一次**，运行中在设置页修改凭据仍需重启进程才生效。这是「默认零外部连接」（未启用时不登记任何组件、不与 QQ 建立连接）这一设计取舍的代价，取舍结果已通过前端提示文案显式告知用户。
