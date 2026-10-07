@@ -210,8 +210,15 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if mcpErr != nil {
 		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
 	}
-	// 应用服务集合就绪后把各域工具注册到同一个 MCP 协议服务器。
-	RegisterMCPTools(mcpEndpoint, services.TransportPorts(), services.LifecycleContext)
+	// httpServerRef 保存 HTTP 服务构造完成后的引用，供 MCP 后台任务总览按调用时读取。
+	var httpServerRef *server.Server
+	// mcpBackgroundTasks 延迟读取进程后台任务快照；服务未就绪时返回空列表。
+	mcpBackgroundTasks := func() []mcp.BackgroundTask {
+		if httpServerRef == nil {
+			return nil
+		}
+		return mcpBackgroundTasksFromSnapshots(httpServerRef.BackgroundTaskSnapshots())
+	}
 	// serverDependencies、dependenciesErr 分别是投影给 HTTP transport 的依赖快照及其构造错误。
 	serverDependencies, dependenciesErr := ServerDependencies(services, HTTPDependencies{
 		Auth: &auth.Service{Store: infrastructure.Store, Logger: infrastructure.Logger, Secure: options.SecureCookie}, WebDir: options.WebDir, Addr: options.Addr,
@@ -226,6 +233,9 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if serverErr != nil {
 		return Runtime{}, fmt.Errorf("构造 HTTP 服务失败: %w", serverErr)
 	}
+	httpServerRef = httpServer
+	// 应用服务与 HTTP 服务均就绪后把各域工具注册到同一个 MCP 协议服务器。
+	RegisterMCPTools(mcpEndpoint, services.TransportPorts(), services.LifecycleContext, mcpBackgroundTasks)
 	// component 是应用服务返回的 worker 生命周期组件，由协调器而非 Server 登记。
 	for _, component := range services.LifecycleComponents() {
 		// addErr 是应用 worker 组件登记失败原因。

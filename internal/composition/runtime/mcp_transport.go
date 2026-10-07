@@ -154,7 +154,8 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 
 // RegisterMCPTools 在应用服务集合就绪后注册全部域工具；每域端口为 nil 时跳过该域。
 // lifecycleContext 为需要脱离请求生命周期的后台 worker（如订单刷新任务）提供进程级 Context。
-func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context) {
+// backgroundTasks 返回进程后台任务快照，由 HTTP 服务在构造完成后提供；为空时总览返回空列表。
+func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context, backgroundTasks func() []mcp.BackgroundTask) {
 	if endpoint == nil {
 		return
 	}
@@ -187,4 +188,6 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	// 设置与 AI 域工具：敏感值只写不读，MCP 自身状态键禁止经通用设置入口修改。
 	endpoint.RegisterSettingsTools(newMCPSettingsPorts(ports))
 	endpoint.RegisterAITools(newMCPSettingsPorts(ports))
+	// 管理员全局域工具：删除用户复用 AdminService，后台任务总览只读当前进程。
+	endpoint.RegisterAdminTools(newMCPAdminPorts(ports, backgroundTasks))
 }

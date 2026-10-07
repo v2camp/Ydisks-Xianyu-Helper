@@ -9,6 +9,7 @@ import (
 	"context"
 
 	accountapp "xianyu-go/internal/application/account"
+	adminapp "xianyu-go/internal/application/admin"
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
@@ -339,6 +340,35 @@ type SettingsPorts interface {
 	TestAIConnection(ctx context.Context, userID int64, baseURL, apiKey, model string) (settingsapp.AIConnectionTestResult, error)
 }
 
+// BackgroundTask 是 MCP 侧进程后台任务的非敏感快照；不含任务参数与错误正文。
+type BackgroundTask struct {
+	// ID 是当前进程内唯一的任务标识。
+	ID string
+	// Name 是任务的稳定业务名称。
+	Name string
+	// State 是任务生命周期状态：running/succeeded/failed/canceled/timed_out。
+	State string
+	// StartedAtUnixMilli 是任务开始执行的 Unix 毫秒时间戳。
+	StartedAtUnixMilli int64
+	// FinishedAtUnixMilli 是任务完成或取消的 Unix 毫秒时间戳；仍运行时为零。
+	FinishedAtUnixMilli int64
+	// DeadlineAtUnixMilli 是任务截止时间的 Unix 毫秒时间戳；无截止时间时为零。
+	DeadlineAtUnixMilli int64
+}
+
+// AdminPorts 聚合管理员全局统计、用户管理与进程后台任务只读视图用例。
+// 删除用户复用 AdminService：运行实例收束与禁止自删由应用服务负责。
+type AdminPorts interface {
+	// ListUsers 返回不含密码与凭证的用户摘要。
+	ListUsers(ctx context.Context) ([]adminapp.UserSummary, error)
+	// DeleteUser 删除目标用户；当前管理员不能删除自身。
+	DeleteUser(ctx context.Context, currentUserID, targetUserID int64) error
+	// Stats 返回管理员仪表盘全局聚合计数。
+	Stats(ctx context.Context) (adminapp.Stats, error)
+	// BackgroundTasks 返回进程后台任务的非敏感状态快照。
+	BackgroundTasks() []BackgroundTask
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -369,4 +399,6 @@ type DomainPorts struct {
 	UncertainNotifications UncertainNotificationPorts
 	// Settings 是系统设置、用户设置与 AI 助手域端口。
 	Settings SettingsPorts
+	// Admin 是管理员全局统计、用户管理与后台任务域端口。
+	Admin AdminPorts
 }
