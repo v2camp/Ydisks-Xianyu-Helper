@@ -98,6 +98,8 @@ type ClientImpl struct {
 	ChatUserQueryURL    string
 	// ChatItemSearchURL 允许测试将聊天商品查询指向本地 HTTP 服务；生产空值使用官方端点。
 	ChatItemSearchURL string
+	// tokenFlight 保存按账号的 Token 刷新合并与限频状态；零值可用，惰性创建分组。
+	tokenFlight tokenFlightState
 }
 
 // httpClient 返回带统一请求/响应日志的 HTTP 客户端副本。统一放在传输层，
