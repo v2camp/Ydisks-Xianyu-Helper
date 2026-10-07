@@ -116,4 +116,10 @@ describe('QQConnectorCard', /* 当前测试组验证开放平台引导、凭据�
     expect(screen.getByText(/每月仅 4 条主动消息/)).toBeTruthy();
     expect(screen.getByText(/单聊 60 分钟、群聊 5 分钟/)).toBeTruthy();
   });
+
+  test('提示凭据与开关需重启生效且网关会自动重连', /* 当前测试验证生效时机与自愈行为被显式告知，避免误判保存即已连上。 */ () => {
+    render(<ConnectorHarness initial={{}} />);
+    expect(screen.getByText(/凭据与开关在下次服务重启后生效/)).toBeTruthy();
+    expect(screen.getByText(/按指数退避自动重连/)).toBeTruthy();
+  });
 });

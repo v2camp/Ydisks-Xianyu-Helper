@@ -13,6 +13,12 @@ import (
 // sensitiveValuePattern 匹配诊断文本中常见的凭证键值对，避免错误信息把明文秘密带入日志。
 var sensitiveValuePattern = regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie|x5sec|token|access[_-]?token|refresh[_-]?token|password|passwd|secret|api[_-]?key|authorization)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)`)
 
+// quotedSecretPairPattern 匹配 JSON 风格 `"键":"值"` 形式的凭证对。
+// 第三方 SDK 直接打印请求体或响应体时，键名与冒号之间被引号分隔，
+// sensitiveValuePattern 要求键名后紧跟冒号，无法覆盖该形态，必须单独收敛。
+// 键名允许前后缀，因此 "clientSecret" 与 "access_token" 都能命中；值支持转义字符。
+var quotedSecretPairPattern = regexp.MustCompile(`(?i)("[^"]{0,64}(?:cookie|x5sec|token|password|passwd|secret|api[_-]?key|authorization|credential)[^"]{0,64}"\s*:\s*)"(?:\\.|[^"\\])*"`)
+
 // embeddedURLPattern 匹配错误文本中可能包含查询参数的 URL。
 var embeddedURLPattern = regexp.MustCompile(`(?i)\b(?:https?|wss?|mysql|postgres(?:ql)?):\/\/[^\s"'<>]+`)
 
@@ -61,7 +67,15 @@ func ExternalError(err error) string {
 	sanitizedTarget := quotedRequestTargetPattern.ReplaceAllStringFunc(err.Error(), externalQuotedTarget)
 	// sanitized 保存已移除其余外部 URL 用户信息、路径、查询参数和片段的错误文本。
 	sanitized := embeddedURLPattern.ReplaceAllStringFunc(sanitizedTarget, externalURLOrigin)
+	// sanitized 覆盖 JSON 风格凭证对，防止外部 SDK 错误体把 AppSecret 等秘密带入日志。
+	sanitized = redactQuotedSecretPairs(sanitized)
 	return sensitiveValuePattern.ReplaceAllString(sanitized, `${1}<redacted>`)
+}
+
+// redactQuotedSecretPairs 把诊断文本中 JSON 风格凭证对的值替换为占位符，保留键名以便定位来源。
+// raw 是可能包含第三方报文体的诊断文本；返回值只替换含敏感词键名的字符串值，普通字段保持原样。
+func redactQuotedSecretPairs(raw string) string {
+	return quotedSecretPairPattern.ReplaceAllString(raw, `${1}"<redacted>"`)
 }
 
 // externalQuotedTarget 清理外部错误中由动作前缀和双引号包裹的请求地址。
@@ -92,7 +106,8 @@ func externalURLOrigin(raw string) string {
 
 // Text 清理诊断文本中的 URL 查询参数和常见敏感键值；普通业务文字保持原样。
 func Text(raw string) string {
-	// sanitized 保存已移除 URL 查询和凭证值的诊断文本。
-	sanitized := embeddedURLPattern.ReplaceAllStringFunc(raw, URL)
+	// sanitized 保存已移除 JSON 凭证对、URL 查询和凭证值的诊断文本。
+	sanitized := redactQuotedSecretPairs(raw)
+	sanitized = embeddedURLPattern.ReplaceAllStringFunc(sanitized, URL)
 	return sensitiveValuePattern.ReplaceAllString(sanitized, `${1}<redacted>`)
 }

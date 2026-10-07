@@ -13,7 +13,8 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   OrderList: 40 * 1024,
   CardList: 45 * 1024,
   ItemList: 65 * 1024,
-  Settings: 30 * 1024,
+  // Settings 页面承载 QQ 连接器配置卡与入站命令白名单，实测 33438 字节，预算随之上调。
+  Settings: 35 * 1024,
   // Rules 页面现在包含模板发货模式入口和模板变量编辑器。
   Rules: 70 * 1024,
   // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12618 字节，预算随之上调。
