@@ -74,7 +74,7 @@ func TestSendQQ_SingleChatPriority(t *testing.T) {
 	// cfg 同时配置单聊与群聊目标，应只走单聊。
 	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1", "group_openid": "g1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(cfg, "hello"); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hello", 0); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
 	if fake.c2cCalls != 1 {
@@ -98,7 +98,7 @@ func TestSendQQ_GroupFallback(t *testing.T) {
 	// cfg 仅配置群聊目标。
 	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "group_openid": "g1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(cfg, "hi"); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
 	if fake.groupCalls != 1 || fake.c2cCalls != 0 {
@@ -124,7 +124,7 @@ func TestSendQQ_BothOpenIDEmpty(t *testing.T) {
 	// cfg 缺省两个目标 openid。
 	cfg := map[string]any{"app_id": "aid", "app_secret": "sec"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(cfg, "hi"); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
 		t.Fatal("期望缺目标配置错误")
 	}
 	if constructed {
@@ -150,7 +150,7 @@ func TestSendQQ_MissingCredentials(t *testing.T) {
 	// cfg 仅有单聊目标，缺少 app_id/app_secret。
 	cfg := map[string]any{"user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(cfg, "hi"); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
 		t.Fatal("期望缺凭据配置错误")
 	}
 	if constructed {
@@ -170,7 +170,7 @@ func TestSendQQ_SendErrorWrapped(t *testing.T) {
 	// cfg 配置单聊目标以触发单聊发送路径。
 	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(cfg, "hi"); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
 		t.Fatal("期望发送错误")
 	} else if !strings.Contains(err.Error(), "qq 单聊发送失败") {
 		t.Errorf("错误信息缺少中文包装: %v", err)
@@ -194,8 +194,8 @@ func TestSendQQ_ClientCacheByAppID(t *testing.T) {
 	notifier := &Notifier{}
 	// cfg 两次发送使用相同 AppID，应命中缓存。
 	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1"}
-	_ = notifier.sendQQ(cfg, "m1")
-	_ = notifier.sendQQ(cfg, "m2")
+	_ = notifier.sendQQ(qqTestContext(t), cfg, "m1", 0)
+	_ = notifier.sendQQ(qqTestContext(t), cfg, "m2", 0)
 	if constructCount != 1 {
 		t.Errorf("constructCount=%d want 1", constructCount)
 	}
@@ -227,7 +227,7 @@ func TestSendQQ_ConcurrentConstruct(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = notifier.sendQQ(cfg, "m")
+			_ = notifier.sendQQ(qqTestContext(t), cfg, "m", 0)
 		}()
 	}
 	wg.Wait()
@@ -240,6 +240,125 @@ func TestSendQQ_ConcurrentConstruct(t *testing.T) {
 	notifier.qqMu.Unlock()
 	if cached != 1 {
 		t.Errorf("cached=%d want 1", cached)
+	}
+}
+
+// qqTestContext 提供测试用的有界上下文；根 Context 必须带有限预算以满足架构门禁。
+func qqTestContext(t *testing.T) context.Context {
+	t.Helper()
+	// ctx、cancel 保存带一秒预算的测试上下文及其释放函数。
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+// settingsRepositoryFake 是可注入系统设置的通知仓储替身，用于验证 QQ 连接器凭据回退。
+type settingsRepositoryFake struct {
+	// settings 保存按全局读取的系统设置值。
+	settings map[string]string
+	// scoped 保存按用户作用域读取的系统设置值，优先于全局设置。
+	scoped map[string]string
+}
+
+// AccountChannels 返回空渠道列表，QQ 凭据测试不依赖账号绑定。
+func (f *settingsRepositoryFake) AccountChannels(ctx context.Context, cookieID string) ([]db.NotificationChannel, error) {
+	return nil, nil
+}
+
+// EnqueueOutbox 丢弃入队请求，QQ 凭据测试不依赖 outbox 持久化。
+func (f *settingsRepositoryFake) EnqueueOutbox(ctx context.Context, messages []db.NotificationOutboxInput) error {
+	return nil
+}
+
+// ClaimOutbox 返回空批次，QQ 凭据测试不驱动 outbox worker。
+func (f *settingsRepositoryFake) ClaimOutbox(ctx context.Context, workerToken string, now time.Time, limit int) ([]db.NotificationOutboxMessage, error) {
+	return nil, nil
+}
+
+// GetChannel 返回空渠道，QQ 凭据测试直接调用 sendQQ 而不经过渠道查询。
+func (f *settingsRepositoryFake) GetChannel(ctx context.Context, channelID int64) (*db.NotificationChannel, error) {
+	return nil, nil
+}
+
+// CompleteOutbox 返回未确认，QQ 凭据测试不依赖 outbox 收口。
+func (f *settingsRepositoryFake) CompleteOutbox(ctx context.Context, messageID int64, workerToken string) (bool, error) {
+	return false, nil
+}
+
+// MarkOutboxUncertain 返回未隔离，QQ 凭据测试不触发不确定隔离路径。
+func (f *settingsRepositoryFake) MarkOutboxUncertain(ctx context.Context, messageID int64, workerToken, lastError string) (bool, error) {
+	return false, nil
+}
+
+// RetryOutbox 返回未更新，QQ 凭据测试不触发重试路径。
+func (f *settingsRepositoryFake) RetryOutbox(ctx context.Context, messageID int64, workerToken, lastError string, nextAttemptAt int64, permanent bool) (bool, error) {
+	return false, nil
+}
+
+// GetSetting 按全局作用域返回注入的系统设置值。
+func (f *settingsRepositoryFake) GetSetting(ctx context.Context, key string) (string, error) {
+	return f.settings[key], nil
+}
+
+// GetSettingForUser 按用户作用域返回注入的系统设置值，用于验证敏感键走带审计的读取。
+func (f *settingsRepositoryFake) GetSettingForUser(ctx context.Context, userID int64, key string) (string, error) {
+	return f.scoped[key], nil
+}
+
+// TestSendQQ_FallsBackToSystemConnector 验证渠道配置未填凭据时使用系统连接器设置。
+func TestSendQQ_FallsBackToSystemConnector(t *testing.T) {
+	// fake 用于本次流程后续判断的fake
+	fake := &fakeQQClient{}
+	// capturedID、capturedSecret 记录工厂实际收到的凭据，用于断言来源。
+	var capturedID, capturedSecret string
+	// original 保存原工厂实现。
+	original := newQQBotClient
+	newQQBotClient = func(ctx context.Context, appID, appSecret string) (qqBotClient, error) {
+		capturedID, capturedSecret = appID, appSecret
+		return fake, nil
+	}
+	t.Cleanup(func() { newQQBotClient = original })
+	// repository 提供系统连接器中已配置的机器人凭据。
+	repository := &settingsRepositoryFake{settings: map[string]string{"qqbot.app_id": "sys_id", "qqbot.app_secret": "sys_secret"}}
+	// notifier 是带仓储的通知器，凭据唯一来源为系统连接器。
+	notifier := &Notifier{repository: repository}
+	// cfg 只配置目标 openid，不含凭据。
+	cfg := map[string]any{"user_openid": "u1"}
+	if // err 用于本次流程后续判断的err
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
+		t.Fatalf("sendQQ: %v", err)
+	}
+	if capturedID != "sys_id" || capturedSecret != "sys_secret" {
+		t.Errorf("凭据未回退到系统连接器: id=%s secret=%s", capturedID, capturedSecret)
+	}
+	if fake.c2cCalls != 1 {
+		t.Errorf("c2cCalls=%d want 1", fake.c2cCalls)
+	}
+}
+
+// TestSendQQ_ChannelConfigOverridesSystemConnector 验证渠道配置凭据优先于系统连接器设置。
+func TestSendQQ_ChannelConfigOverridesSystemConnector(t *testing.T) {
+	// capturedID 记录工厂最终收到的 AppID，用于断言优先级。
+	capturedID := ""
+	// original 保存原工厂实现。
+	original := newQQBotClient
+	newQQBotClient = func(ctx context.Context, appID, appSecret string) (qqBotClient, error) {
+		capturedID = appID
+		return &fakeQQClient{}, nil
+	}
+	t.Cleanup(func() { newQQBotClient = original })
+	// repository 提供与渠道配置不同的系统连接器凭据。
+	repository := &settingsRepositoryFake{settings: map[string]string{"qqbot.app_id": "sys_id", "qqbot.app_secret": "sys_secret"}}
+	// notifier 是带仓储的通知器。
+	notifier := &Notifier{repository: repository}
+	// cfg 在渠道级显式填写凭据，应优先于系统连接器。
+	cfg := map[string]any{"app_id": "ch_id", "app_secret": "ch_secret", "user_openid": "u1"}
+	if // err 用于本次流程后续判断的err
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
+		t.Fatalf("sendQQ: %v", err)
+	}
+	if capturedID != "ch_id" {
+		t.Errorf("capturedID=%s want ch_id（渠道配置应优先）", capturedID)
 	}
 }
 

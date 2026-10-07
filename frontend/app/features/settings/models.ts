@@ -47,6 +47,12 @@ export interface SystemSettings {
   global_send_daily_limit?: number;
   /** 业务静默告警阈值（分钟），0 表示关闭看门狗，未配置回落默认 180。 */
   silence_alert_minutes?: number;
+  /** QQ 连接器机器人的 AppID，来自 QQ 开放平台，明文保存且可被通知渠道继承。 */
+  'qqbot.app_id'?: string;
+  /** QQ 连接器机器人的 AppSecret 草稿，仅存在于提交请求中，服务端不回显明文。 */
+  'qqbot.app_secret'?: string;
+  /** QQ 连接器机器人的 AppSecret 是否已在服务端配置。 */
+  'qqbot.app_secret_configured'?: boolean;
   /** MCP 服务器列表 JSON 字符串，元素为含 name 与 url 的对象；引擎消费其中 find_stuff 条目。 */
   'mcp.servers'?: string;
   /** 发货内容门禁 JSON 字符串：enabled 违禁词门禁、link_check 链接健康检查、extra_block_words 额外违禁词。 */

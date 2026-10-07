@@ -13,6 +13,7 @@ import React from 'react';
 import { LOG_LEVELS } from '../constants';
 import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
 import { MCPServiceCard } from '../components/MCPServiceCard';
+import { QQConnectorCard } from '../components/QQConnectorCard';
 import { useSettings } from '../hooks';
 
 // Settings 展示系统配置与登录凭据编辑页面；AI 相关配置已拆分到独立的 AI 设置页。
@@ -184,6 +185,19 @@ const Settings: React.FC = () => {
 
             {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存。 */}
             <MCPServiceCard />
+          </section>
+
+          {/* 连接器：对外平台机器人凭据，保存后由通知渠道继承复用。 */}
+          <section className="space-y-4">
+            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-sky-500 text-white">
+                <PlugZap className="w-4 h-4" />
+              </div>
+              连接器
+            </h3>
+
+            {/* QQ 连接器卡：引导前往 QQ 开放平台取 AppID/AppSecret，随系统配置草稿一起提交。 */}
+            <QQConnectorCard settings={settings} onChange={/* patch 合并进系统配置草稿，由统一保存按钮提交。 */ patch => setSettings({ ...settings, ...patch })} />
           </section>
         </div>
 

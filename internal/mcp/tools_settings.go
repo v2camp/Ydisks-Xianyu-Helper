@@ -1,7 +1,7 @@
 // tools_settings.go 注册系统设置与用户设置域工具：脱敏读取、批量/单项更新与用户偏好读写。
 //
 // 安全与语义红线：
-//   - 敏感键（ai_api_key、smtp_password、qq_reply_secret_key、captcha.remote_secret_key）
+//   - 敏感键（ai_api_key、smtp_password、qq_reply_secret_key、captcha.remote_secret_key、qqbot.app_secret）
 //     只能经 secrets 三态命令写入，读取一律走应用服务的脱敏与审计路径；
 //   - MCP 自身状态键（mcp.server.enabled、mcp.server.allow_non_loopback）禁止经通用设置入口修改，
 //     必须走 MCP 专用用例，防止 Harness 自己改开关绕过安全门；
@@ -75,7 +75,7 @@ func (e *Endpoint) registerSystemSettingsTools(p SettingsPorts) {
 		ToolDef{
 			Name: "settings_get_system",
 			Description: "读取系统设置（管理员可见）。敏感键（ai_api_key、smtp_password、qq_reply_secret_key、" +
-				"captcha.remote_secret_key）只返回 configured 标记，绝不返回值。本次读取会记录敏感键访问审计。只读。",
+				"captcha.remote_secret_key、qqbot.app_secret）只返回 configured 标记，绝不返回值。本次读取会记录敏感键访问审计。只读。",
 			Handler: func(ctx context.Context, identity *CallIdentity, _ Arguments) (any, error) {
 				// values、readErr 是脱敏后的系统设置。
 				values, readErr := p.GetSystem(ctx, identity.UserID)

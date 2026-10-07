@@ -71,6 +71,17 @@ test('system 保存草稿保留 delivery_content_guard 门禁 JSON',
     });
   });
 
+test('system 保存草稿提交 QQ 连接器凭据并剔除已配置标记',
+  // 白名单测试验证 AppID 与 AppSecret 随系统配置提交，仅状态标记被省略。
+  () => {
+    expect(buildPersistableSettings({ ...settingsFixture, 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'new-secret', 'qqbot.app_secret_configured': true }, 'system')).toEqual({
+      log_level: 'info',
+      renewal_log_retention_days: 15,
+      'qqbot.app_id': '102012345',
+      'qqbot.app_secret': 'new-secret',
+    });
+  });
+
 test('门禁配置序列化与解析往返保持开关和额外词不变',
   // 往返测试验证序列化结果可被解析回等价配置，覆盖开关与额外词。
   () => {

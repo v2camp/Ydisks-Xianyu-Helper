@@ -72,15 +72,26 @@ func newBotgoQQClient(ctx context.Context, appID, appSecret string) (qqBotClient
 	return &botgoQQClient{api: botgo.NewOpenAPI(credential.AppID, tokenSource)}, nil
 }
 
+// qqCredential 解析 QQ 连接器凭据：优先使用渠道配置，缺失时按渠道所有者回退读取系统连接器设置。
+// ctx 约束设置读取预算；cfgKey 是渠道配置字段名，settingKey 是系统连接器设置键名。
+func (n *Notifier) qqCredential(ctx context.Context, cfg map[string]any, cfgKey, settingKey string, channelUserID int64) string {
+	if // value 是渠道配置内显式填写的凭据；非空时优先使用。
+	value := strings.TrimSpace(strOr(cfg, cfgKey, "")); value != "" {
+		return value
+	}
+	return strings.TrimSpace(n.settingValue(ctx, settingKey, channelUserID))
+}
+
 // sendQQ 依据渠道配置把通知发送到 QQ 机器人单聊或群聊。
+// 凭据优先取渠道配置，缺失时按渠道所有者回退读取系统连接器设置（qqbot.app_id / qqbot.app_secret）。
 // 目标优先使用 user_openid（单聊），其次 group_openid（群聊）；两者都为空时返回配置错误。
-func (n *Notifier) sendQQ(cfg map[string]any, message string) error {
-	// appID 是机器人接入标识，来自渠道加密配置，禁止写入日志。
-	appID := strOr(cfg, "app_id", "")
-	// appSecret 是机器人接入密钥，来自渠道加密配置，禁止写入日志。
-	appSecret := strOr(cfg, "app_secret", "")
-	if strings.TrimSpace(appID) == "" || strings.TrimSpace(appSecret) == "" {
-		return fmt.Errorf("qq app_id/app_secret 不完整")
+func (n *Notifier) sendQQ(ctx context.Context, cfg map[string]any, message string, channelUserID int64) error {
+	// appID 是机器人接入标识，来自渠道配置或系统连接器设置，禁止写入日志。
+	appID := n.qqCredential(ctx, cfg, "app_id", "qqbot.app_id", channelUserID)
+	// appSecret 是机器人接入密钥，来自渠道配置或系统连接器设置，禁止写入日志。
+	appSecret := n.qqCredential(ctx, cfg, "app_secret", "qqbot.app_secret", channelUserID)
+	if appID == "" || appSecret == "" {
+		return fmt.Errorf("qq app_id/app_secret 不完整，请在 QQ 通知渠道或系统设置「QQ 连接器」中配置")
 	}
 	// userOpenID 是平台分配的单聊目标标识；不同 AppID 拿到的 openid 不同。
 	userOpenID := strOr(cfg, "user_openid", "")
@@ -94,18 +105,18 @@ func (n *Notifier) sendQQ(cfg map[string]any, message string) error {
 	if err != nil {
 		return err
 	}
-	// ctx 为单次发送提供有界取消路径，避免平台无响应时长时间占用 outbox worker。
-	ctx, cancel := context.WithTimeout(context.Background(), qqSendTimeout)
-	defer cancel()
+	// sendCtx、sendCancel 为单次发送提供有界取消路径，避免平台无响应时长时间占用 outbox worker。
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), qqSendTimeout)
+	defer sendCancel()
 	if strings.TrimSpace(userOpenID) != "" {
 		if // sendErr 用于本次流程后续判断的发送错误
-		sendErr := client.SendC2CMessage(ctx, strings.TrimSpace(userOpenID), message); sendErr != nil {
+		sendErr := client.SendC2CMessage(sendCtx, strings.TrimSpace(userOpenID), message); sendErr != nil {
 			return fmt.Errorf("qq 单聊发送失败: %w", sendErr)
 		}
 		return nil
 	}
 	if // sendErr 用于本次流程后续判断的发送错误
-	sendErr := client.SendGroupMessage(ctx, strings.TrimSpace(groupOpenID), message); sendErr != nil {
+	sendErr := client.SendGroupMessage(sendCtx, strings.TrimSpace(groupOpenID), message); sendErr != nil {
 		return fmt.Errorf("qq 群聊发送失败: %w", sendErr)
 	}
 	return nil
