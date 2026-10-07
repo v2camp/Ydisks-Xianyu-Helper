@@ -43,8 +43,7 @@ func (n *Notifier) send(ch db.NotificationChannel, message string) error {
 	case "email":
 		return n.sendEmailWithUser(cfg, message, ch.UserID)
 	case "qq":
-		// QQ 渠道配置未标准化，跳过。
-		return fmt.Errorf("qq 渠道暂不支持")
+		return n.sendQQ(cfg, message)
 	default:
 		return fmt.Errorf("不支持的通知渠道类型: %s", ch.Type)
 	}

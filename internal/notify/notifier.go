@@ -1,6 +1,6 @@
-// Package notify 多渠道通知：dingtalk/feishu/lark/bark/webhook/wechat/telegram/email。
+// Package notify 多渠道通知：dingtalk/feishu/lark/bark/webhook/wechat/telegram/email/qq。
 // 每个渠道解析 config JSON 后发送 HTTP 请求。
-// email 用 SMTP（net/smtp）；其余为 HTTP POST。
+// email 用 SMTP（net/smtp）；qq 用 botgo 调 QQ 机器人 api-v2；其余为 HTTP POST。
 package notify
 
 import (
@@ -72,6 +72,19 @@ type Notifier struct {
 	started    atomic.Bool
 	workers    sync.WaitGroup
 	done       chan struct{}
+
+	// lifecycleCtx 是通知器所属进程生命周期上下文，作为长生命周期后台协程（如 QQ 机器人 Access Token 刷新）的根 Context，便于随进程关闭回收。
+	lifecycleCtx context.Context
+
+	// qqMu 保护 qqClients 与 QQ 令牌刷新的兜底上下文；持锁期间只做内存读写，禁止执行网络或平台 I/O。
+	qqMu sync.Mutex
+	// qqClients 按 AppID 缓存已构造的 QQ 机器人客户端，避免每次通知都重建 Access Token 刷新链路。
+	// 归属：Notifier 实例级；生命周期与 Notifier 相同，进程退出由运行时统一回收。
+	qqClients map[string]qqBotClient
+	// qqRefreshCtx 是未注入进程生命周期上下文时按实例惰性创建的 QQ 令牌刷新兜底根 Context。
+	qqRefreshCtx context.Context
+	// qqRefreshCancel 是与 qqRefreshCtx 配对的取消句柄；归属 Notifier 实例，由实例回收时释放。
+	qqRefreshCancel context.CancelFunc
 }
 
 // newOutboundHTTPClient 用于本次流程后续判断的newOutboundHTTPClient
@@ -107,6 +120,8 @@ func (n *Notifier) Start(ctx context.Context) {
 	if ctx == nil {
 		return
 	}
+	// lifecycleCtx 在启动时绑定进程生命周期，供 QQ 令牌刷新等后台协程继承 owner。
+	n.lifecycleCtx = ctx
 	if n == nil || n.repository == nil || !n.started.CompareAndSwap(false, true) {
 		return
 	}
