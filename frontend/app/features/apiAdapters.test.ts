@@ -98,6 +98,7 @@ test('normalizeSystemSettingsUpdate separates every sensitive system setting', /
     smtp_password: 'test-smtp-password',
     qq_reply_secret_key: 'test-qq-secret',
     'captcha.remote_secret_key': 'test-captcha-secret',
+    'qqbot.app_secret': 'test-qqbot-secret',
   });
   expect(payload.values).toEqual({ theme_color: 'blue' });
   expect(payload.secrets).toEqual({
@@ -105,7 +106,18 @@ test('normalizeSystemSettingsUpdate separates every sensitive system setting', /
     smtp_password: { action: 'replace', value: 'test-smtp-password' },
     qq_reply_secret_key: { action: 'replace', value: 'test-qq-secret' },
     'captcha.remote_secret_key': { action: 'replace', value: 'test-captcha-secret' },
+    'qqbot.app_secret': { action: 'replace', value: 'test-qqbot-secret' },
   });
+});
+
+test('QQ connector settings send the AppSecret as a secret command and the AppID as plain value', /* 当前回调验证 QQ 连接器只有 AppSecret 走敏感命令通道。 */ () => {
+  // payload 是混合 AppID 明文与 AppSecret 明文后的系统设置命令。
+  const payload = normalizeSystemSettingsUpdate({
+    'qqbot.app_id': '102012345',
+    'qqbot.app_secret': 'test-qqbot-secret',
+  });
+  expect(payload.values).toEqual({ 'qqbot.app_id': '102012345' });
+  expect(payload.secrets).toEqual({ 'qqbot.app_secret': { action: 'replace', value: 'test-qqbot-secret' } });
 });
 
 test('notification SMTP settings separate the authorization code into a secret command', /* 当前回调验证通知页不会把 SMTP 授权码写入普通设置。 */ async () => {

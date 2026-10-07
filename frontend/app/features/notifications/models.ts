@@ -38,8 +38,8 @@ export interface SystemSettings {
   [key: string]: string | number | boolean | undefined;
 }
 
-/** 由当前 feature adapter 归一后的 NotificationChannelType UI 模型；不直接暴露 HTTP DTO。 */
-export type NotificationChannelType = 'dingtalk' | 'feishu' | 'bark' | 'webhook' | 'wechat' | 'telegram' | 'email';
+/** 由当前 feature adapter 归一后的 NotificationChannelType UI 模型；不直接暴露 HTTP DTO。qq 表示 QQ 机器人（botgo api-v2）出站渠道。 */
+export type NotificationChannelType = 'dingtalk' | 'feishu' | 'bark' | 'webhook' | 'wechat' | 'telegram' | 'email' | 'qq';
 /** 由当前 feature adapter 归一后的 NotificationEventType UI 模型；不直接暴露 HTTP DTO。 */
 export type NotificationEventType =
   | 'account_offline'

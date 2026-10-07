@@ -28,6 +28,7 @@ export const SENSITIVE_SYSTEM_SETTING_KEYS = new Set([
   'smtp_password',
   'qq_reply_secret_key',
   'captcha.remote_secret_key',
+  'qqbot.app_secret',
 ]);
 
 /** 将各 feature 的设置草稿转换为服务端要求的普通值与敏感命令结构。 */

@@ -208,6 +208,10 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	httpServerRef = httpServer
 	// 应用服务与 HTTP 服务均就绪后把各域工具注册到同一个 MCP 协议服务器。
 	RegisterMCPTools(mcpEndpoint, services.TransportPorts(), services.LifecycleContext, mcpBackgroundTasks)
+	// qqbotErr 是可选 QQ 入站命令网关登记失败原因；未启用时该步骤为空操作。
+	if qqbotErr := addQQBotGatewayComponent(lifecycleCoordinator, infrastructure, services.TransportPorts(), databaseHealth.Ping); qqbotErr != nil {
+		return Runtime{}, qqbotErr
+	}
 	// component 是应用服务返回的 worker 生命周期组件，由协调器而非 Server 登记。
 	for _, component := range services.LifecycleComponents() {
 		// addErr 是应用 worker 组件登记失败原因。

@@ -144,9 +144,9 @@ func TestRouteByChannelType(t *testing.T) {
 	if err == nil {
 		t.Fatal("未知渠道应报错")
 	}
-	// QQ 渠道暂不支持。
+	// QQ 渠道已支持，但缺少 app_id/app_secret 配置时必须报配置不完整错误。
 	if err := n.send(db.NotificationChannel{Type: "qq"}, "x"); err == nil {
-		t.Fatal("qq 渠道应报错")
+		t.Fatal("qq 渠道缺少配置应报错")
 	}
 }
 

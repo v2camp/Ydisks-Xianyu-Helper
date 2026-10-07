@@ -53,6 +53,16 @@ export const notificationChannelTypes: Record<NotificationChannelType, Notificat
     fields: [{ key: 'to_email', label: '收件邮箱', placeholder: 'receiver@example.com', required: true }],
     guide: { steps: ['通常先保存页面中的系统 SMTP 配置', '邮件渠道只需填写收件邮箱，即可完整继承系统 SMTP', '只有确实需要另一套发件服务时，才开启“使用独立 SMTP”并填写整套配置'], note: '继承和独立 SMTP 是互斥模式，不会再混用两套配置中的部分字段。' },
   },
+  qq: {
+    label: 'QQ 机器人', icon: MessageCircle,
+    fields: [
+      { key: 'app_id', label: '机器人 AppID', placeholder: '你的 QQ 机器人 AppID', required: true },
+      { key: 'app_secret', label: '机器人 AppSecret', placeholder: 'QQ 机器人 AppSecret', type: 'password', required: true, help: '用于换取 Access Token，仅本地加密存储，编辑页不回显明文' },
+      { key: 'user_openid', label: '单聊目标 OpenID', placeholder: '接收通知的用户 openid（与 AppID 绑定）', help: '单聊与群聊至少填一个，单聊优先' },
+      { key: 'group_openid', label: '群聊目标 OpenID', placeholder: '接收通知的群 openid（与 AppID 绑定）', help: '与单聊至少填一个' },
+    ],
+    guide: { steps: ['打开 QQ 开放平台 bot.qq.com，创建机器人应用', '在应用管理页获取 AppID 与 AppSecret', '把机器人拉进目标群，或让用户与机器人单聊发一条消息', '在管理页或调用接口获取 user_openid / group_openid（openid 与 AppID 绑定，换机器人需重配）'], urlFormat: 'AppID / AppSecret 在机器人应用管理页获取', note: '主动推送有每日限额且需审核；openid 不可跨 AppID 复用，换机器人后需重配。' },
+  },
 };
 
 // notificationEvents 是可绑定到通知渠道的事件定义。

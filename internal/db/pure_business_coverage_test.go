@@ -42,8 +42,12 @@ func TestPureBusinessHelpers(t *testing.T) {
 	}
 	// sensitiveKeys 保存业务允许进入敏感设置审计流程的完整键名集合。
 	sensitiveKeys := SensitiveSettingKeys()
-	if len(sensitiveKeys) != 4 || !IsSensitiveSettingKey(" AI_API_KEY ") || IsSensitiveSettingKey("normal_key") {
+	if len(sensitiveKeys) != 5 || !IsSensitiveSettingKey(" AI_API_KEY ") || IsSensitiveSettingKey("normal_key") {
 		t.Fatalf("sensitive keys=%v", sensitiveKeys)
+	}
+	// qqSecretSensitive 表示 QQ 连接器 AppSecret 必须走敏感设置三态命令与审计。
+	if qqSecretSensitive := IsSensitiveSettingKey("qqbot.app_secret"); !qqSecretSensitive {
+		t.Fatalf("qqbot.app_secret 必须是敏感设置键，keys=%v", sensitiveKeys)
 	}
 	// statusCasesForBatch 保存批次成功/失败计数与最终状态的映射。
 	statusCasesForBatch := []struct {

@@ -43,8 +43,10 @@ func (n *Notifier) send(ch db.NotificationChannel, message string) error {
 	case "email":
 		return n.sendEmailWithUser(cfg, message, ch.UserID)
 	case "qq":
-		// QQ 渠道配置未标准化，跳过。
-		return fmt.Errorf("qq 渠道暂不支持")
+		// ctx、cancel 为读取系统连接器设置提供有界预算，避免设置读取阻塞通知链路。
+		ctx, cancel := context.WithTimeout(context.Background(), legacyNotifierOperationTimeout)
+		defer cancel()
+		return n.sendQQ(ctx, cfg, message, ch.UserID)
 	default:
 		return fmt.Errorf("不支持的通知渠道类型: %s", ch.Type)
 	}

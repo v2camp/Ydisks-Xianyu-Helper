@@ -180,7 +180,7 @@ func (c *secretCodec) decrypt(scope, owner, value string) (string, error) {
 // isSensitiveSettingKey 封装isSensitive设置Key业务协调。
 func isSensitiveSettingKey(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "ai_api_key", "smtp_password", "qq_reply_secret_key", "captcha.remote_secret_key":
+	case "ai_api_key", "smtp_password", "qq_reply_secret_key", "captcha.remote_secret_key", "qqbot.app_secret":
 		return true
 	default:
 		return false
@@ -194,5 +194,5 @@ func IsSensitiveSettingKey(key string) bool {
 
 // SensitiveSettingKeys 返回全部敏感系统设置键名，调用方可用于访问审计且不包含秘密值。
 func SensitiveSettingKeys() []string {
-	return []string{"ai_api_key", "smtp_password", "qq_reply_secret_key", "captcha.remote_secret_key"}
+	return []string{"ai_api_key", "smtp_password", "qq_reply_secret_key", "captcha.remote_secret_key", "qqbot.app_secret"}
 }
