@@ -33,8 +33,7 @@ import { createNotificationChannel,deleteAccountNotifications,deleteMessageNotif
 import { cancelOrderRefreshJob,deleteOrder,getAdminStats,getOrderDetail,getOrders,manualShipOrder,syncOrders,syncSingleOrder,updateOrder } from './orders/api';
 import { clearDefaultReplyRecords,deleteDefaultReply,deleteReplyRule,deleteShippingRule,getAutomationIssues,getDefaultReplies,getDefaultReply,getReplyRules,getShippingRules,getShippingRulesPage,resolveAutomationRun,resolveDeferredAutomationTask,updateDefaultReply,updateReplyRule,updateShippingRule } from './rules/api';
 import { initializeAdmin,login,logout,verifySession } from './session/api';
-import { changePassword,fetchAIModels,getSystemSettings,updateLoginCredentials,updateSystemSettings } from './settings/api';
-import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings } from './settings/mcpApi';
+import { changePassword,fetchAIModels,generateMCPToken,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
 import { getHealth } from './system/api';
 import { normalizeSystemSettingsUpdate } from '../../shared/api-contract/settings';
 

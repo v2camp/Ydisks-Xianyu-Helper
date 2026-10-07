@@ -103,42 +103,19 @@ type cardAPITestResult struct {
 }
 
 // RegisterCardTools 注册卡密库存域全部工具。
+// p 是卡密应用用例端口，nil 时跳过注册以支持部分能力装配。
 func (e *Endpoint) RegisterCardTools(p CardPorts) {
 	if p == nil {
 		return
 	}
-	// commonArgs 是创建/更新共用的卡券元数据参数。
-	commonArgs := []ArgSpec{
-		{Name: "name", Type: ArgString, Required: true, Description: "卡券组名称。"},
-		{Name: "type", Type: ArgString, Required: true, Enum: []string{"text", "data", "image", "api"},
-			Description: "卡券类型：text=发货文本，data=逐行卡密，image=发货图片，api=接口取卡。"},
-		{Name: "description", Type: ArgString, Description: "卡券组运营说明。"},
-		{Name: "enabled", Type: ArgBoolean, Description: "是否允许自动化规则使用该组，默认 true。"},
-		{Name: "delay_seconds", Type: ArgInteger, Description: "自动发货前延迟秒数，0-3600。"},
-		{Name: "multi_spec", Type: ArgBoolean, Description: "是否仅匹配指定商品规格。"},
-		{Name: "spec_name", Type: ArgString, Description: "多规格匹配的规格名。"},
-		{Name: "spec_value", Type: ArgString, Description: "多规格匹配的规格值。"},
-	}
-	// contentArgs 是按类型提交内容的参数；全部只写，除 text 话术与 image 地址外不回显。
-	contentArgs := []ArgSpec{
-		{Name: "text_content", Type: ArgString, Description: "text 类型的发货话术。"},
-		{Name: "image_url", Type: ArgString, Description: "image 类型的发货图片公网地址。"},
-		{Name: "data_content", Type: ArgString, Description: "data 类型的逐行卡密，每行一条；更新时传入会整体替换库存，必须带 confirm=true。"},
-		{Name: "api_config", Type: ArgString, Description: "api 类型的完整 JSON 配置（密钥仅写入）。"},
-	}
-	// createArgs 是创建卡券组的全部入参：名称与类型必填，类型不可在更新时修改。
-	createArgs := append([]ArgSpec{
-		{Name: "name", Type: ArgString, Required: true, Description: "卡券组名称。"},
-		{Name: "type", Type: ArgString, Required: true, Enum: []string{"text", "data", "image", "api"},
-			Description: "卡券类型：text=发货文本，data=逐行卡密，image=发货图片，api=接口取卡。"},
-	}, commonArgsWithout(commonArgs, "name", "type")...)
-	createArgs = append(createArgs, contentArgs...)
-	// updateArgs 是更新卡券组的全部入参：类型沿用原值不可修改，未传字段保留现值。
-	updateArgs := append([]ArgSpec{
-		{Name: "card_id", Type: ArgInteger, Required: true, Description: "卡券组标识。"},
-		{Name: "name", Type: ArgString, Description: "卡券组名称；不传则保留现名称。"},
-	}, commonArgsWithout(commonArgs, "name", "type")...)
-	updateArgs = append(updateArgs, contentArgs...)
+	e.registerCardReadTools(p)
+	e.registerCardMutationTools(p)
+	e.registerCardStockTools(p)
+}
+
+// registerCardReadTools 注册卡密只读查询工具：卡券组列表与单组详情。
+// p 是卡密应用用例端口。
+func (e *Endpoint) registerCardReadTools(p CardPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "card_list",
@@ -178,6 +155,45 @@ func (e *Endpoint) RegisterCardTools(p CardPorts) {
 				return cardDTOFromApp(card), nil
 			},
 		},
+	)
+}
+
+// registerCardMutationTools 注册卡券组创建与更新工具：两者共用元数据与内容入参。
+// p 是卡密应用用例端口。
+func (e *Endpoint) registerCardMutationTools(p CardPorts) {
+	// commonArgs 是创建/更新共用的卡券元数据参数。
+	commonArgs := []ArgSpec{
+		{Name: "name", Type: ArgString, Required: true, Description: "卡券组名称。"},
+		{Name: "type", Type: ArgString, Required: true, Enum: []string{"text", "data", "image", "api"},
+			Description: "卡券类型：text=发货文本，data=逐行卡密，image=发货图片，api=接口取卡。"},
+		{Name: "description", Type: ArgString, Description: "卡券组运营说明。"},
+		{Name: "enabled", Type: ArgBoolean, Description: "是否允许自动化规则使用该组，默认 true。"},
+		{Name: "delay_seconds", Type: ArgInteger, Description: "自动发货前延迟秒数，0-3600。"},
+		{Name: "multi_spec", Type: ArgBoolean, Description: "是否仅匹配指定商品规格。"},
+		{Name: "spec_name", Type: ArgString, Description: "多规格匹配的规格名。"},
+		{Name: "spec_value", Type: ArgString, Description: "多规格匹配的规格值。"},
+	}
+	// contentArgs 是按类型提交内容的参数；全部只写，除 text 话术与 image 地址外不回显。
+	contentArgs := []ArgSpec{
+		{Name: "text_content", Type: ArgString, Description: "text 类型的发货话术。"},
+		{Name: "image_url", Type: ArgString, Description: "image 类型的发货图片公网地址。"},
+		{Name: "data_content", Type: ArgString, Description: "data 类型的逐行卡密，每行一条；更新时传入会整体替换库存，必须带 confirm=true。"},
+		{Name: "api_config", Type: ArgString, Description: "api 类型的完整 JSON 配置（密钥仅写入）。"},
+	}
+	// createArgs 是创建卡券组的全部入参：名称与类型必填，类型不可在更新时修改。
+	createArgs := append([]ArgSpec{
+		{Name: "name", Type: ArgString, Required: true, Description: "卡券组名称。"},
+		{Name: "type", Type: ArgString, Required: true, Enum: []string{"text", "data", "image", "api"},
+			Description: "卡券类型：text=发货文本，data=逐行卡密，image=发货图片，api=接口取卡。"},
+	}, commonArgsWithout(commonArgs, "name", "type")...)
+	createArgs = append(createArgs, contentArgs...)
+	// updateArgs 是更新卡券组的全部入参：类型沿用原值不可修改，未传字段保留现值。
+	updateArgs := append([]ArgSpec{
+		{Name: "card_id", Type: ArgInteger, Required: true, Description: "卡券组标识。"},
+		{Name: "name", Type: ArgString, Description: "卡券组名称；不传则保留现名称。"},
+	}, commonArgsWithout(commonArgs, "name", "type")...)
+	updateArgs = append(updateArgs, contentArgs...)
+	e.RegisterTools(
 		ToolDef{
 			Name: "card_create",
 			Description: "创建卡券组。按 type 提供对应内容：text 传 text_content（发货话术）；" +
@@ -230,6 +246,13 @@ func (e *Endpoint) RegisterCardTools(p CardPorts) {
 				return cardMutationResult{CardID: int64(id)}, nil
 			},
 		},
+	)
+}
+
+// registerCardStockTools 注册卡券组库存维护与连通性测试工具：删除、追加卡密与 API 测试。
+// p 是卡密应用用例端口。
+func (e *Endpoint) registerCardStockTools(p CardPorts) {
+	e.RegisterTools(
 		ToolDef{
 			Name:        "card_delete",
 			Description: "删除卡券组及其全部库存与关联自动化配置（不可逆）。必须显式 confirm=true。",

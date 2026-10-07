@@ -2,15 +2,21 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
 import type { MCPAuditPage,MCPServiceStatus } from './api';
-import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings } from './mcpApi';
+import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings } from './api';
 import { useMCPService } from './mcpHooks';
 
-vi.mock('./mcpApi', /* mcpApiMockFactory 提供 MCP 服务钩子的确定性 API 替身。 */ () => ({
+vi.mock('./api', /* settingsApiMockFactory 提供设置 Hook 与 MCP 卡片共用的确定性 API 替身。 */ () => ({
+  fetchAIModels: vi.fn(),
   generateMCPToken: vi.fn(),
   getMCPAudit: vi.fn(),
   getMCPServiceStatus: vi.fn(),
+  getSystemSettings: vi.fn(),
   revokeMCPToken: vi.fn(),
+  testAIConnection: vi.fn(),
+  updateLoginCredentials: vi.fn(),
   updateMCPServiceSettings: vi.fn(),
+  updateSystemSettings: vi.fn(),
+  verifySession: vi.fn(),
 }));
 
 // statusMock 是 MCP 状态读取请求的可控替身。

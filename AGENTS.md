@@ -125,6 +125,13 @@ cd ".worktree/<任务名>"
 - 两者禁止直接写业务数据或决定自动化规则。
 - 两者禁止依赖 HTTP 层与应用层。
 - internal/engine 与 internal/automation 必须独立于 Server。
+- internal/mcp 是与 internal/server 并列的第二传输层。
+- internal/mcp 只依赖标准库、mcp-go 与应用层模型。
+- internal/mcp 禁止依赖 db、server、平台、浏览器、自动化与引擎。
+- internal/mcp 禁止依赖 internal/adapter 与 internal/composition。
+- internal/mcp 的用例接口由包内定义并由组合层投影实现。
+- server 只保留 /mcp 通用挂载缝，不写 MCP 协议实现。
+- server 禁止引入 mcp-go 依赖或 JSON-RPC 语义。
 - 新增可变并发状态要有归属、锁与关停文档，并配套测试。
 - 跨仓库原子操作放在应用级工作单元之后。
 - 新处理器禁止直接调用 BeginTx。
@@ -532,6 +539,11 @@ curl -s http://127.0.0.1:59188/health
 - cmd 下有 server、init-admin 与 dbverify 等入口。
 - internal 下有 server、adapter、account 与 engine。
 - internal 下还有 automation、xianyu、browser 与 db。
+- internal/mcp 是对外开放的 MCP 传输层。
+- /mcp 是非业务协议端点，不进 OpenAPI 登记。
+- MCP 管理接口用 /api/v1/mcp 前缀并登记进 OpenAPI。
+- XIANYU_MCP_TOKEN 是进程环境提供的 MCP 引导令牌。
+- 00057 迁移建 mcp_tokens 与 mcp_call_audit 两表。
 - internal/adapter 负责系统事件、订单详情与凭证续期接线。
 - internal/xianyu 内分 mtop、ws、qrlogin 与 protocol。
 - frontend 是 React 与 Vite 源码。

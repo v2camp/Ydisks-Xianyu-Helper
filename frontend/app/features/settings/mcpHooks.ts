@@ -1,6 +1,6 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import type { MCPAuditPage,MCPServiceMessage,MCPServiceStatus } from './api';
-import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings,type MCPSettingsUpdate } from './mcpApi';
+import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings,type MCPSettingsUpdate } from './api';
 import { MCP_AUDIT_PAGE_SIZE,createMCPServiceMessage,isSettingsAbortError,settingsErrorMessage } from './state';
 
 /** MCP 服务卡片的 Hook 返回值。 */

@@ -182,8 +182,17 @@ func (e *Endpoint) RegisterOrderTools(orders OrderPorts, analytics AnalyticsPort
 	}
 }
 
-// registerOrderTools 注册订单查询与履约动作工具。
+// registerOrderTools 注册订单查询与履约动作工具，按查询、刷新任务与手动发货三组装配。
+// p 是订单应用用例端口。
 func (e *Endpoint) registerOrderTools(p OrderPorts) {
+	e.registerOrderQueryTools(p)
+	e.registerOrderRefreshTools(p)
+	e.registerOrderFulfillmentTools(p)
+}
+
+// registerOrderQueryTools 注册订单列表与详情查询工具。
+// p 是订单应用用例端口。
+func (e *Endpoint) registerOrderQueryTools(p OrderPorts) {
 	// accountIDArg 是订单工具通用的可选账号过滤参数。
 	accountIDArg := ArgSpec{Name: "account_id", Type: ArgString, Description: "按账号标识过滤。"}
 	e.RegisterTools(
@@ -238,6 +247,13 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 				return orderDetailFromApp(order), nil
 			},
 		},
+	)
+}
+
+// registerOrderRefreshTools 注册订单平台刷新与后台刷新任务管理工具。
+// p 是订单应用用例端口。
+func (e *Endpoint) registerOrderRefreshTools(p OrderPorts) {
+	e.RegisterTools(
 		ToolDef{
 			Name:        "order_refresh_single",
 			Description: "向平台刷新单个订单的最新状态与详情（真实平台触达，受风控约束）。必须显式 confirm=true。",
@@ -350,6 +366,13 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 				return map[string]any{"job_id": id, "cancelled": result.Cancelled, "status": status}, nil
 			},
 		},
+	)
+}
+
+// registerOrderFulfillmentTools 注册订单手动发货工具。
+// p 是订单应用用例端口。
+func (e *Endpoint) registerOrderFulfillmentTools(p OrderPorts) {
+	e.RegisterTools(
 		ToolDef{
 			Name: "order_manual_ship",
 			Description: "手动发货：status_only 只标记本地已发货（不触发平台动作），full_delivery 执行完整发货链路，" +
