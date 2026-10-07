@@ -20,20 +20,35 @@
 
 ### 0.1 构建环境
 
-- 编译、测试与静态检查默认在容器内执行。
-- 本机 Go 允许做打包实验与本地验证，产物输出到 /tmp。
-- 本机产物是 macOS 二进制，禁止进镜像或部署到容器。
+- 编译、测试、vet 与覆盖率默认在本机执行。
+- 容器只用于镜像、多方言、浏览器与合并前门禁。
+- 本机验证前先跑 scripts/guard-local-dev-env.sh。
+- 本机 Go 版本不得低于 go.mod 的 go 指令版本。
+- 严格对齐容器版本时加 GOTOOLCHAIN=go1.26.4 前缀。
+- 本机产物是 macOS 二进制，禁止进镜像或部署。
 - 部署镜像必须走 Dockerfile.debian13 的容器构建。
+- MySQL 与 Postgres 方言的回归证据只在容器内出。
+- 浏览器与 Web UI 冒烟只在容器内跑。
+- 合并到 main 前必须补跑一次容器完整门禁。
+- 本机与容器的版本差异要在提交说明登记。
 - 网络受限时设置 GOPROXY=https://goproxy.cn,direct。
 - 一次性容器统一使用 golang:1.26 镜像。
 - 容器产物是 Linux 二进制，不能直接在桌面系统运行。
+- 磁盘余量低于 10Gi 时禁止启动 compose。
+- 本机禁止并发跑多个 go 命令，避免缓存竞态。
 - 下文命令均在仓库根目录执行。
 
 ### 0.2 编译
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
-  golang:1.26 go build -o /tmp/xianyu-server ./cmd/server
+# 本机日常编译（默认路径，产物不进源码树）
+go build -o /tmp/xianyu-server ./cmd/server
+```
+
+```bash
+# 本机校验 Linux 产物可编译，替代容器编译验证
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+  -o /tmp/xianyu-server-linux-amd64 ./cmd/server
 ```
 
 ```bash
@@ -42,13 +57,21 @@ GOPROXY=https://goproxy.cn,direct go build -trimpath -ldflags="-s -w" \
   -o /tmp/xianyu-server ./cmd/server
 ```
 
+```bash
+# 容器编译：仅在需要 Linux 运行时验证时使用
+docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
+  golang:1.26 go build -o /tmp/xianyu-server ./cmd/server
+```
+
 - 依赖缓存用命名卷 ydisks-gomod 挂载，复用免重下。
 - 多入口在同一个容器内串联编译。
 - 禁止为每个入口各起一个容器。
 - cmd/tray 依赖桌面图形库，只在 macOS 本机构建。
 - 产物禁止写进源码树，输出到 /tmp 或 dist。
 - 交叉编译按目标系统指定 GOOS 与 GOARCH。
+- 交叉编译统一设 CGO_ENABLED=0。
 - 编译报 undefined 时先确认没有并发编辑。
+- 本机编译失败先串行重跑一次，排除并发干扰。
 
 ### 0.3 必读文档
 
@@ -162,11 +185,10 @@ cd ".worktree/<任务名>"
 - 基线重新生成要经评审并记录范围。
 
 ```bash
-# Go 侧注释门禁（容器内执行）
-docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
-  golang:1.26 go run ./tools/commentlint -mode check -root .
+# Go 侧注释门禁（本机执行）
+go run ./tools/commentlint -mode check -root .
 
-# 前端侧注释门禁（Node 环境执行）
+# 前端侧注释门禁（本机 Node 环境执行）
 npm --prefix frontend run comments:check
 ```
 
@@ -304,17 +326,37 @@ npm --prefix frontend run comments:check
 - 声明要列出真实账号与外部平台的例外清单。
 
 ```bash
-# Go 覆盖率（容器内，默认不启 Chromium）
-docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
-  golang:1.26 sh -c 'go test -coverprofile=cover.out ./... && go tool cover -func=cover.out | tail -1'
+# Go 覆盖率（本机，默认不启 Chromium）
+go test -coverprofile=/tmp/cover.out ./... \
+  && go tool cover -func=/tmp/cover.out | tail -1
 
-# 前端覆盖率（Node 环境执行）
+# 前端覆盖率（本机 Node 环境执行）
 npm --prefix frontend run test:coverage
 ```
 
 ### 2.2 门禁命令
 
 ```bash
+# 本机日常门禁：默认路径，串行执行
+bash scripts/guard-local-dev-env.sh
+go vet ./...
+go test ./... -count=1
+```
+
+```bash
+# 本机门禁补充：架构、契约与注释门禁
+go run ./tools/architecturecheck
+go run ./tools/commentlint -mode check -root .
+npm --prefix frontend run comments:check
+```
+
+```bash
+# 安装与 ci.yml 指定版本一致的 golangci-lint
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+```
+
+```bash
+# 容器门禁：合并前、多方言、浏览器与 Web UI 四类场景必跑
 docker compose -f docker-compose.functional.yml build go-test go-lint
 docker compose -f docker-compose.functional.yml run --rm go-vet
 docker compose -f docker-compose.functional.yml run --rm go-lint
@@ -323,10 +365,16 @@ docker compose -f docker-compose.functional.yml build webui-e2e-test
 docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
 ```
 
-- lint 必须走 Dockerfile.test 的 go-lint 阶段。
+- 纯 Go 单测与 vet 默认走本机，不进容器。
+- lint 走本机 golangci-lint 或 Dockerfile.test 的 go-lint 阶段。
+- 本机 golangci-lint 版本须与 ci.yml 指定值一致。
+- 禁止用更高版本替代，会报 CI 不报的告警。
+- 本机未装 golangci-lint 时，提交前补跑容器 go-lint。
+- go fmt 会就地改写文件，提交前必须核对 git status。
+- 格式收口不在 CI 校验内，须单开任务避免夹带。
 - go-test 依赖健康的 mysql 与 postgres。
 - 执行 compose run 时会自动拉起这两个数据库。
-- 只跑纯 Go 单测时优先用一次性容器，更快更省。
+- 本机调试多方言可只起 mysql 与 postgres 两容器。
 - 单测命令加 -run TestName -v -count=1。
 - 端到端验证用仓库脚本，不要手工拼命令。
 - scripts 目录提供 full、functional 与 persistence 三套脚本。
@@ -363,11 +411,10 @@ docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
 - 禁止把生产代码标记为忽略或从统计中排除。
 
 ```bash
-# 核心链路覆盖率（容器内；必须显式列出全部链路包，否则跨包覆盖不会被统计）
-docker run --rm -v "$PWD":/src -w /src -v ydisks-gomod:/go/pkg/mod \
-  golang:1.26 sh -c 'go test -coverprofile=cover-core.out \
-    ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws \
-    && go tool cover -func=cover-core.out | tail -1'
+# 核心链路覆盖率（本机；必须显式列出全部链路包，否则跨包覆盖不会被统计）
+go test -coverprofile=/tmp/cover-core.out \
+  ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws \
+  && go tool cover -func=/tmp/cover-core.out | tail -1
 ```
 
 ### 2.5 UI 动线门禁
