@@ -45,6 +45,43 @@ func TestErrorRedactsDiagnosticSecrets(t *testing.T) {
 	}
 }
 
+// TestTextRedactsQuotedCredentialPairs 验证 JSON 风格的 "键":"值" 凭证对会被整体脱敏且不误伤普通字段。
+func TestTextRedactsQuotedCredentialPairs(t *testing.T) {
+	// tokenRequest 复刻第三方 SDK 打印换取令牌请求体的形态，其中 clientSecret 必须被隐藏。
+	tokenRequest := `retrieve access token URL:https://bots.qq.com/app/getAppAccessToken req:{"appId":"102012345","clientSecret":"plain-secret-value"}`
+	// got 保存清洗后的诊断文本。
+	got := Text(tokenRequest)
+	// secret 表示每个不得保留在安全文本中的模拟秘密。
+	for _, secret := range []string{"plain-secret-value"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("脱敏文本仍包含秘密 %q: %s", secret, got)
+		}
+	}
+	if !strings.Contains(got, `"clientSecret":"<redacted>"`) {
+		t.Fatalf("应保留敏感键名并替换其值: %s", got)
+	}
+	if !strings.Contains(got, `"appId":"102012345"`) {
+		t.Fatalf("非敏感字段不应被改写: %s", got)
+	}
+	// tokenResponse 复刻 SDK 打印令牌响应体的形态，access_token 必须被隐藏。
+	tokenResponse := `access token:{"access_token":"token-value-leaked","expires_in":"7200"}`
+	if // sanitizedResponse 是令牌响应体清洗结果。
+	sanitizedResponse := Text(tokenResponse); strings.Contains(sanitizedResponse, "token-value-leaked") {
+		t.Fatalf("脱敏文本仍包含访问令牌: %s", sanitizedResponse)
+	}
+	// structuredToken 复刻 SDK 用 %+v 打印 oauth2.Token 的形态，两种令牌都必须被隐藏。
+	structuredToken := `token:&{AccessToken:access-leaked TokenType:Bearer RefreshToken:refresh-leaked Expiry:2026-10-08}`
+	// sanitizedStructured 是结构化令牌文本清洗结果。
+	sanitizedStructured := Text(structuredToken)
+	if strings.Contains(sanitizedStructured, "access-leaked") || strings.Contains(sanitizedStructured, "refresh-leaked") {
+		t.Fatalf("结构化令牌文本未脱敏: %s", sanitizedStructured)
+	}
+	if // plainJSON 是不含敏感键名的普通 JSON，必须原样保留。
+	plainJSON := `{"nickname":"小明","count":3}`; Text(plainJSON) != plainJSON {
+		t.Fatalf("普通 JSON 不应被改写: %s", Text(plainJSON))
+	}
+}
+
 // TestExternalErrorRedactsCredentialPaths 验证外部网络错误不会保留 Telegram Token、Webhook 路径、用户信息或查询参数。
 func TestExternalErrorRedactsCredentialPaths(t *testing.T) {
 	if externalURLOrigin("not-a-url") != "<redacted>" {

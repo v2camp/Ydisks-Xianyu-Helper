@@ -365,6 +365,8 @@ func openServerInfrastructure(ctx context.Context, startup serverStartupConfig, 
 	// logger 是当前进程的初始结构化日志器；后续数据库日志格式变更会替换默认 logger。
 	logger := logging.NewLogger(logWriter, startup.resolvedLogFormat)
 	slog.SetDefault(logger)
+	// QQ 官方 SDK 会在调试级别明文打印 AppSecret 与 Access Token，必须尽早接管其全局 logger。
+	logging.InstallBotgoLogger(logger)
 	// database 和 dialect 表示已打开数据库及其 SQL 方言；database 的关闭责任转移给返回值。
 	database, dialect, err := db.Open(ctx, startup.resolvedDBURL)
 	if err != nil {
@@ -406,6 +408,8 @@ func openServerInfrastructure(ctx context.Context, startup serverStartupConfig, 
 		if format, formatErr := store.Settings.Get(ctx, "log_format"); formatErr == nil && strings.TrimSpace(format) != "" {
 			logger = logging.NewLogger(logWriter, format)
 			slog.SetDefault(logger)
+			// 日志器被替换后必须重新接管 SDK logger，否则 SDK 输出会落到旧输出目标。
+			logging.InstallBotgoLogger(logger)
 		}
 	}
 	if opts.initAdmin {
