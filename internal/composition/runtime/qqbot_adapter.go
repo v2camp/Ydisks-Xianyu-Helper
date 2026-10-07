@@ -483,12 +483,10 @@ func addQQBotGatewayComponent(coordinator *lifecycle.Coordinator, infrastructure
 	}
 	// addErr 是生命周期组件登记失败原因；网关自带阻塞循环，故用 goroutine 启动。
 	if addErr := coordinator.Add(lifecycle.NamedComponent{Name: "qqbot-gateway", Component: lifecycle.FuncComponent{
-		StartFunc: /* 网关在生命周期上下文内阻塞运行，退出只记日志不中断其他组件。 */ func(ctx context.Context) error {
+		StartFunc: /* 网关在生命周期上下文内持续重连运行，直到进程关闭。 */ func(ctx context.Context) error {
 			go func() {
-				// runErr 是网关退出原因；生命周期关闭导致的退出属预期，只记告警日志。
-				if runErr := gateway.Run(ctx); runErr != nil {
-					infrastructure.Logger.Warn("QQ 入站网关退出", "err", runErr)
-				}
+				// 单次 Run 退出后由退避守护接管重连；否则一次网络抖动或凭据错误会让入站命令永久失效。
+				serveWithRestart(ctx, "QQ 入站网关", gateway, infrastructure.Logger)
 			}()
 			return nil
 		},
