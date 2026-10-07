@@ -143,6 +143,10 @@ export const QQConnectorCard: React.FC<QQConnectorCardProps> = ({ settings, onCh
         </span>
       </label>
 
+      <p className="text-xs text-gray-500">
+        凭据与开关在下次服务重启后生效；网关断开后服务会按指数退避自动重连，无需手动干预。
+      </p>
+
       {commandsEnabled && (
         <div className="space-y-2">
           <label className="block text-sm font-bold text-gray-800" htmlFor="qq-connector-command-openids">命令发送者白名单（openid）</label>
