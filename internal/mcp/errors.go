@@ -16,6 +16,7 @@ import (
 	defaultreplyapp "xianyu-go/internal/application/defaultreply"
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	keywordsapp "xianyu-go/internal/application/keywords"
+	notificationsapp "xianyu-go/internal/application/notifications"
 	settingsapp "xianyu-go/internal/application/settings"
 )
 
@@ -171,6 +172,16 @@ func Classify(err error) (ErrorClass, string) {
 		return ClassInternal, "平台聊天数据已拉取但本地保存失败，请重试刷新"
 	case errors.Is(err, chatapp.ErrInvalidInput), errors.Is(err, chatapp.ErrSendInvalidInput), errors.Is(err, chatapp.ErrChatItemInvalid):
 		return ClassInvalidArgument, "聊天参数无效，请检查账号、会话与消息内容"
+	case errors.Is(err, notificationsapp.ErrChannelNotFound):
+		return ClassNotFound, "通知渠道或账号绑定不存在"
+	case errors.Is(err, notificationsapp.ErrChannelForbidden), errors.Is(err, notificationsapp.ErrAccountForbidden):
+		return ClassForbidden, "无权操作该通知渠道或账号绑定"
+	case errors.Is(err, notificationsapp.ErrChannelInvalidInput):
+		return ClassInvalidArgument, "通知渠道参数无效，请检查名称、类型与配置 JSON"
+	case errors.Is(err, notificationsapp.ErrNotifierUnavailable):
+		return ClassInternal, "通知器未启用或尚未装配，请检查服务端配置"
+	case errors.Is(err, notificationsapp.ErrInvalidInput):
+		return ClassInvalidArgument, "通知查询参数无效"
 	case errors.Is(err, settingsapp.ErrForbidden):
 		return ClassForbidden, "无权操作该资源：目标账号或配置不属于当前管理员"
 	case errors.Is(err, settingsapp.ErrAccountNotFound):

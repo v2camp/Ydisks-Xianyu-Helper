@@ -182,4 +182,6 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	endpoint.RegisterKeywordTools(newMCPKeywordPorts(ports))
 	// 聊天域工具：发送与删除复用 chat 应用服务，图片下载复用组合层受控公网策略。
 	endpoint.RegisterChatTools(newMCPChatPorts(ports))
+	// 通知域工具：渠道配置只写不读，删除/清空/测试发送走 confirm 守卫。
+	endpoint.RegisterNotificationTools(newMCPNotificationChannelPorts(ports), newMCPUncertainNotificationPorts(ports))
 }

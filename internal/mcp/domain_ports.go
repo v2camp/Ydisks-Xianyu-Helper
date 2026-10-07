@@ -17,6 +17,7 @@ import (
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	itemapp "xianyu-go/internal/application/items"
 	keywordsapp "xianyu-go/internal/application/keywords"
+	notificationsapp "xianyu-go/internal/application/notifications"
 	orderapp "xianyu-go/internal/application/orders"
 )
 
@@ -268,6 +269,43 @@ type ChatPorts interface {
 	ListChatItems(ctx context.Context, input chatapp.ChatItemQuery) (chatapp.ChatItemPage, error)
 }
 
+// NotificationChannelPorts 聚合通知渠道与账号绑定用例。
+// 渠道配置 JSON（SMTP 密码、机器人 secret 等）只经写入参数进入应用层，MCP 永不回传。
+type NotificationChannelPorts interface {
+	// ListChannels 返回用户全部通知渠道的非敏感摘要。
+	ListChannels(ctx context.Context, userID int64) ([]notificationsapp.ChannelSummary, error)
+	// GetChannelEditor 返回渠道编辑态；不含 SMTP 密码或机器人 secret。
+	GetChannelEditor(ctx context.Context, userID, channelID int64) (notificationsapp.ChannelEditor, error)
+	// CreateChannel 创建渠道并返回标识；Config 只写不读。
+	CreateChannel(ctx context.Context, userID int64, input notificationsapp.ChannelInput) (int64, error)
+	// UpdateChannel 部分更新渠道；只提交非空字段，Config 只写不读。
+	UpdateChannel(ctx context.Context, userID, channelID int64, patch notificationsapp.ChannelPatch) error
+	// DeleteChannel 删除用户拥有的渠道。
+	DeleteChannel(ctx context.Context, userID, channelID int64) error
+	// TestChannel 向渠道发送一条测试通知；发送时刻由适配器取墙钟。
+	TestChannel(ctx context.Context, userID, channelID int64) error
+	// ListBindings 返回用户全部账号与渠道的绑定摘要。
+	ListBindings(ctx context.Context, userID int64) ([]notificationsapp.BindingSummary, error)
+	// GetBindingIDs 返回账号当前启用的渠道标识。
+	GetBindingIDs(ctx context.Context, userID int64, cookieID string) ([]int64, error)
+	// SetBindings 覆盖保存账号的渠道绑定。
+	SetBindings(ctx context.Context, userID int64, cookieID string, channelIDs []int64) error
+	// SetSingleBinding 切换账号中单个渠道绑定的启用状态。
+	SetSingleBinding(ctx context.Context, userID int64, cookieID string, channelID int64, enabled bool) error
+	// DeleteBinding 删除一条绑定。
+	DeleteBinding(ctx context.Context, userID, bindingID int64) error
+	// DeleteAccountBindings 清空账号的全部绑定。
+	DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error
+}
+
+// UncertainNotificationPorts 聚合通知不确定状态的用户视图与管理员全局视图。
+type UncertainNotificationPorts interface {
+	// ListUncertainForUser 返回当前用户渠道的不确定通知摘要与总数。
+	ListUncertainForUser(ctx context.Context, userID int64, limit int) ([]notificationsapp.UncertainSummary, int, error)
+	// ListUncertainForAdmin 返回全部用户渠道的不确定通知摘要与总数。
+	ListUncertainForAdmin(ctx context.Context, limit int) ([]notificationsapp.UncertainSummary, int, error)
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -292,4 +330,8 @@ type DomainPorts struct {
 	Keywords KeywordPorts
 	// Chat 是聊天会话、发送与元数据域端口。
 	Chat ChatPorts
+	// NotificationChannels 是通知渠道与账号绑定域端口。
+	NotificationChannels NotificationChannelPorts
+	// UncertainNotifications 是不确定通知查询域端口。
+	UncertainNotifications UncertainNotificationPorts
 }
