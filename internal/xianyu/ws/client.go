@@ -729,7 +729,7 @@ func (c *Conn) ReceiveLoop(ctx context.Context, onMessage func(decrypted map[str
 		// 为 getState/ackDiff 最多阻塞 Push ACK 60 秒。
 		go func(message map[string]any) {
 			if // err 用于本次流程后续判断的err
-			err := c.handleSyncExtra(c.readCtx, message); err != nil && c.readCtx.Err() == nil {
+			err := c.handleSyncExtra(c.readCtx, message, onMessage); err != nil && c.readCtx.Err() == nil {
 				c.logger.Error("同步状态恢复失败", "err", err)
 			}
 		}(raw)
@@ -781,5 +781,3 @@ func (c *Conn) ReceiveLoop(ctx context.Context, onMessage func(decrypted map[str
 		}
 	}
 }
-
-// handleSyncExtra 封装handleSyncExtra业务协调。

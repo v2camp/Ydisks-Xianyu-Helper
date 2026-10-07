@@ -3,6 +3,8 @@ package adapter
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"xianyu-go/internal/account"
 	chatapp "xianyu-go/internal/application/chat"
@@ -202,6 +204,93 @@ func (r chatRepository) SaveBuyerNote(ctx context.Context, note chatapp.BuyerNot
 	return chatapp.BuyerNote{AccountID: row.CookieID, BuyerID: row.BuyerID, Content: row.Content, UpdatedAt: row.UpdatedAt}, nil
 }
 
+// chatIdentityTTL 是会话展示身份的复用窗口：同一账号同一会话在该窗口内不再请求平台。
+// 线上事故中一次聊天页刷新会对全部会话各发一次 pc.user.query，账号 164 个会话即 164 次调用，
+// 短时间内反复刷新直接触发闲鱼风控；这里用短期缓存把重复查询收敛为每个会话每个窗口一次。
+const chatIdentityTTL = 30 * time.Minute
+
+// chatIdentityCacheCapacity 限制缓存条目上限，避免超大会话量账号导致无界增长。
+const chatIdentityCacheCapacity = 4096
+
+// chatIdentityCacheKey 是会话展示身份缓存的复合键。
+type chatIdentityCacheKey struct {
+	// accountID 是会话所属账号。
+	accountID string
+	// chatID 是平台会话标识。
+	chatID string
+}
+
+// chatIdentityCacheEntry 保存一次身份解析结果及其写入时间。
+type chatIdentityCacheEntry struct {
+	// identity 是平台返回的非敏感展示身份。
+	identity chatapp.Identity
+	// at 是该结果的写入时间，用于判断复用窗口是否仍然有效。
+	at time.Time
+}
+
+// chatIdentityCache 保存会话展示身份的短期缓存；mu 保护 entries，缓存操作不得跨平台 I/O 持锁。
+type chatIdentityCache struct {
+	// mu 保护 entries 的并发读写。
+	mu sync.Mutex
+	// entries 保存账号与会话到展示身份的映射。
+	entries map[chatIdentityCacheKey]chatIdentityCacheEntry
+}
+
+// newChatIdentityCache 创建空的会话展示身份缓存。
+// 必须返回指针：解析器以值语义传递，只有共享同一实例才能保证缓存与互斥锁真正生效。
+func newChatIdentityCache() *chatIdentityCache {
+	return &chatIdentityCache{entries: make(map[chatIdentityCacheKey]chatIdentityCacheEntry)}
+}
+
+// get 读取仍在复用窗口内的展示身份；未命中或已过期时返回 false。
+func (c *chatIdentityCache) get(key chatIdentityCacheKey, now time.Time) (chatapp.Identity, bool) {
+	if c == nil {
+		return chatapp.Identity{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// entry、ok 保存命中的缓存条目及其是否存在。
+	entry, ok := c.entries[key]
+	if !ok || now.Sub(entry.at) >= chatIdentityTTL {
+		return chatapp.Identity{}, false
+	}
+	return entry.identity, true
+}
+
+// put 写入一次展示身份；超出容量时先清理过期条目，仍超限则淘汰最旧的一条。
+func (c *chatIdentityCache) put(key chatIdentityCacheKey, identity chatapp.Identity, now time.Time) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.entries) >= chatIdentityCacheCapacity {
+		c.evictLocked(now)
+	}
+	c.entries[key] = chatIdentityCacheEntry{identity: identity, at: now}
+}
+
+// evictLocked 在持锁状态下清理缓存；调用方必须已持有 c.mu。
+func (c *chatIdentityCache) evictLocked(now time.Time) {
+	// oldestKey、oldestAt 保存遍历中得到的最旧条目键及其写入时间。
+	var oldestKey chatIdentityCacheKey
+	// oldestAt 是当前最旧条目的写入时间；零值表示尚未找到候选。
+	var oldestAt time.Time
+	// key、entry 表示当前遍历到的缓存键与条目。
+	for key, entry := range c.entries {
+		if now.Sub(entry.at) >= chatIdentityTTL {
+			delete(c.entries, key)
+			continue
+		}
+		if oldestAt.IsZero() || entry.at.Before(oldestAt) {
+			oldestKey, oldestAt = key, entry.at
+		}
+	}
+	if len(c.entries) >= chatIdentityCacheCapacity && !oldestAt.IsZero() {
+		delete(c.entries, oldestKey)
+	}
+}
+
 // chatIdentityResolver 在适配器内读取 Cookie 并调用平台身份查询接口。
 type chatIdentityResolver struct {
 	// store 提供账号凭证读取能力，明文只在本次平台调用期间存在。
@@ -212,6 +301,10 @@ type chatIdentityResolver struct {
 	credentials chatCredentialRepository
 	// manager 用于把已经持久化的新 Cookie 同步到当前在线账号实例；为空时仅更新数据库。
 	manager *account.Manager
+	// cache 保存会话展示身份的短期缓存，避免重复刷新放大平台调用；必须为共享指针。
+	cache *chatIdentityCache
+	// now 返回当前时间，供测试替换；为空时使用真实时间。
+	now func() time.Time
 }
 
 // NewChatIdentityResolver 创建聊天身份查询适配器。
@@ -219,13 +312,31 @@ func NewChatIdentityResolver(store *db.Store, clientProvider func() mtop.Client,
 	if store == nil || store.Cookies == nil || clientProvider == nil {
 		return nil
 	}
-	return chatIdentityResolver{store: store, clientProvider: clientProvider, credentials: chatCredentialRepository{store: store}, manager: manager}
+	return chatIdentityResolver{
+		store: store, clientProvider: clientProvider, credentials: chatCredentialRepository{store: store},
+		manager: manager, cache: newChatIdentityCache(),
+	}
+}
+
+// currentTime 返回解析器当前使用的时间基准。
+func (r chatIdentityResolver) currentTime() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
 }
 
 // Resolve 查询聊天对端展示身份；Cookie 和平台客户端均不会离开适配器。
+// 复用窗口内的重复查询直接命中本地缓存，不读取凭证也不请求平台。
 func (r chatIdentityResolver) Resolve(ctx context.Context, accountID, chatID string) (chatapp.Identity, error) {
 	if r.store == nil || r.store.Cookies == nil {
 		return chatapp.Identity{}, chatapp.ErrUnavailable
+	}
+	// cacheKey 是本次查询的缓存键；命中后直接返回，避免重复消耗平台调用。
+	cacheKey := chatIdentityCacheKey{accountID: accountID, chatID: chatID}
+	if // cached、hit 保存复用窗口内的展示身份及其是否存在。
+	cached, hit := r.cache.get(cacheKey, r.currentTime()); hit {
+		return cached, nil
 	}
 	// credentialUnlock 保护本次请求的权威凭证快照读取；平台 I/O 开始前必须释放。
 	credentialUnlock := r.store.LockAccountCredentials(accountID)
@@ -279,7 +390,10 @@ func (r chatIdentityResolver) Resolve(ctx context.Context, accountID, chatID str
 	if info == nil {
 		return chatapp.Identity{}, nil
 	}
-	return chatapp.Identity{PeerName: info.Nickname, PeerAvatar: info.AvatarURL}, nil
+	// identity 是本次解析到的非敏感展示身份；写入缓存后同一窗口内的刷新不再请求平台。
+	identity := chatapp.Identity{PeerName: info.Nickname, PeerAvatar: info.AvatarURL}
+	r.cache.put(cacheKey, identity, r.currentTime())
+	return identity, nil
 }
 
 // updateRuntimeCookie 将已完成版本复核并写入数据库的身份查询 Cookie 同步到在线账号实例。

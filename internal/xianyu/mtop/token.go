@@ -44,6 +44,7 @@ func (c *ClientImpl) RefreshTokenWithDeviceIDContext(ctx context.Context, cookie
 
 // RefreshTokenWithCredentialContext 使用完整 Cookie 快照执行纯 Go HTTP 请求，
 // 避免把不同 Domain/Path 的同名 Cookie 压成一个值。
+// 同一账号的并发刷新按账号合并与限频，避免一次页面刷新放大成 token API 风暴。
 // RefreshTokenWithCredentialContext 刷新令牌WithCredential上下文。
 func (c *ClientImpl) RefreshTokenWithCredentialContext(ctx context.Context, cookiesStr, deviceID string, cookieSnapshot []cookierefresh.BrowserCookie) (*RefreshResult, error) {
 	// currentCookies 用于本次流程后续判断的currentCookies
@@ -59,6 +60,40 @@ func (c *ClientImpl) RefreshTokenWithCredentialContext(ctx context.Context, cook
 		currentCookies, currentSnapshot, cookieStateChanged = session.State()
 		currentSnapshotComplete = currentSnapshot != nil
 	}
+	// result、err 保存账号级合并后的刷新结果与错误；并发调用共享同一次真实平台请求。
+	result, err := c.tokenFlight.Do(ctx, tokenRefreshAccountKey(currentCookies), tokenRefreshCookiesFingerprint(currentCookies),
+		func(callCtx context.Context) (*RefreshResult, error) {
+			return c.refreshTokenWithOfficialRetries(callCtx, currentCookies, deviceID, currentSnapshot, currentSnapshotComplete, cookieStateChanged)
+		})
+	if result == nil {
+		return refreshResultFromContext(ctx, currentCookies, currentSnapshot, currentSnapshotComplete, cookieStateChanged), err
+	}
+	// session 是当前调用方的 Cookie 会话；复用他人结果时也要把同一份 Cookie 变化合并进来，
+	// 否则并发调用各自的会话视图会与平台最新签发结果漂移。
+	if session := cookieSessionFromContext(ctx); session != nil {
+		if result.CookieSnapshot != nil {
+			session.replace(result.CookieSnapshot)
+		} else {
+			session.replaceFlat(result.UpdatedCookies)
+		}
+		// merged 保留真实请求的 accessToken 与过期时间，只把 Cookie 相关字段替换为本调用方的会话视图；
+		// 直接重建结果会丢掉令牌，导致 /reg 注册拿不到本次连接专用凭证。
+		merged := *result
+		// sessionCookies、sessionSnapshot、sessionChanged 是本调用方会话合并后的 Cookie 状态。
+		sessionCookies, sessionSnapshot, sessionChanged := session.State()
+		merged.UpdatedCookies = sessionCookies
+		merged.CookieSnapshot = sessionSnapshot
+		merged.CookieSnapshotComplete = sessionSnapshot != nil
+		merged.CookieStateChanged = merged.CookieStateChanged || sessionChanged
+		return &merged, err
+	}
+	return result, err
+}
+
+// refreshTokenWithOfficialRetries 按官网 lib-mtop 2.7.3 的 H5 流程执行最多 officialMTopMaxAttempts 次请求（含首次）。
+// callCtx 控制真实请求与 Cookie 会话生命周期；currentCookies、currentSnapshot、currentSnapshotComplete、
+// cookieStateChanged 是调用开始时的凭证快照，用于在每次响应后重新签名并回写会话。
+func (c *ClientImpl) refreshTokenWithOfficialRetries(ctx context.Context, currentCookies, deviceID string, currentSnapshot []cookierefresh.BrowserCookie, currentSnapshotComplete, cookieStateChanged bool) (*RefreshResult, error) {
 	for // attempt 用于本次流程后续判断的尝试次数
 	attempt := 0; attempt < officialMTopMaxAttempts; attempt++ {
 		// accessToken、expireAt、ret、updatedCookies、snapshot、verificationURL、status、snapshotComplete、attemptChanged、err 保存accessToken、expireAt、ret、updatedCookies、snapshot、verificationURL、status、snapshotComplete、attemptChanged、err，供当前处理流程使用

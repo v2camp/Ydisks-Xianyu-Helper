@@ -98,6 +98,8 @@ type ClientImpl struct {
 	ChatUserQueryURL    string
 	// ChatItemSearchURL 允许测试将聊天商品查询指向本地 HTTP 服务；生产空值使用官方端点。
 	ChatItemSearchURL string
+	// tokenFlight 保存按账号的 Token 刷新合并与限频状态；零值可用，惰性创建分组。
+	tokenFlight tokenFlightState
 }
 
 // httpClient 返回带统一请求/响应日志的 HTTP 客户端副本。统一放在传输层，
@@ -438,18 +440,6 @@ func (c *ClientImpl) mtopResponseFailureWithCause(api string, status int, ret []
 	}
 	logger.Error("MTOP 响应失败", "api", api, "category", string(kind), "http_status", status, "ret", formatMTopRet(ret), "detail", sanitizeMTopText(detail))
 	return failure
-}
-
-// isMTopBusinessRet 判断 ret 是否用 FAIL_BIZ 前缀明确声明平台普通业务结果。
-// 只有明确业务码可以进入终态业务语义；网关和未知 FAIL_SYS 错误仍保持 HTTP 或系统错误分类。
-func isMTopBusinessRet(ret []string) bool {
-	// value 表示当前待判断的 MTOP 返回标记。
-	for _, value := range ret {
-		if strings.Contains(strings.ToUpper(value), "FAIL_BIZ_") {
-			return true
-		}
-	}
-	return false
 }
 
 // mtopSensitivePattern 脱敏 MTOP 诊断中可能出现的 Token、Cookie 和风控参数值。

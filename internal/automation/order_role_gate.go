@@ -137,6 +137,18 @@ func isPendingShipOrder(order *db.Order) bool {
 	}
 }
 
+// isOrderTerminalWithoutDelivery 判断订单状态是否已明确终结且不需要再发货。
+// 只承认取消、关闭、退款与已完成这几类明确终态；unknown、空值与待付款等事实不足或尚未结束
+// 的状态一律返回 false，避免把「状态未知」误判为订单失效而漏发。
+func isOrderTerminalWithoutDelivery(status string) bool {
+	switch db.NormalizeOrderStatus(strings.TrimSpace(status)) {
+	case "cancelled", "refunding", "completed":
+		return true
+	default:
+		return false
+	}
+}
+
 // roleVerificationRetryable 判断拒绝原因是否可能因订单或商品同步完成而恢复；身份冲突和已结束订单不应反复重放。
 func roleVerificationRetryable(reason string) bool {
 	switch reason {

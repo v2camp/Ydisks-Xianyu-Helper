@@ -81,13 +81,13 @@ func TestWSDecodeAndSyncHelpersCoversSuccessAndFailure(t *testing.T) {
 	// invalidSyncConnection 保存需要执行 getState 和 ackDiff 的本地连接。
 	invalidSyncConnection, _ := newAPIResponseConn(t, map[string]any{"state": "ok"}, 200)
 	// syncErr 保存同步状态确认错误。
-	if syncErr := invalidSyncConnection.handleSyncExtra(context.Background(), map[string]any{"body": map[string]any{"syncExtraType": map[string]any{"type": 1}}}); syncErr != nil {
+	if syncErr := invalidSyncConnection.handleSyncExtra(context.Background(), map[string]any{"body": map[string]any{"syncExtraType": map[string]any{"type": 1}}}, nil); syncErr != nil {
 		t.Fatalf("handle sync extra=%v", syncErr)
 	}
 	// noOpConnection 保存无需确认的同步类型连接。
 	noOpConnection, _ := newAPIResponseConn(t, nil, 200)
 	// noOpErr 保存无需确认的同步类型错误。
-	if noOpErr := noOpConnection.handleSyncExtra(context.Background(), map[string]any{"body": map[string]any{"syncExtraType": map[string]any{"type": 9}}}); noOpErr != nil {
+	if noOpErr := noOpConnection.handleSyncExtra(context.Background(), map[string]any{"body": map[string]any{"syncExtraType": map[string]any{"type": 9}}}, nil); noOpErr != nil {
 		t.Fatalf("unsupported sync type=%v", noOpErr)
 	}
 }

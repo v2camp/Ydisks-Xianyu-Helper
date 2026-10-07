@@ -36,17 +36,19 @@ func TestEnginePureHelpersCoverRetryAndNetworkBranches(t *testing.T) {
 	}
 	// account 保存用于验证网络失败次数归一和上限退避的账号运行时。
 	account := &Account{}
-	// zeroFailureDelay 保存零失败次数被归一为首次退避后的结果。
+	// zeroStagger 保存该账号叠加重连错峰前的取整错峰量。
+	zeroStagger := accountReconnectStagger(account.CookieID)
+	// zeroFailureDelay 保存零失败次数被归一为首次退避后的结果（含账号错峰）。
 	zeroFailureDelay := account.networkRetryDelay()
-	if zeroFailureDelay < 4*time.Second || zeroFailureDelay >= 6*time.Second {
+	if zeroFailureDelay < 4*time.Second+zeroStagger || zeroFailureDelay >= 6*time.Second+zeroStagger {
 		t.Fatalf("零失败次数退避异常: %v", zeroFailureDelay)
 	}
 	account.runtimeMu.Lock()
 	account.networkFailures = 20
 	account.runtimeMu.Unlock()
-	// cappedFailureDelay 保存高失败次数被限制到六十秒基准后的结果。
+	// cappedFailureDelay 保存高失败次数被限制到六十秒基准后的结果（含账号错峰）。
 	cappedFailureDelay := account.networkRetryDelay()
-	if cappedFailureDelay < 60*time.Second || cappedFailureDelay >= 78*time.Second {
+	if cappedFailureDelay < 60*time.Second+zeroStagger || cappedFailureDelay >= 78*time.Second+zeroStagger {
 		t.Fatalf("高失败次数退避异常: %v", cappedFailureDelay)
 	}
 	// emptyUserAccount 保存需要从 Cookie 中回退提取平台用户标识的账号。

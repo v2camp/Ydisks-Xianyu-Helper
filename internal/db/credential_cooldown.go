@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -76,5 +78,31 @@ func (s *RenewalStore) MarkCooldown(ctx context.Context, cookieID, kind string, 
 func (s *RenewalStore) ClearCooldowns(ctx context.Context, cookieID string) error {
 	// result 是删除结果；错误必须上抛，避免「看似重置、实际仍冷却」的假成功。
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM credential_cooldowns WHERE cookie_id = ?`, cookieID)
+	return err
+}
+
+// GetCooldown 读取指定账号与类别的最近一次冷却标记时间。
+// 记录不存在时返回零值时间与 nil，调用方按「无冷却」处理；数据库错误原样返回。
+func (s *RenewalStore) GetCooldown(ctx context.Context, cookieID, kind string) (time.Time, error) {
+	// markedAtUnix 是数据库中的 Unix 秒冷却标记。
+	var markedAtUnix int64
+	// err 是单条冷却查询错误；sql.ErrNoRows 归一为零值时间，不视为错误。
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT marked_at FROM credential_cooldowns WHERE cookie_id = ? AND kind = ?`,
+		cookieID, kind).Scan(&markedAtUnix)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+	return time.Unix(markedAtUnix, 0), nil
+}
+
+// ClearCooldown 删除指定账号与类别的单条冷却记录，供只解除特定冷却的路径使用。
+func (s *RenewalStore) ClearCooldown(ctx context.Context, cookieID, kind string) error {
+	// result 是删除结果；无记录时也返回成功，语义为幂等解除。
+	_, err := s.DB.ExecContext(ctx,
+		`DELETE FROM credential_cooldowns WHERE cookie_id = ? AND kind = ?`, cookieID, kind)
 	return err
 }

@@ -37,6 +37,8 @@ func TestMTopResponseFailureClassifiesAndRedacts(t *testing.T) {
 		{name: "http", kind: MTopErrorHTTP, code: "FAIL_SYS_GATEWAY::网关错误", status: http.StatusBadGateway},
 		{name: "decode", kind: MTopErrorDecode, status: http.StatusOK, detail: "JSON 解析失败"},
 		{name: "business", kind: MTopErrorBusiness, code: "FAIL_BIZ_ORDER::订单错误", status: http.StatusOK},
+		// 线上确认发货接口实测返回不带 FAIL_BIZ 前缀的稳定业务错误码，必须归入业务终态而非系统错误。
+		{name: "business-without-prefix", kind: MTopErrorBusiness, code: "ORDER_STATUS_ERROR::订单状态不正确", status: http.StatusOK},
 	}
 	// testCase 验证当前失败类型的错误链、诊断内容和日志字段。
 	for _, testCase := range cases {

@@ -579,6 +579,8 @@ func (a *Adapter) OnInitialTransportReady(ctx context.Context, cookieID string) 
 	if syncOrders == nil {
 		return
 	}
+	// 记录本次同步发起时间，使紧随其后的重连通知不会重复同步同一账号。
+	a.markOrderSynced(cookieID)
 	// syncErr 保存首次连接订单同步的失败原因，不携带 Cookie、Token 等敏感请求数据。
 	if syncErr := syncOrders(ctx, cookieID); syncErr != nil {
 		a.logger.Warn("账号首次连接后的订单同步失败", "cookie_id", cookieID, "err", syncErr)

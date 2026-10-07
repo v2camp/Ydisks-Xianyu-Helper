@@ -571,9 +571,14 @@ func (s *Service) ReportPlatformRead(ctx context.Context, accountID, chatID stri
 
 // ResolveSessionIdentity 补全单个会话展示身份并尽力保存到本地。
 // 平台查询错误会原样返回，但已获得的会话摘要仍会返回给调用方。
+// 本地已有名称与头像时视为无需补全，直接跳过平台查询；重复刷新不会因为已解析会话放大调用量。
 func (s *Service) ResolveSessionIdentity(ctx context.Context, session Session) (Session, error) {
 	if s == nil || s.repository == nil || strings.TrimSpace(session.AccountID) == "" || strings.TrimSpace(session.ChatID) == "" {
 		return session, ErrInvalidInput
+	}
+	// 名称与头像都已知时不再请求平台：展示身份已被持久化，重复查询只会放大平台调用。
+	if strings.TrimSpace(session.PeerName) != "" && strings.TrimSpace(session.PeerAvatar) != "" {
+		return session, nil
 	}
 	// resolveErr 保存平台身份查询失败，供 HTTP 层决定是否触发会话恢复。
 	var resolveErr error

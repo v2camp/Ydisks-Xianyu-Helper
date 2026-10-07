@@ -689,10 +689,12 @@ func TestNetworkRetryDelayMatchesReferenceBackoff(t *testing.T) {
 	// acc、cleanup 用于本次流程后续判断的acc、cleanup
 	acc, _, _, cleanup := newAccountForTest(t)
 	defer cleanup()
+	// stagger 保存该账号叠加的稳定重连错峰量，用于校正期望区间。
+	stagger := accountReconnectStagger(acc.CookieID)
 	acc.networkFailures = 1
-	expectDelayRange(t, acc.networkRetryDelay(), 4*time.Second)
+	expectDelayRange(t, acc.networkRetryDelay(), 4*time.Second+stagger)
 	acc.networkFailures = 10
-	expectDelayRange(t, acc.networkRetryDelay(), 60*time.Second)
+	expectDelayRange(t, acc.networkRetryDelay(), 60*time.Second+stagger)
 }
 
 // TestEstablishedNetworkErrorClassification 封装TestEstablishedNetwork错误Classification业务协调。

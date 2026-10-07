@@ -52,6 +52,8 @@ const (
 	// ShortConnectionThreshold 仅用于统计频繁短连接；已经建立后的网络断线
 	// 不会清 Token 缓存。
 	ShortConnectionThreshold = 30 * time.Second
+	// reconnectStaggerSpan 是多账号重连错峰的最大跨度；不同账号的退避被分散在该跨度内。
+	reconnectStaggerSpan = 15 * time.Second
 )
 
 // 告警级别（OnAccountAlert 的 level 参数）。
@@ -127,6 +129,13 @@ type transportReadyHandler interface {
 // 它只用于启动后订单同步，不能替代每次重连均需执行的 transportReadyHandler。
 type initialTransportReadyHandler interface {
 	OnInitialTransportReady(ctx context.Context, cookieID string)
+}
+
+// reconnectTransportReadyHandler 接收每次 WebSocket 注册完成事件（含首次）。
+// 断线期间丢失的订单事件只能在该时机补同步，因此它不做 once 限制；
+// 调用方需要自行按最小间隔节流，避免网络抖动把补同步放大成平台调用风暴。
+type reconnectTransportReadyHandler interface {
+	OnReconnectTransportReady(ctx context.Context, cookieID string)
 }
 
 // tokenCaptchaHandler 用于本次流程后续判断的令牌CaptchaHandler
@@ -672,7 +681,10 @@ func (a *Account) retryDelay(errMsg string) time.Duration {
 	return withRetryJitter(time.Duration(secs) * time.Second)
 }
 
-// networkRetryDelay 封装network重试延迟业务协调。
+// networkRetryDelay 计算瞬时网络故障后的重连退避时长。
+// 除指数退避外还叠加账号专属的错峰量：多账号共用一个出口时，
+// 缺少错峰会让它们在同一时刻重连并同时请求 token，直接放大平台风控命中概率（线上 22:02 两账号同时被惩罚）。
+// 错峰量以账号标识的稳定哈希为基，保证同一账号每次退避可预期，同时不同账号自然分散。
 func (a *Account) networkRetryDelay() time.Duration {
 	a.runtimeMu.Lock()
 	// f 用于本次流程后续判断的f
@@ -681,7 +693,27 @@ func (a *Account) networkRetryDelay() time.Duration {
 	if f < 1 {
 		f = 1
 	}
-	return withRetryJitter(time.Duration(min(2+exponentialSeconds(f), 60)) * time.Second)
+	// base 是叠加账号错峰前的指数退避时长。
+	base := time.Duration(min(2+exponentialSeconds(f), 60)) * time.Second
+	// staggered 是加入账号专属错峰后的退避时长。
+	staggered := base + accountReconnectStagger(a.CookieID)
+	return withRetryJitter(staggered)
+}
+
+// accountReconnectStagger 返回账号专属的重连错峰量，取值落在 [1s, reconnectStaggerSpan]。
+// 使用账号标识的稳定哈希而不是随机数：同一账号的重连节奏可预期，不同账号之间自然分散，
+// 避免多账号在同一时刻集中重连。
+func accountReconnectStagger(cookieID string) time.Duration {
+	// sum 是账号标识字节的稳定累加值，不涉及任何敏感信息。
+	sum := 0
+	// ch 表示账号标识中的当前字节。
+	for _, ch := range []byte(cookieID) {
+		sum = (sum*31 + int(ch)) % int(reconnectStaggerSpan/time.Second)
+	}
+	if sum < 0 {
+		sum = -sum
+	}
+	return time.Duration(sum+1) * time.Second
 }
 
 // exponentialSeconds 封装exponential秒数业务协调。

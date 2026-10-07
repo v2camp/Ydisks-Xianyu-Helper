@@ -13,6 +13,12 @@ import (
 	"xianyu-go/internal/xianyu/protocol"
 )
 
+// cooldownKindTokenRisk 是 token 风控验证失败冷却在 credential_cooldowns 表中的类别键。
+const cooldownKindTokenRisk = "token_risk"
+
+// cooldownPersistTimeout 是风控冷却读写的数据库操作预算；失败时降级为纯内存冷却。
+const cooldownPersistTimeout = 3 * time.Second
+
 // refreshToken 按账号凭证协调器的最小间隔规则刷新平台连接 Token，并返回 Token 与 Cookie 快照。
 func (c *credentialCoordinator) refreshToken(ctx context.Context) (string, string, error) {
 	// a 是本凭证协调器绑定的账号 facade，保留连接流程使用的返回契约。
@@ -47,8 +53,13 @@ func (c *credentialCoordinator) refreshTokenWithMinGap(ctx context.Context, _ bo
 	}()
 
 	// refreshGate 串行化完整 Token/Cookie 更新事务；风控失败冷却仍由调用方状态控制。
-	if // remaining 用于本次流程后续判断的remaining
-	remaining := a.tokenCaptchaCooldownRemaining(); remaining > 0 {
+	// remaining 是本次调用仍需等待的风控冷却时长；内存状态缺失时回落到持久化冷却，
+	// 保证账号实例重启（含扫码重登）后不会立刻再次撞平台惩罚。
+	remaining := a.tokenCaptchaCooldownRemaining()
+	if remaining <= 0 {
+		remaining = c.persistedTokenRiskCooldownRemaining(ctx)
+	}
+	if remaining > 0 {
 		a.setLastTokenStatus(tokenRefreshSkippedCooldown)
 		return "", "", fmt.Errorf("%w，剩余 %s", errTokenCaptchaCooldown, remaining.Round(time.Second))
 	}
@@ -176,16 +187,18 @@ func (c *credentialCoordinator) refreshTokenWithMinGap(ctx context.Context, _ bo
 			return "", "", fmt.Errorf("绑定 token 凭证状态: %w", fingerprintErr)
 		}
 		a.saveTokenCache(ctx, deviceID, res.AccessToken, res.AccessTokenExpireAt, credentialFP)
-		a.mu.Lock()
-		a.credentialFP = credentialFP
-		a.tokenCredentialFP = credentialFP
-		a.lastCaptchaFailure = time.Time{}
-		// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
-		a.captchaFailureStreak = 0
-		a.tokenFetchFailures = 0
-		a.lastTokenStatus = tokenRefreshSuccess
-		a.mu.Unlock()
-		a.runtimeMu.Lock()
+	a.mu.Lock()
+	a.credentialFP = credentialFP
+	a.tokenCredentialFP = credentialFP
+	a.lastCaptchaFailure = time.Time{}
+	// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
+	a.captchaFailureStreak = 0
+	a.tokenFetchFailures = 0
+	a.lastTokenStatus = tokenRefreshSuccess
+	a.mu.Unlock()
+	// 只有真实拿到有效 token 才解除持久化风控冷却；扫码换 Cookie 但仍被惩罚时不得提前清除。
+	c.clearPersistedTokenRiskCooldown(ctx)
+	a.runtimeMu.Lock()
 		a.lastMsgReceived = time.Time{}
 		a.runtimeMu.Unlock()
 		return res.AccessToken, cookieStr, nil
@@ -313,14 +326,85 @@ func (c *credentialCoordinator) tryTokenCaptchaRecovery(ctx context.Context, coo
 }
 
 // markTokenCaptchaFailure 封装mark令牌CaptchaFailure业务协调。
+// 内存状态供同实例后续请求快速判断，同时写入持久化冷却，保证账号重启或扫码重登后
+// 仍尊重平台惩罚窗口；落库失败只告警不阻断失败收口。
 func (c *credentialCoordinator) markTokenCaptchaFailure() {
+	// now 是本次风控失败的标记时刻，内存与持久化使用同一时间基准。
+	now := time.Now()
 	// a 是本凭证协调器绑定的账号 facade，持有风控冷却状态。
 	a := c.account
 	a.mu.Lock()
-	a.lastCaptchaFailure = time.Now()
+	a.lastCaptchaFailure = now
 	// 连续失败才递增；单次偶发失败仍使用基础冷却，避免误判把自愈拖长。
 	a.captchaFailureStreak++
 	a.mu.Unlock()
+	c.markPersistedTokenRiskCooldown(now)
+}
+
+// markPersistedTokenRiskCooldown 把风控失败时刻写入 credential_cooldowns 表。
+// 写入使用独立短超时，避免账号停止时被数据库操作拖住；失败仅记录告警。
+func (c *credentialCoordinator) markPersistedTokenRiskCooldown(markedAt time.Time) {
+	// a 是本凭证协调器绑定的账号 facade。
+	a := c.account
+	if a.store == nil || a.store.Renewal == nil {
+		return
+	}
+	// writeCtx 是持久化写入的独立预算，不继承调用方可能已取消的上下文。
+	writeCtx, cancel := context.WithTimeout(context.Background(), cooldownPersistTimeout)
+	defer cancel()
+	if // markErr 是冷却落库错误；失败时内存冷却仍然生效。
+	markErr := a.store.Renewal.MarkCooldown(writeCtx, a.CookieID, cooldownKindTokenRisk, markedAt); markErr != nil {
+		a.logger.Warn("风控冷却落库失败，本次仅使用内存冷却", "cookie_id", a.CookieID, "err", markErr)
+	}
+}
+
+// persistedTokenRiskCooldownRemaining 返回持久化风控冷却的剩余时长。
+// 内存没有失败记录（新账号实例或进程重启）时用它兜底；读取失败按无冷却降级，避免数据库故障锁死登录。
+func (c *credentialCoordinator) persistedTokenRiskCooldownRemaining(ctx context.Context) time.Duration {
+	// a 是本凭证协调器绑定的账号 facade。
+	a := c.account
+	if a.store == nil || a.store.Renewal == nil {
+		return 0
+	}
+	// readCtx 限制冷却读取时间，防止慢数据库拖住连接循环。
+	readCtx, cancel := context.WithTimeout(ctx, cooldownPersistTimeout)
+	defer cancel()
+	// markedAt 是持久化的最近风控失败时刻。
+	markedAt, readErr := a.store.Renewal.GetCooldown(readCtx, a.CookieID, cooldownKindTokenRisk)
+	if readErr != nil || markedAt.IsZero() {
+		return 0
+	}
+	// 新实例没有连续失败计数，按基础冷却时长计算剩余窗口。
+	remaining := TokenCaptchaFailureCooldown - time.Since(markedAt)
+	if remaining < 0 {
+		// 冷却已过期时顺手清理记录；清理失败不影响本次放行。
+		_ = a.store.Renewal.ClearCooldown(readCtx, a.CookieID, cooldownKindTokenRisk)
+		return 0
+	}
+	// 把持久化失败时刻恢复到内存状态，后续请求直接命中内存判断，不再重复查库。
+	a.mu.Lock()
+	if a.lastCaptchaFailure.IsZero() {
+		a.lastCaptchaFailure = markedAt
+		if a.captchaFailureStreak < 1 {
+			a.captchaFailureStreak = 1
+		}
+	}
+	a.mu.Unlock()
+	return remaining
+}
+
+// clearPersistedTokenRiskCooldown 删除持久化风控冷却记录；只有真实拿到 token 才允许调用。
+// 失败仅记录告警，不影响本次成功连接，下一次成功会再次尝试清理。
+func (c *credentialCoordinator) clearPersistedTokenRiskCooldown(ctx context.Context) {
+	// a 是本凭证协调器绑定的账号 facade。
+	a := c.account
+	if a.store == nil || a.store.Renewal == nil {
+		return
+	}
+	// clearErr 是冷却记录删除错误；失败时不阻断连接建立。
+	if clearErr := a.store.Renewal.ClearCooldown(ctx, a.CookieID, cooldownKindTokenRisk); clearErr != nil {
+		a.logger.Warn("清除风控冷却记录失败", "cookie_id", a.CookieID, "err", clearErr)
+	}
 }
 
 // tokenCaptchaCooldownFor 根据连续失败次数返回本次应冷却的时长。
