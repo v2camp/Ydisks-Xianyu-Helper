@@ -546,7 +546,7 @@ func TestAppendDeliveryConfigCluesBindingCardName(t *testing.T) {
 		Actions: []db.AutomationActionInput{{
 			ActionType: "send_template", DeliveryTemplateID: templateID,
 			TemplateBindings: []db.DeliveryTemplateBinding{{VariableKey: "main", CardID: cardID, DeliveryCount: 1}},
-			ConfigJSON:      `{}`, Enabled: true, SortOrder: 1,
+			ConfigJSON:       `{}`, Enabled: true, SortOrder: 1,
 		}},
 	}); err != nil {
 		t.Fatalf("创建绑定规则失败: %v", err)

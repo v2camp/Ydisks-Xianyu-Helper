@@ -116,10 +116,10 @@ const aiContentPolicyJSON = `{"min_price_reply":"亲，最低 {amount} 元哦","
 // 共 17 条。分组设计：知识语料与最低价话术共享折扣设置，拒绝话术单独用零折扣场景。
 var aiContentEvalSetV1 = []aiContentEvalGroup{
 	{
-		Name:               "知识语料与最低价话术",
-		ScopeConfig:        aiContentScopeJSON,
-		KnowledgeConfig:    aiContentKnowledgeJSON,
-		PolicyConfig:       aiContentPolicyJSON,
+		Name:            "知识语料与最低价话术",
+		ScopeConfig:     aiContentScopeJSON,
+		KnowledgeConfig: aiContentKnowledgeJSON,
+		PolicyConfig:    aiContentPolicyJSON,
 		Items: []aiContentEvalItem{
 			{ID: "item-nuonuo", Title: "糯糯下山", Price: "25"},
 			{ID: "item-mengyu", Title: "梦遇崔郎", Price: "30"},
