@@ -82,6 +82,17 @@ test('system 保存草稿提交 QQ 连接器凭据并剔除已配置标记',
     });
   });
 
+test('system 保存草稿提交 QQ 入站命令开关与白名单',
+  // 白名单测试验证入站命令的两项设置随系统配置提交。
+  () => {
+    expect(buildPersistableSettings({ ...settingsFixture, 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' }, 'system')).toEqual({
+      log_level: 'info',
+      renewal_log_retention_days: 15,
+      'qqbot.commands_enabled': true,
+      'qqbot.command_openids': 'openid-a, openid-b',
+    });
+  });
+
 test('门禁配置序列化与解析往返保持开关和额外词不变',
   // 往返测试验证序列化结果可被解析回等价配置，覆盖开关与额外词。
   () => {

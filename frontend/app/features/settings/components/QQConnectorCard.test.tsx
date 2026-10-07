@@ -21,6 +21,10 @@ function ConnectorHarness({ initial }: ConnectorHarnessProps) {
     <div>
       <QQConnectorCard settings={settings} onChange={/* patch 合并进测试草稿状态。 */ patch => setSettings(/* prev 是合并补丁前的草稿，返回合并后的新草稿。 */ prev => ({ ...prev, ...patch }))} />
       <pre data-testid="draft">{JSON.stringify({ app_id: settings['qqbot.app_id'] ?? null, app_secret: settings['qqbot.app_secret'] ?? null })}</pre>
+      <pre data-testid="settings">{JSON.stringify({
+        'qqbot.commands_enabled': settings['qqbot.commands_enabled'] ?? null,
+        'qqbot.command_openids': settings['qqbot.command_openids'] ?? null,
+      })}</pre>
     </div>
   );
 }
@@ -28,6 +32,11 @@ function ConnectorHarness({ initial }: ConnectorHarnessProps) {
 // readDraft 读取测试容器底部展示的凭据草稿对象。
 function readDraft(): Record<string, string | null> {
   return JSON.parse(screen.getByTestId('draft').textContent || '{}');
+}
+
+// readSettings 读取测试容器底部展示的入站命令设置草稿对象。
+function readSettings(): Record<string, string | boolean | null> {
+  return JSON.parse(screen.getByTestId('settings').textContent || '{}');
 }
 
 describe('QQConnectorCard', /* 当前测试组验证开放平台引导、凭据输入往返与配置状态展示。 */ () => {
@@ -76,6 +85,29 @@ describe('QQConnectorCard', /* 当前测试组验证开放平台引导、凭据�
     expect((screen.getByLabelText('QQ 机器人 AppSecret') as HTMLInputElement).getAttribute('type')).toBe('text');
     fireEvent.click(screen.getByTitle('隐藏 AppSecret'));
     expect((screen.getByLabelText('QQ 机器人 AppSecret') as HTMLInputElement).getAttribute('type')).toBe('password');
+  });
+
+  test('入站命令开关默认关闭且白名单输入不展示', /* 当前测试验证入站命令默认不开放，避免开启即裸奔。 */ () => {
+    render(<ConnectorHarness initial={{ 'qqbot.app_id': '102012345' }} />);
+    // toggle 是入站命令开关，默认应为关闭。
+    const toggle = screen.getByLabelText('启用 QQ 入站命令') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(screen.queryByLabelText('QQ 命令发送者白名单')).toBeNull();
+  });
+
+  test('开启入站命令写回开关并在关闭时收起白名单', /* 当前测试验证开关往返与白名单输入的条件渲染。 */ () => {
+    render(<ConnectorHarness initial={{}} />);
+    // toggle 是入站命令开关。
+    const toggle = screen.getByLabelText('启用 QQ 入站命令') as HTMLInputElement;
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    // openids 是开启后才出现的白名单输入。
+    const openids = screen.getByLabelText('QQ 命令发送者白名单') as HTMLTextAreaElement;
+    fireEvent.change(openids, { target: { value: 'openid-a, openid-b' } });
+    expect(readSettings()).toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' });
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+    expect(screen.queryByLabelText('QQ 命令发送者白名单')).toBeNull();
   });
 
   test('仅有 AppID 时仍未就绪并展示主动推送额度说明', /* 当前测试验证半配置状态与官方通道限制提示。 */ () => {

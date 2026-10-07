@@ -42,6 +42,8 @@ export const SYSTEM_SETTING_KEYS = new Set([
   'silence_alert_minutes',
   'qqbot.app_id',
   'qqbot.app_secret',
+  'qqbot.commands_enabled',
+  'qqbot.command_openids',
   'captcha.remote_service_url',
   'captcha.remote_secret_key',
   'captcha.remote_pass_cookies',

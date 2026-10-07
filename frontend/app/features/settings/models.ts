@@ -53,6 +53,10 @@ export interface SystemSettings {
   'qqbot.app_secret'?: string;
   /** QQ 连接器机器人的 AppSecret 是否已在服务端配置。 */
   'qqbot.app_secret_configured'?: boolean;
+  /** 是否启用 QQ 入站命令（连接 WS 网关接收销量/健康/会话命令）。 */
+  'qqbot.commands_enabled'?: boolean;
+  /** 允许发送 QQ 入站命令的 openid 白名单，逗号或换行分隔；为空表示拒绝所有发送者。 */
+  'qqbot.command_openids'?: string;
   /** MCP 服务器列表 JSON 字符串，元素为含 name 与 url 的对象；引擎消费其中 find_stuff 条目。 */
   'mcp.servers'?: string;
   /** 发货内容门禁 JSON 字符串：enabled 违禁词门禁、link_check 链接健康检查、extra_block_words 额外违禁词。 */

@@ -148,6 +148,19 @@ describe('frontend navigation routing', () => {
     expect(settingsConstants).toContain("'qqbot.app_id'");
   } /* 测试回调断言设置页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
 
+  test('QQ connector gates inbound commands behind an openid allowlist', () => {
+    const connector = readFrontendFile('app/features/settings/components/QQConnectorCard.tsx'); /* connector 表示connector。 */
+    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示settingsConstants。 */
+
+    expect(connector).toContain('启用 QQ 入站命令');
+    expect(connector).toContain('QQ 命令发送者白名单');
+    expect(connector).toContain("'qqbot.commands_enabled'");
+    expect(connector).toContain("'qqbot.command_openids'");
+    expect(connector).toContain('销量 / 健康 / 会话 / 帮助');
+    expect(settingsConstants).toContain("'qqbot.commands_enabled'");
+    expect(settingsConstants).toContain("'qqbot.command_openids'");
+  } /* 测试回调断言入站命令默认关闭且必须由 openid 白名单授权。 */);
+
   test('email notification config separates system and custom SMTP modes', () => {
     const notifications = readFrontendFile('app/features/notifications/pages/Notifications.tsx'); /* notifications 表示notifications。 */
     const notificationState = readFrontendFile('app/features/notifications/state.ts'); /* notificationState 表示notificationState。 */

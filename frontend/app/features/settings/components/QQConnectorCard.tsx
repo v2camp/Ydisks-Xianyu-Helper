@@ -34,6 +34,10 @@ export const QQConnectorCard: React.FC<QQConnectorCardProps> = ({ settings, onCh
   const secretConfigured = settings['qqbot.app_secret_configured'] === true;
   // ready 表示当前是否已具备完整凭据：AppID 非空且 AppSecret 已配置或本次新填。
   const ready = appID.trim() !== '' && (secretConfigured || secretDraft.trim() !== '');
+  // commandsEnabled 表示是否开启入站命令，控制白名单输入的可见性。
+  const commandsEnabled = settings['qqbot.commands_enabled'] === true;
+  // commandOpenIDs 是命令发送者白名单草稿。
+  const commandOpenIDs = String(settings['qqbot.command_openids'] ?? '');
 
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5">
@@ -121,6 +125,40 @@ export const QQConnectorCard: React.FC<QQConnectorCardProps> = ({ settings, onCh
           机器人的 openid 与 AppID 绑定，换机器人后通知渠道里的 openid 需重新获取。
         </p>
       </div>
+
+      <label className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 cursor-pointer" htmlFor="qq-connector-commands-enabled">
+        <input
+          id="qq-connector-commands-enabled"
+          type="checkbox"
+          aria-label="启用 QQ 入站命令"
+          className="mt-1"
+          checked={commandsEnabled}
+          onChange={/* 入站命令开关变化后写回系统配置草稿。 */ event => onChange({ 'qqbot.commands_enabled': event.target.checked })}
+        />
+        <span>
+          <span className="block text-sm font-bold text-sky-900">启用入站命令</span>
+          <span className="mt-1 block text-xs leading-5 text-sky-800">
+            开启后服务会连接 QQ 网关，接收「销量 / 健康 / 会话 / 帮助」四类只读命令并回复结果。关闭时不产生任何对外连接。
+          </span>
+        </span>
+      </label>
+
+      {commandsEnabled && (
+        <div className="space-y-2">
+          <label className="block text-sm font-bold text-gray-800" htmlFor="qq-connector-command-openids">命令发送者白名单（openid）</label>
+          <textarea
+            id="qq-connector-command-openids"
+            aria-label="QQ 命令发送者白名单"
+            value={commandOpenIDs}
+            onChange={/* 白名单输入变化后写回系统配置草稿。 */ event => onChange({ 'qqbot.command_openids': event.target.value })}
+            placeholder={'留空表示拒绝所有发送者。每行一个或用逗号分隔，例如：\n0A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P'}
+            className="w-full ios-input px-4 py-3 rounded-xl h-24 text-sm leading-6 font-mono resize-y"
+          />
+          <p className="text-xs text-gray-500">
+            机器人一旦上线，任何找到它的人都能发消息；只有白名单内的 openid 才能触发命令。未授权者会收到含其 openid 的提示，把该标识粘贴到这里即可开通。
+          </p>
+        </div>
+      )}
     </div>
   );
 };
