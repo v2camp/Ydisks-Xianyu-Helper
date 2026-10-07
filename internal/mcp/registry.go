@@ -31,6 +31,8 @@ const (
 	ArgNumber ArgType = "number"
 	// ArgArray 是数组类型入参，元素类型由 ArgSpec.ItemType 指定。
 	ArgArray ArgType = "array"
+	// ArgObject 是对象类型入参，用于键值表或命令映射。
+	ArgObject ArgType = "object"
 )
 
 const (
@@ -440,6 +442,8 @@ func propertyOption(spec ArgSpec) mcpproto.ToolOption {
 		return mcpproto.WithInteger(spec.Name, propertyOptions...)
 	case ArgNumber:
 		return mcpproto.WithNumber(spec.Name, propertyOptions...)
+	case ArgObject:
+		return mcpproto.WithObject(spec.Name, propertyOptions...)
 	case ArgArray:
 		// itemType 是数组元素类型，默认按字符串生成元素 schema。
 		itemType := spec.ItemType

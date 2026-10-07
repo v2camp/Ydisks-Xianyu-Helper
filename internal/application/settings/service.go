@@ -28,6 +28,31 @@ var ErrConfigNotFound = errors.New("AI 回复设置不存在")
 // ErrPricingModeConflict 表示 AI 议价与固定自动改价规则不能同时启用。
 var ErrPricingModeConflict = errors.New("AI 议价与自动化规则改价不能同时启用，请先关闭另一种改价方式")
 
+// ValidationError 表示设置输入不满足稳定的业务约束；Message 是可直接展示给调用方的中文提示，
+// 传输层据此归一为参数类错误，不包含数据库、SQL 或任何凭证细节。
+type ValidationError struct {
+	// Message 是面向调用方的中文校验提示。
+	Message string
+}
+
+// Error 返回设置输入的中文校验提示，空值时回落稳定兜底文案。
+func (e *ValidationError) Error() string {
+	if e == nil || e.Message == "" {
+		return "系统设置输入无效"
+	}
+	return e.Message
+}
+
+// validationError 构造设置输入校验错误。
+func validationError(message string) *ValidationError {
+	return &ValidationError{Message: message}
+}
+
+// validationErrorf 构造带格式化字段的设置输入校验错误。
+func validationErrorf(format string, args ...any) *ValidationError {
+	return &ValidationError{Message: fmt.Sprintf(format, args...)}
+}
+
 // SecretChange 描述敏感系统设置的显式三态变更命令。
 type SecretChange struct {
 	// Action 是 retain、replace 或 clear 之一。
@@ -188,7 +213,7 @@ func (s *Service) ApplySystemChanges(ctx context.Context, userID int64, values m
 		return err
 	}
 	if len(values) == 0 && len(secrets) == 0 {
-		return errors.New("设置不能为空")
+		return validationError("设置不能为空")
 	}
 	// err 表示普通设置值违反敏感键或键名约束。
 	if err := s.validateValues(values); err != nil {
@@ -199,10 +224,10 @@ func (s *Service) ApplySystemChanges(ctx context.Context, userID int64, values m
 	// key 是待审计的敏感设置键；change 是对应的三态命令。
 	for key, change := range secrets {
 		if !s.repository.IsSensitiveSettingKey(key) || !validSecretAction(change) {
-			return errors.New("敏感设置命令无效")
+			return validationError("敏感设置命令无效")
 		}
 		if change.Action == "replace" && strings.TrimSpace(change.Value) == "" {
-			return errors.New("敏感设置命令无效")
+			return validationError("敏感设置命令无效")
 		}
 		keys = append(keys, key)
 	}
@@ -228,13 +253,13 @@ func (s *Service) SetSystem(ctx context.Context, userID int64, key, value, actio
 	}
 	key = strings.TrimSpace(key)
 	if key == "" || len(key) > 100 {
-		return errors.New("设置键无效")
+		return validationError("设置键无效")
 	}
 	if s.repository.IsSensitiveSettingKey(key) {
 		// change 是敏感设置的显式三态命令。
 		change := SecretChange{Action: action, Value: value}
 		if !validSecretAction(change) || change.Action == "replace" && strings.TrimSpace(change.Value) == "" {
-			return errors.New("敏感设置命令无效")
+			return validationError("敏感设置命令无效")
 		}
 		// err 表示敏感设置写入审计失败。
 		if err := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.write", Resource: "system_settings", Keys: []string{key}}); err != nil {
@@ -280,7 +305,7 @@ func (s *Service) SetUser(ctx context.Context, userID int64, key, value string) 
 	}
 	key = strings.TrimSpace(key)
 	if key == "" || len(key) > 100 {
-		return errors.New("设置键无效")
+		return validationError("设置键无效")
 	}
 	return s.repository.SetUser(ctx, userID, key, value)
 }
@@ -310,16 +335,16 @@ func (s *Service) UpsertAIReply(ctx context.Context, userID int64, cookieID stri
 		return err
 	}
 	if settings.MaxDiscountPercent < 0 || settings.MaxDiscountPercent > 100 {
-		return errors.New("最大折扣比例必须在 0 到 100 之间")
+		return validationError("最大折扣比例必须在 0 到 100 之间")
 	}
 	if settings.MaxDiscountAmount < 0 {
-		return errors.New("最大折扣金额不能小于 0")
+		return validationError("最大折扣金额不能小于 0")
 	}
 	if settings.MaxBargainRounds < 1 || settings.MaxBargainRounds > 10 {
-		return errors.New("最大砍价轮次必须在 1 到 10 之间")
+		return validationError("最大砍价轮次必须在 1 到 10 之间")
 	}
 	if settings.AutoAdjustPriceEnabled && !settings.AIEnabled {
-		return errors.New("开启 AI 自动改价前必须先启用 AI 议价")
+		return validationError("开启 AI 自动改价前必须先启用 AI 议价")
 	}
 	if settings.AIEnabled {
 		// conflict 表示当前账号是否已有启用的固定价格规则；conflictErr 是查询错误。
@@ -464,10 +489,10 @@ func (s *Service) validateValues(values map[string]string) error {
 	for key := range values {
 		key = strings.TrimSpace(key)
 		if key == "" || len(key) > 100 {
-			return errors.New("设置键无效")
+			return validationError("设置键无效")
 		}
 		if s.repository.IsSensitiveSettingKey(key) {
-			return errors.New("敏感设置必须放入 secrets 命令")
+			return validationError("敏感设置必须放入 secrets 命令")
 		}
 		// err 表示批量普通设置的业务值校验错误。
 		if err := validateSystemValue(key, values[key]); err != nil {
@@ -485,19 +510,19 @@ func validateSystemValue(key, value string) error {
 	switch strings.TrimSpace(key) {
 	case "outbound_http_public_only":
 		if !strings.EqualFold(trimmed, "true") && !strings.EqualFold(trimmed, "false") {
-			return errors.New("outbound_http_public_only 必须是布尔值")
+			return validationError("outbound_http_public_only 必须是布尔值")
 		}
 	case "global_send_daily_limit", "silence_alert_minutes":
 		// n、err 是解析出的非负整数；负数或非法值拒绝落库，避免额度或阈值被悄悄重置或反向配置。
 		if n, err := strconv.Atoi(trimmed); err != nil || n < 0 {
-			return fmt.Errorf("%s 必须是非负整数", key)
+			return validationErrorf("%s 必须是非负整数", key)
 		}
 	case "ai_reply_review_mode":
 		// 允许的开关取值与 engine.reviewModeEnabled 保持一致；非法值拒绝落库。
 		switch strings.ToLower(trimmed) {
 		case "1", "true", "yes", "on", "enabled", "0", "false", "no", "off", "disabled", "":
 		default:
-			return errors.New("ai_reply_review_mode 必须是布尔开关值")
+			return validationError("ai_reply_review_mode 必须是布尔开关值")
 		}
 	case "delivery_content_guard":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
@@ -506,7 +531,7 @@ func validateSystemValue(key, value string) error {
 		}
 		// 门禁配置必须是 JSON 对象，其余形状一律拒绝落库。
 		if !strings.HasPrefix(trimmed, "{") {
-			return fmt.Errorf("%s 必须是 JSON 对象", key)
+			return validationErrorf("%s 必须是 JSON 对象", key)
 		}
 		// parsed 保存按门禁配置形状解析的字段；字段类型不匹配或非法 JSON 一律拒绝落库。
 		var parsed struct {
@@ -516,7 +541,7 @@ func validateSystemValue(key, value string) error {
 		}
 		if // err 是门禁配置 JSON 的解析错误；非法 JSON 或字段类型不匹配一律拒绝落库。
 		err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
-			return fmt.Errorf("%s 必须是合法 JSON 对象", key)
+			return validationErrorf("%s 必须是合法 JSON 对象", key)
 		}
 	case "delivery_sla_config":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
@@ -525,7 +550,7 @@ func validateSystemValue(key, value string) error {
 		}
 		// SLA 配置必须是 JSON 对象，其余形状一律拒绝落库。
 		if !strings.HasPrefix(trimmed, "{") {
-			return fmt.Errorf("%s 必须是 JSON 对象", key)
+			return validationErrorf("%s 必须是 JSON 对象", key)
 		}
 		// parsed 保存按 SLA 配置形状解析的字段；字段类型不匹配或非法 JSON 一律拒绝落库。
 		var parsed struct {
@@ -534,17 +559,17 @@ func validateSystemValue(key, value string) error {
 		}
 		if // err 是 SLA 配置 JSON 的解析错误；非法 JSON 或字段类型不匹配一律拒绝落库。
 		err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
-			return fmt.Errorf("%s 必须是合法 JSON 对象", key)
+			return validationErrorf("%s 必须是合法 JSON 对象", key)
 		}
 		// default_minutes 缺省视为 0；显式提供时必须非负。
 		if parsed.DefaultMinutes != nil && *parsed.DefaultMinutes < 0 {
-			return fmt.Errorf("%s 的 default_minutes 必须是非负整数", key)
+			return validationErrorf("%s 的 default_minutes 必须是非负整数", key)
 		}
 		// cookieID 是 per_account 中的账号标识，minutes 是对应覆盖分钟数。
 		for cookieID, minutes := range parsed.PerAccount {
 			// 账号覆盖值必须非负，负数意味着关闭而非反向配置。
 			if minutes < 0 {
-				return fmt.Errorf("%s 的 per_account[%s] 必须是非负整数", key, cookieID)
+				return validationErrorf("%s 的 per_account[%s] 必须是非负整数", key, cookieID)
 			}
 		}
 	case "mcp.servers":
@@ -554,56 +579,56 @@ func validateSystemValue(key, value string) error {
 		}
 		// 顶层数组以外的形状都不是合法的 MCP 服务列表。
 		if !strings.HasPrefix(trimmed, "[") {
-			return fmt.Errorf("%s 必须是 JSON 数组", key)
+			return validationErrorf("%s 必须是 JSON 数组", key)
 		}
 		// entries 是解析出的 JSON 数组元素列表。
 		var entries []any
 		// err 是 JSON 数组解析失败原因；非法 JSON 整体拒绝落库。
 		if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
-			return fmt.Errorf("%s 必须是合法 JSON 数组", key)
+			return validationErrorf("%s 必须是合法 JSON 数组", key)
 		}
 		// i 是当前条目在数组中的下标，entry 是该条目的原始 JSON 值。
 		for i, entry := range entries {
 			// obj 表示当前条目解析出的 JSON 对象字段表。
 			obj, ok := entry.(map[string]any)
 			if !ok {
-				return fmt.Errorf("%s 第 %d 个元素必须是 JSON 对象", key, i+1)
+				return validationErrorf("%s 第 %d 个元素必须是 JSON 对象", key, i+1)
 			}
 			// nameField 是当前条目的服务名称字段原始值。
 			nameField, ok := obj["name"]
 			if !ok {
-				return fmt.Errorf("%s 第 %d 个元素缺少 name 字段", key, i+1)
+				return validationErrorf("%s 第 %d 个元素缺少 name 字段", key, i+1)
 			}
 			// name、ok 尝试把名称字段断言为 JSON 字符串。
 			name, ok := nameField.(string)
 			if !ok {
-				return fmt.Errorf("%s 第 %d 个元素的 name 必须是字符串", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 name 必须是字符串", key, i+1)
 			}
 			// name 去首尾空白后必须非空且不超过 64 个字符，供引擎按名称匹配插件。
 			name = strings.TrimSpace(name)
 			if name == "" {
-				return fmt.Errorf("%s 第 %d 个元素的 name 不能为空", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 name 不能为空", key, i+1)
 			}
 			if utf8.RuneCountInString(name) > 64 {
-				return fmt.Errorf("%s 第 %d 个元素的 name 不能超过 64 字符", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 name 不能超过 64 字符", key, i+1)
 			}
 			// urlField 是当前条目的服务地址字段原始值。
 			urlField, ok := obj["url"]
 			if !ok {
-				return fmt.Errorf("%s 第 %d 个元素缺少 url 字段", key, i+1)
+				return validationErrorf("%s 第 %d 个元素缺少 url 字段", key, i+1)
 			}
 			// url、ok 尝试把地址字段断言为 JSON 字符串。
 			url, ok := urlField.(string)
 			if !ok {
-				return fmt.Errorf("%s 第 %d 个元素的 url 必须是字符串", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 url 必须是字符串", key, i+1)
 			}
 			// url 去首尾空白后必须非空且不超过 512 个字符，仅约束长度不强制协议。
 			url = strings.TrimSpace(url)
 			if url == "" {
-				return fmt.Errorf("%s 第 %d 个元素的 url 不能为空", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 url 不能为空", key, i+1)
 			}
 			if utf8.RuneCountInString(url) > 512 {
-				return fmt.Errorf("%s 第 %d 个元素的 url 不能超过 512 字符", key, i+1)
+				return validationErrorf("%s 第 %d 个元素的 url 不能超过 512 字符", key, i+1)
 			}
 		}
 	}

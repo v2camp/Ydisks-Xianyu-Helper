@@ -97,6 +97,11 @@ func Classify(err error) (ErrorClass, string) {
 	if errors.As(err, &keywordValidation) {
 		return ClassInvalidArgument, keywordValidation.Message
 	}
+	// 系统设置与 AI 设置的业务校验错误同样携带可直接展示的中文提示。
+	var settingsValidation *settingsapp.ValidationError
+	if errors.As(err, &settingsValidation) {
+		return ClassInvalidArgument, settingsValidation.Message
+	}
 	// 归属与身份类哨兵统一映射为越权/未认证/未找到中文提示。
 	switch {
 	case errors.Is(err, cardsapp.ErrNotFound):
@@ -190,6 +195,8 @@ func Classify(err error) (ErrorClass, string) {
 		return ClassUnauthorized, "管理员身份无效，请检查 MCP 令牌与本地管理员账号"
 	case errors.Is(err, settingsapp.ErrConfigNotFound):
 		return ClassNotFound, "指定配置不存在"
+	case errors.Is(err, settingsapp.ErrPricingModeConflict):
+		return ClassInvalidArgument, "AI 议价与自动化规则改价不能同时启用，请先关闭另一种改价方式"
 	case errors.Is(err, adminapp.ErrSelfDelete):
 		return ClassInvalidArgument, "不能删除当前登录管理员账号"
 	case errors.Is(err, adminapp.ErrInvalidUser):

@@ -854,3 +854,33 @@ func TestValidateSystemValueMCPServers(t *testing.T) {
 		}
 	}
 }
+
+// TestValidationErrorText 验证设置校验错误在空值与正常值时都返回稳定中文提示。
+func TestValidationErrorText(t *testing.T) {
+	// emptyMessage 是空接收者与空消息时的兜底提示。
+	if emptyMessage := (*ValidationError)(nil).Error(); emptyMessage != "系统设置输入无效" {
+		t.Fatalf("空校验错误提示异常: %q", emptyMessage)
+	}
+	// blankErr 是消息为空的校验错误。
+	blankErr := &ValidationError{}
+	if blankErr.Error() != "系统设置输入无效" {
+		t.Fatalf("空消息校验错误提示异常: %q", blankErr.Error())
+	}
+	// messageErr 是携带业务提示的校验错误。
+	messageErr := validationError("最大折扣比例必须在 0 到 100 之间")
+	if messageErr.Error() != "最大折扣比例必须在 0 到 100 之间" {
+		t.Fatalf("设置校验错误提示异常: %v", messageErr)
+	}
+	// formatErr 是带格式化字段的校验错误。
+	formatErr := validationErrorf("%s 必须是非负整数", "global_send_daily_limit")
+	if formatErr.Error() != "global_send_daily_limit 必须是非负整数" {
+		t.Fatalf("格式化校验错误提示异常: %v", formatErr)
+	}
+	// 应用服务返回的校验错误必须可由调用方按类型识别。
+	service := NewService(&settingsRepositoryFake{}, nil)
+	// _, testErr 是缺少模型客户端时的连接测试错误。
+	_, testErr := service.TestAIConnection(context.Background(), 7, "", "", "")
+	if testErr == nil {
+		t.Fatal("缺少模型客户端应返回错误")
+	}
+}

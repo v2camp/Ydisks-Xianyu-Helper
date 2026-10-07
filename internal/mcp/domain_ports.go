@@ -19,6 +19,7 @@ import (
 	keywordsapp "xianyu-go/internal/application/keywords"
 	notificationsapp "xianyu-go/internal/application/notifications"
 	orderapp "xianyu-go/internal/application/orders"
+	settingsapp "xianyu-go/internal/application/settings"
 )
 
 // AccountPorts 聚合账号域工具所需的账号用例集合。
@@ -306,6 +307,38 @@ type UncertainNotificationPorts interface {
 	ListUncertainForAdmin(ctx context.Context, limit int) ([]notificationsapp.UncertainSummary, int, error)
 }
 
+// SettingsPorts 聚合系统设置、用户设置、账号 AI 回复设置与 AI 连通性用例。
+// 敏感设置的读写、审计与三态命令校验完全由 settings 应用服务负责；
+// MCP 层只负责入参整形、在通用设置入口拦截 MCP 自身状态键，并保证秘密值不回传。
+type SettingsPorts interface {
+	// IsSensitiveSettingKey 判断设置键是否属于敏感白名单。
+	IsSensitiveSettingKey(key string) bool
+	// PublicSystem 读取无需认证展示的系统设置。
+	PublicSystem(ctx context.Context) (map[string]string, error)
+	// GetSystem 读取已脱敏的管理员系统设置，并记录敏感键读取审计。
+	GetSystem(ctx context.Context, userID int64) (map[string]string, error)
+	// ApplySystemChanges 原子保存普通设置与敏感三态命令。
+	ApplySystemChanges(ctx context.Context, userID int64, values map[string]string, secrets map[string]settingsapp.SecretChange) error
+	// SetSystem 保存单项系统设置，敏感键走三态命令。
+	SetSystem(ctx context.Context, userID int64, key, value, action string) error
+	// ListUser 读取当前用户的全部偏好设置。
+	ListUser(ctx context.Context, userID int64) (map[string]string, error)
+	// GetUser 读取当前用户的一项偏好设置。
+	GetUser(ctx context.Context, userID int64, key string) (string, error)
+	// SetUser 保存当前用户的一项偏好设置。
+	SetUser(ctx context.Context, userID int64, key, value string) error
+	// ListAIReply 读取用户范围内的账号 AI 设置摘要。
+	ListAIReply(ctx context.Context, userID int64) ([]settingsapp.AIReplySettings, error)
+	// GetAIReply 读取指定账号的 AI 设置摘要。
+	GetAIReply(ctx context.Context, userID int64, cookieID string) (settingsapp.AIReplySettings, error)
+	// UpsertAIReply 保存指定账号的 AI 设置摘要，冲突校验由应用服务负责。
+	UpsertAIReply(ctx context.Context, userID int64, cookieID string, settings settingsapp.AIReplySettings) error
+	// ListAIModels 读取远端模型目录；apiKey 仅用于本次请求，不落库不回传。
+	ListAIModels(ctx context.Context, userID int64, baseURL, apiKey string) ([]string, error)
+	// TestAIConnection 发送一次最小对话请求验证配置；诊断结果不含密钥。
+	TestAIConnection(ctx context.Context, userID int64, baseURL, apiKey, model string) (settingsapp.AIConnectionTestResult, error)
+}
+
 // DomainPorts 是全部域工具端口的聚合；某域为 nil 时该域工具不注册。
 type DomainPorts struct {
 	// Account 是账号域端口。
@@ -334,4 +367,6 @@ type DomainPorts struct {
 	NotificationChannels NotificationChannelPorts
 	// UncertainNotifications 是不确定通知查询域端口。
 	UncertainNotifications UncertainNotificationPorts
+	// Settings 是系统设置、用户设置与 AI 助手域端口。
+	Settings SettingsPorts
 }

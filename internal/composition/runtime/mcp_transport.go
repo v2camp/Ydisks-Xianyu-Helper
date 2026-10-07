@@ -184,4 +184,7 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	endpoint.RegisterChatTools(newMCPChatPorts(ports))
 	// 通知域工具：渠道配置只写不读，删除/清空/测试发送走 confirm 守卫。
 	endpoint.RegisterNotificationTools(newMCPNotificationChannelPorts(ports), newMCPUncertainNotificationPorts(ports))
+	// 设置与 AI 域工具：敏感值只写不读，MCP 自身状态键禁止经通用设置入口修改。
+	endpoint.RegisterSettingsTools(newMCPSettingsPorts(ports))
+	endpoint.RegisterAITools(newMCPSettingsPorts(ports))
 }
