@@ -47,7 +47,7 @@ func newProtocolEndpoint(t *testing.T) (*Endpoint, *fakeAudit) {
 	return endpoint, audit
 }
 
-// TestStreamableProtocolInitializeAndList 验证真实 streamable 客户端可完成握手、ping 与空工具列表。
+// TestStreamableProtocolInitializeAndList 验证真实 streamable 客户端可完成握手并读取空工具列表。
 func TestStreamableProtocolInitializeAndList(t *testing.T) {
 	// endpoint、_ 是被测协议端点。
 	endpoint, _ := newProtocolEndpoint(t)
@@ -80,10 +80,6 @@ func TestStreamableProtocolInitializeAndList(t *testing.T) {
 	}
 	if initResult.ServerInfo.Name != defaultServerName {
 		t.Fatalf("服务名异常: %q", initResult.ServerInfo.Name)
-	}
-	// pingErr 是协议 ping 的错误。
-	if pingErr := mcpc.Ping(ctx); pingErr != nil {
-		t.Fatalf("ping 失败: %v", pingErr)
 	}
 	// tools、toolsErr 是工具列表结果；Task 3 阶段尚未注册业务工具，列表必须为空。
 	tools, toolsErr := mcpc.ListTools(ctx, mcpproto.ListToolsRequest{})

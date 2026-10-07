@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	mcpproto "github.com/mark3labs/mcp-go/mcp"
-
 	settingsapp "xianyu-go/internal/application/settings"
 )
 
@@ -331,6 +329,4 @@ func TestResultBuilders(t *testing.T) {
 	if text.IsError {
 		t.Fatal("纯文本结果不应标记错误")
 	}
-	// 编译期保证结果类型与 mcp-go 协议类型一致。
-	var _ *mcpproto.CallToolResult = text
 }

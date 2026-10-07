@@ -45,8 +45,6 @@ const minHeartbeatInterval = 1 * time.Second
 //   - 时钟：now 可注入，测试用假时钟驱动周期与判定。
 //   - 失败语义：写失败只记告警（fail-open），绝不阻塞业务循环或向上抛错。
 type Writer struct {
-	// mu 保护运行期只读字段；本类型运行期不修改可变状态，mu 主要约束并发构造。
-	mu sync.Mutex
 	// store 是心跳写出的持久化边界；为 nil 时 Writer 视为未装配，Run 直接返回。
 	store BeatWriter
 	// interval 是心跳写周期；构造期固化，运行期不再读环境变量。

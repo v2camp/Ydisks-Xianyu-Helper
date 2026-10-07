@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	mcpproto "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
@@ -141,6 +140,3 @@ var _ http.Handler = (*Endpoint)(nil)
 func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.Handler().ServeHTTP(w, r)
 }
-
-// toolHandler 是 mcp-go 工具处理器的包内别名，减少域注册文件的导入噪音。
-type toolHandler = func(ctx context.Context, request mcpproto.CallToolRequest) (*mcpproto.CallToolResult, error)

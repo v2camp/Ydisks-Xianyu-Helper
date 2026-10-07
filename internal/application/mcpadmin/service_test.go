@@ -255,7 +255,8 @@ func TestPageBoundsAndTotalPages(t *testing.T) {
 	if page != 3 || size != 10 || offset != 20 {
 		t.Fatalf("正常分页异常: page=%d size=%d offset=%d", page, size, offset)
 	}
-	page, size, _ = PageBounds(1, 1000)
+	// 页大小超过上限时必须收敛到 maxPageSize，页码不再参与断言。
+	_, size, _ = PageBounds(1, 1000)
 	if size != maxPageSize {
 		t.Fatalf("页大小未收敛: %d", size)
 	}
