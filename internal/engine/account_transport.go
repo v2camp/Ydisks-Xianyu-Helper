@@ -165,6 +165,26 @@ func (a *Account) notifyInitialTransportReady() {
 	})
 }
 
+// notifyReconnectTransportReady 在每次 WebSocket 注册成功后异步通知重连补同步端口。
+// 与首次通知不同，它不做 once 限制：断线期间丢失的订单事件只能在重连后补同步。
+// 任务由 accountLifecycle 登记、取消和等待，账号停止时不会留下游离协程。
+func (a *Account) notifyReconnectTransportReady() {
+	// handler、ok 保存支持重连补同步回调的可选业务端口。
+	handler, ok := a.handler.(reconnectTransportReadyHandler)
+	if !ok {
+		return
+	}
+	// taskCtx、finish、accepted 分别表示账号生命周期拥有的同步上下文、结束登记和当前是否允许新任务。
+	taskCtx, finish, accepted := a.lifecycle.beginTask()
+	if !accepted {
+		return
+	}
+	go func() {
+		defer finish()
+		handler.OnReconnectTransportReady(taskCtx, a.CookieID)
+	}()
+}
+
 // setRuntimeState 封装setRuntime状态业务协调。
 func (a *Account) setRuntimeState(state, message string) {
 	a.runtimeMu.Lock()

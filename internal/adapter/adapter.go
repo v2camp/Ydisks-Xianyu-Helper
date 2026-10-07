@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	accountmanager "xianyu-go/internal/account"
 	accountapp "xianyu-go/internal/application/account"
@@ -78,6 +79,10 @@ type Adapter struct {
 	chat           *chat.Service
 	// initialOrderSync 在账号运行实例首次 WebSocket 注册成功后执行一次订单同步；仅在进程组合期注入，运行中不可替换。
 	initialOrderSync func(context.Context, string) error
+	// orderSyncMu 仅保护 orderSyncAt；持锁期间不执行数据库或平台 I/O。
+	orderSyncMu sync.Mutex
+	// orderSyncAt 记录每个账号最近一次订单同步的发起时间，用于重连补同步节流。
+	orderSyncAt map[string]time.Time
 
 	// orderDetails 协调自动发货订单详情访问；它与订单刷新运行时共享，按账号限流并合并同订单并发请求。
 	orderDetails *OrderDetailCoordinator

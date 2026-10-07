@@ -129,6 +129,13 @@ type initialTransportReadyHandler interface {
 	OnInitialTransportReady(ctx context.Context, cookieID string)
 }
 
+// reconnectTransportReadyHandler 接收每次 WebSocket 注册完成事件（含首次）。
+// 断线期间丢失的订单事件只能在该时机补同步，因此它不做 once 限制；
+// 调用方需要自行按最小间隔节流，避免网络抖动把补同步放大成平台调用风暴。
+type reconnectTransportReadyHandler interface {
+	OnReconnectTransportReady(ctx context.Context, cookieID string)
+}
+
 // tokenCaptchaHandler 用于本次流程后续判断的令牌CaptchaHandler
 type tokenCaptchaHandler interface {
 	OnTokenCaptchaVerification(ctx context.Context, cookieID, cookieStr, verificationURL, deviceID string) (*mtop.RefreshResult, bool)
