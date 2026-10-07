@@ -54,8 +54,14 @@ func outgoingRequestID(ctx context.Context) string {
 	return strings.TrimSpace(requestID)
 }
 
-// handleSyncExtra 处理服务端增量同步帧并在需要时回传确认，返回解码或发送错误。
-func (c *Conn) handleSyncExtra(ctx context.Context, msg map[string]any) error {
+// handleSyncExtra 处理服务端增量同步帧：拉取平台同步状态、回传确认，并把状态中携带的
+// 补偿业务载荷分发给 onMessage，返回解码或发送错误。
+//
+// 回归背景：2026-10-06 19:57 重连后平台把 sync stream 40 的序号重置为 0，断线期间的付款
+// 卡片（seq 36）永久丢失，而旧实现只推进同步游标、丢弃 getState 返回的补偿载荷，导致本地
+// 无从恢复这张卡片。这里把补偿载荷接入与正常推送完全相同的解码和分发路径。
+// onMessage 为 nil 时只处理同步状态，保持既有调用方兼容。
+func (c *Conn) handleSyncExtra(ctx context.Context, msg map[string]any, onMessage func(decrypted map[string]any)) error {
 	// body 用于本次流程后续判断的请求体
 	body, _ := msg["body"].(map[string]any)
 	// extra 用于本次流程后续判断的extra
@@ -74,6 +80,8 @@ func (c *Conn) handleSyncExtra(ctx context.Context, msg map[string]any) error {
 	code, ok := responseCode(state["code"]); !ok || code != http.StatusOK || state["body"] == nil {
 		return fmt.Errorf("getState 返回异常: code=%v", state["code"])
 	}
+	// 补偿业务载荷必须在 ackDiff 之前分发：一旦 ackDiff 确认，平台不再补发同一段序号。
+	c.dispatchSyncStateBody(state, onMessage)
 	// response、err 用于本次流程后续判断的response、err
 	response, err := c.request(ctx, "/r/SyncStatus/ackDiff", map[string]any{}, []any{state["body"]}, regResponseTimeout)
 	if err != nil {
@@ -84,6 +92,39 @@ func (c *Conn) handleSyncExtra(ctx context.Context, msg map[string]any) error {
 		return fmt.Errorf("ackDiff 返回异常: code=%d", code)
 	}
 	return nil
+}
+
+// dispatchSyncStateBody 从 getState 返回的状态体里提取补偿业务载荷并按正常推送路径分发。
+// 状态体可能以两种形状携带补偿数据：直接内嵌 syncPushPackage，或 body 就是一个同步推送包；
+// 两种形状都用同一个 extractSyncPayloads 提取，避免出现与正常推送不一致的第二套解析。
+func (c *Conn) dispatchSyncStateBody(state map[string]any, onMessage func(decrypted map[string]any)) {
+	if onMessage == nil {
+		return
+	}
+	// stateBody、ok 保存状态体的对象形状；非对象状态体不携带可分发载荷。
+	stateBody, ok := state["body"].(map[string]any)
+	if !ok {
+		return
+	}
+	// entries、payloadOK 保存状态体中的同步条目；没有同步包时静默跳过。
+	entries, payloadOK := extractSyncPayloads(map[string]any{"body": stateBody})
+	if !payloadOK {
+		return
+	}
+	// payload 表示当前待解码的补偿条目。
+	for _, payload := range entries {
+		if !payload.valid {
+			c.logger.Warn("同步补偿条目格式无效", "entry_index", payload.index, "reason", payload.invalidReason)
+			continue
+		}
+		// decoded、err 分别保存当前补偿条目的业务对象及解密失败原因。
+		decoded, err := decodeSyncData(payload.data)
+		if err != nil {
+			c.logger.Warn("同步补偿条目解密失败", "entry_index", payload.index, "err", err)
+			continue
+		}
+		onMessage(decoded)
+	}
 }
 
 // sendACK 回复 {"code":200, headers:<服务端完整 headers>}。
