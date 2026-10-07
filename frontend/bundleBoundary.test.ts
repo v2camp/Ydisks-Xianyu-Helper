@@ -16,8 +16,8 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Settings: 30 * 1024,
   // Rules 页面现在包含模板发货模式入口和模板变量编辑器。
   Rules: 70 * 1024,
-  // DeliveryTemplates 页面承载模板 CRUD 编辑器。
-  DeliveryTemplates: 12 * 1024,
+  // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12618 字节，预算随之上调。
+  DeliveryTemplates: 14 * 1024,
   Notifications: 45 * 1024,
   Chat: 50 * 1024,
 };

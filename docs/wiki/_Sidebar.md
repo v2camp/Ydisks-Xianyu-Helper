@@ -13,4 +13,5 @@
 - [Automated Delivery and Replies](Automated-Delivery-and-Replies) · [中文](自动化发货与回复.zh-CN)
 - [AI, Notifications and Operations](AI-Notifications-and-Operations) · [中文](AI、通知与运维.zh-CN)
 - [System and AI](System-and-AI) · [中文](系统设置.zh-CN)
+- [MCP 开放服务](MCP开放服务.zh-CN)
 - [Accounts, Inventory and Products](Accounts-Inventory-and-Products) · [中文](账号、库存与商品.zh-CN)

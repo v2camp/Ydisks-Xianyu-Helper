@@ -33,7 +33,7 @@ import { createNotificationChannel,deleteAccountNotifications,deleteMessageNotif
 import { cancelOrderRefreshJob,deleteOrder,getAdminStats,getOrderDetail,getOrders,manualShipOrder,syncOrders,syncSingleOrder,updateOrder } from './orders/api';
 import { clearDefaultReplyRecords,deleteDefaultReply,deleteReplyRule,deleteShippingRule,getAutomationIssues,getDefaultReplies,getDefaultReply,getReplyRules,getShippingRules,getShippingRulesPage,resolveAutomationRun,resolveDeferredAutomationTask,updateDefaultReply,updateReplyRule,updateShippingRule } from './rules/api';
 import { initializeAdmin,login,logout,verifySession } from './session/api';
-import { changePassword,fetchAIModels,getSystemSettings,updateLoginCredentials,updateSystemSettings } from './settings/api';
+import { changePassword,fetchAIModels,generateMCPToken,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
 import { getHealth } from './system/api';
 import { normalizeSystemSettingsUpdate } from '../../shared/api-contract/settings';
 
@@ -1736,4 +1736,75 @@ test('通知编辑可单独更新收件地址', /* recipientPatchAdapterTest 检
   // body 是已经发送的请求体，用于证明没有 config 字段。
   const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
   expect(body).toEqual({ name: 'renamed', email_recipient: 'new@example.com' });
+});
+
+// MCP 状态接口归一非敏感字段并走版本化路径。
+test('MCP 状态读取归一非敏感字段', /* mcpStatusAdapterTest 检查状态适配器的映射与请求路径。 */ async () => {
+  // fetchMock 是 MCP 状态读取的 HTTP 替身。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+    enabled: true, allow_non_loopback: false, has_token: true,
+    token_created_at: 1_700_000_000, token_last_used_at: 0,
+    has_previous_token: false, previous_token_expires_at: 0,
+    endpoint: 'http://127.0.0.1:59188/mcp',
+  }));
+  stubContractFetch(fetchMock);
+  // status 是归一后的 MCP 服务 UI 模型。
+  const status = await getMCPServiceStatus();
+  expect(status).toMatchObject({
+    enabled: true, allowNonLoopback: false, hasToken: true,
+    tokenCreatedAt: 1_700_000_000, endpoint: 'http://127.0.0.1:59188/mcp',
+  });
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/mcp/status', expect.objectContaining({ method: 'GET', credentials: 'include' }));
+});
+
+// MCP 设置更新把 UI 字段转换为契约的 snake_case 请求体。
+test('MCP 设置更新发送启用与网络策略', /* mcpSettingsAdapterTest 检查设置更新的请求体序列化。 */ async () => {
+  // fetchMock 是 MCP 设置保存的 HTTP 替身。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+  stubContractFetch(fetchMock);
+  await updateMCPServiceSettings({ enabled: true, allowNonLoopback: true });
+  // payload 是实际发送的设置请求体。
+  const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+  expect(payload).toEqual({ enabled: true, allow_non_loopback: true });
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/mcp/settings', expect.objectContaining({ method: 'PUT', credentials: 'include' }));
+});
+
+// MCP 令牌生成返回只在本次响应出现的明文。
+test('MCP 令牌生成返回一次性明文', /* mcpTokenAdapterTest 检查令牌生成响应解析。 */ async () => {
+  // fetchMock 是 MCP 令牌生成的 HTTP 替身。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ token: 'plain-token-xyz' }));
+  stubContractFetch(fetchMock);
+  await expect(generateMCPToken()).resolves.toBe('plain-token-xyz');
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/mcp/token', expect.objectContaining({ method: 'POST', credentials: 'include' }));
+});
+
+// MCP 令牌吊销发送删除请求。
+test('MCP 令牌吊销发送删除请求', /* mcpRevokeAdapterTest 检查令牌吊销的请求方法。 */ async () => {
+  // fetchMock 是 MCP 令牌吊销的 HTTP 替身。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+  stubContractFetch(fetchMock);
+  await expect(revokeMCPToken()).resolves.toEqual({ success: true });
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/mcp/token', expect.objectContaining({ method: 'DELETE', credentials: 'include' }));
+});
+
+// MCP 审计查询透传分页与过滤参数并归一记录字段。
+test('MCP 审计查询透传分页与过滤参数', /* mcpAuditAdapterTest 检查审计查询参数与记录归一。 */ async () => {
+  // fetchMock 是 MCP 审计查询的 HTTP 替身。
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+    success: true,
+    data: [{ id: 9, created_at: 1_700_000_200, user_id: 1, token_source: 'persisted', category: 'tool', name: 'system_ping', cookie_id: '', arguments: '{}', success: false, error_class: 'forbidden', duration_ms: 4 }],
+    total: 1, page: 2, page_size: 10, total_pages: 1,
+  }));
+  stubContractFetch(fetchMock);
+  // page 是归一后的审计分页 UI 模型。
+  const page = await getMCPAudit({ page: 2, pageSize: 10, category: 'tool', success: false });
+  expect(page.total).toBe(1);
+  expect(page.records[0]).toMatchObject({ id: 9, name: 'system_ping', success: false, errorClass: 'forbidden', durationMs: 4 });
+  // requestURL 是审计请求实际使用的地址，用于断言查询参数。
+  const requestURL = String(fetchMock.mock.calls[0][0]);
+  expect(requestURL).toContain('/api/v1/mcp/audit');
+  expect(requestURL).toContain('page=2');
+  expect(requestURL).toContain('page_size=10');
+  expect(requestURL).toContain('category=tool');
+  expect(requestURL).toContain('success=false');
 });

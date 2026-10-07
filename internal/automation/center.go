@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -498,18 +497,6 @@ func bargainManualInterventionKey(task Task) string {
 	return fmt.Sprintf("manual-intervention:bargain-free-shipping:%s:%s", task.AccountID, task.OrderID)
 }
 
-// taskAutomationRunID 封装任务自动化运行ID业务协调。
-func taskAutomationRunID(task Task) int64 {
-	if task.Raw == nil {
-		return 0
-	}
-	// value 用于本次流程后续判断的值
-	value := fmt.Sprint(task.Raw["automation_run_id"])
-	// id 用于本次流程后续判断的标识
-	id, _ := strconv.ParseInt(value, 10, 64)
-	return id
-}
-
 // paidDeliveryAutoConfirmEnabled 返回账号是否开启「自动确认发货」。
 // 兜底扫描必须在重开运行或领取冷却窗口之前检查它：开关关闭时 HandleTask 会直接返回而不收口运行，
 // 被它重开的运行会留在 running 并继续持有租约；租约到期后失败运行恢复链路直接执行 executeRule，
@@ -521,50 +508,6 @@ func (c *Center) paidDeliveryAutoConfirmEnabled(ctx context.Context, accountID s
 		return false, fmt.Errorf("读取自动确认发货设置: %w", err)
 	}
 	return autoConfirm, nil
-}
-
-// taskDelayCursor 封装任务延迟游标业务协调。
-func taskDelayCursor(task Task) int {
-	if task.Raw == nil {
-		return -1
-	}
-	// value 用于本次流程后续判断的值
-	value := fmt.Sprint(task.Raw["automation_delay_cursor"])
-	// cursor、err 用于本次流程后续判断的cursor、err
-	cursor, err := strconv.Atoi(value)
-	if err != nil {
-		return -1
-	}
-	return cursor
-}
-
-// isDeferredReplay 封装isDeferredReplay业务协调。
-func isDeferredReplay(task Task) bool {
-	return task.Raw != nil && task.Raw["automation_deferred_replay"] == true
-}
-
-// deferTask 封装defer任务业务协调。
-func (c *Center) deferTask(ctx context.Context, task Task, dueAt int64) error {
-	return c.deferTaskWithError(ctx, task, dueAt, "")
-}
-
-// deferTaskWithError 封装defer任务With错误业务协调。
-func (c *Center) deferTaskWithError(ctx context.Context, task Task, dueAt int64, errMsg string) error {
-	// key 用于本次流程后续判断的key
-	key := buildTriggerKey(task)
-	if key == "" {
-		return fmt.Errorf("暂停期间的自动化事件缺少可持久化防重键")
-	}
-	task.CookieStr = ""
-	// raw、err 用于本次流程后续判断的raw、err
-	raw, err := json.Marshal(task)
-	if err != nil {
-		return err
-	}
-	return c.store.Automation.DeferTask(ctx, db.DeferredAutomationTask{
-		TaskKey: task.AccountID + ":" + key, CookieID: task.AccountID,
-		TriggerType: task.TriggerType, TaskJSON: string(raw), DueAt: dueAt, ErrorMessage: errMsg,
-	})
 }
 
 // executeRule 将规则执行委托给运行协调器，保持 Center 的兼容调用入口。
@@ -775,25 +718,4 @@ func (c *Center) sendImage(ctx context.Context, task Task, imageURL string, card
 // cookieValue 读取账号 Cookie 的兼容入口。
 func (c *Center) cookieValue(ctx context.Context, cookieID string) (string, error) {
 	return c.actions.cookieValue(ctx, cookieID)
-}
-
-// buildTriggerKey 封装buildTriggerKey业务协调。
-func buildTriggerKey(task Task) string {
-	// marker 沿用未知角色延期事件固化下来的稳定防重键，确保订单号补齐前后算作同一条延期任务。
-	if marker := roleVerificationMarker(task); marker != "" {
-		return marker
-	}
-	if task.TriggerType == TriggerReviewMissingTimeout && task.OrderID != "" {
-		if // attempt、ok 用于本次流程后续判断的attempt、ok
-		attempt, ok := task.Raw["attempt"]; ok {
-			return fmt.Sprintf("%s:%s:%v", task.TriggerType, task.OrderID, attempt)
-		}
-	}
-	if task.OrderID != "" {
-		return task.TriggerType + ":" + task.OrderID
-	}
-	if task.UpdateKey != "" {
-		return task.TriggerType + ":" + task.UpdateKey
-	}
-	return ""
 }

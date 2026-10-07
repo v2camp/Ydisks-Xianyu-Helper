@@ -2,6 +2,7 @@ import {
   Database,
   Eye,EyeOff,
   LockKeyhole,
+  PlugZap,
   RefreshCw,
   Save,
   Settings as SettingsIcon,
@@ -11,6 +12,7 @@ import {
 import React from 'react';
 import { LOG_LEVELS } from '../constants';
 import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
+import { MCPServiceCard } from '../components/MCPServiceCard';
 import { useSettings } from '../hooks';
 
 // Settings 展示系统配置与登录凭据编辑页面；AI 相关配置已拆分到独立的 AI 设置页。
@@ -169,6 +171,19 @@ const Settings: React.FC = () => {
 
             {/* 发货内容门禁配置卡：违禁词拒发与链接健康检查开关及额外违禁词，保存后随系统配置一起提交。 */}
             <DeliveryGuardCard settings={settings} onChange={/* patch 合并进系统配置草稿，由统一保存按钮提交。 */ patch => setSettings({ ...settings, ...patch })} />
+          </section>
+
+          {/* MCP 服务：对外暴露本服务能力，自带独立管理接口与保存动作，不随系统配置草稿提交。 */}
+          <section className="space-y-4">
+            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-500 text-white">
+                <PlugZap className="w-4 h-4" />
+              </div>
+              MCP 服务
+            </h3>
+
+            {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存。 */}
+            <MCPServiceCard />
           </section>
         </div>
 

@@ -396,4 +396,59 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 	assertE2EPageRendered(t, page, errors, "/app/orders")
 	// 设置页仅管理员可进入，进入成功即证明管理员会话与路由权限均正常。
 	assertE2EPageRendered(t, page, errors, "/app/settings")
+	// MCP 服务卡在设置页内联渲染，走一次「启用 + 生成令牌」动线并断言无控制台错误。
+	assertMCPServiceCardFlow(t, page, errors)
+}
+
+// assertMCPServiceCardFlow 断言 MCP 服务卡已挂载，并完成一次启用与令牌生成动线。
+func assertMCPServiceCardFlow(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	// card 是 MCP 服务卡根节点；等待可见即证明前端卡片随设置页成功挂载。
+	card := waitE2EForSelector(t, page, "[data-testid=mcp-service-card]", e2eNavigateTimeout)
+	// enabledToggle 是启用 MCP 服务的开关控件。
+	enabledToggle := card.Locator("#mcp-service-enabled")
+	// checked、checkedErr 是开关当前状态与读取失败原因。
+	checked, checkedErr := enabledToggle.IsChecked()
+	if checkedErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("读取 MCP 启用开关失败: %v", checkedErr))
+	}
+	// 默认关闭时先启用；已启用时保持现状，避免把动线变成关闭操作。
+	if !checked {
+		// checkErr 是勾选启用开关并触发保存的失败原因。
+		if checkErr := enabledToggle.Check(playwright.LocatorCheckOptions{Timeout: playwright.Float(5000)}); checkErr != nil {
+			failE2EWithScreenshot(t, page, fmt.Sprintf("启用 MCP 服务失败: %v", checkErr))
+		}
+	}
+	// address 是只读接入地址输入框；启用成功后应展示真实 /mcp 地址。
+	address := card.Locator("input[readonly]").First()
+	// addressDeadline 是等待接入地址生效的截止时间。
+	addressDeadline := time.Now().Add(e2eNavigateTimeout)
+	// addressReady 表示接入地址已展示真实 /mcp 地址。
+	addressReady := false
+	for time.Now().Before(addressDeadline) {
+		// value、valueErr 是接入地址当前文本与读取失败原因。
+		value, valueErr := address.InputValue()
+		if valueErr == nil && strings.Contains(value, "/mcp") {
+			addressReady = true
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !addressReady {
+		failE2EWithScreenshot(t, page, "启用 MCP 服务后接入地址未更新为 /mcp 地址")
+	}
+	// generate 是生成或轮换令牌按钮；兼容首次生成与后续轮换两种文案。
+	generate := card.Locator("button:has-text('生成令牌'), button:has-text('轮换令牌')").First()
+	// generateErr 是点击生成令牌按钮的失败原因。
+	if generateErr := generate.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000)}); generateErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("点击生成令牌失败: %v", generateErr))
+	}
+	// tokenInput 是一次性令牌明文输入框；出现即证明生成流程完成。
+	tokenInput := waitE2EForSelector(t, page, "[data-testid=mcp-token-plaintext]", e2eNavigateTimeout)
+	// tokenValue、tokenErr 是本次生成的一次性明文与读取失败原因。
+	tokenValue, tokenErr := tokenInput.InputValue()
+	if tokenErr != nil || strings.TrimSpace(tokenValue) == "" {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("令牌明文未渲染: value=%q err=%v", tokenValue, tokenErr))
+	}
+	assertNoE2EConsoleErrors(t, page, errors)
 }

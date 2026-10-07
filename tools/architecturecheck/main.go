@@ -185,7 +185,17 @@ func checkGoFile(root, relativePath string, fset *token.FileSet, activeStage int
 				message: fmt.Sprintf("Server 新增低层依赖必须先迁移到应用 Port，禁止使用临时例外 %q", importedPath),
 			})
 		}
+		if isForbiddenMCPTransportImport(importPath, normalizedImport) {
+			// line 是 MCP 传输包依赖实现层所在的源码行号。
+			line := fset.Position(imp.Pos()).Line
+			violations = append(violations, violation{
+				file:    filepath.ToSlash(relativePath),
+				line:    line,
+				message: fmt.Sprintf("MCP 传输包禁止依赖实现层或装配根 %q；必须消费包内最小端口并由组合层投影", importedPath),
+			})
+		}
 	}
+	violations = append(violations, checkServerMCPProtocolIsolation(filepath.ToSlash(relativePath), syntax, source, fset)...)
 	violations = append(violations, checkApplicationTypeLeaks(relativePath, syntax, fset)...)
 	violations = append(violations, checkHTTPResponseContracts(relativePath, syntax, fset)...)
 	violations = append(violations, checkHTTPRequestContracts(relativePath, syntax, fset)...)

@@ -22,6 +22,40 @@ type taskStatusResponse struct {
 	DeadlineAt *time.Time `json:"deadline_at,omitempty"`
 }
 
+// BackgroundTaskSnapshot 是 Server 后台任务的非敏感状态快照，供只读运维视图（管理端与 MCP）使用。
+// 该结构只包含任务标识、名称、状态与时间，不含任务参数、Cookie、Token 或错误正文。
+type BackgroundTaskSnapshot struct {
+	// ID 是当前进程内唯一的任务标识。
+	ID string
+	// Name 是任务的稳定业务名称。
+	Name string
+	// State 是任务当前生命周期状态。
+	State string
+	// StartedAt 是任务开始执行的 UTC 时间。
+	StartedAt time.Time
+	// FinishedAt 是任务完成或取消的 UTC 时间；仍运行时为空。
+	FinishedAt *time.Time
+	// DeadlineAt 是任务 Context 的截止时间；没有截止时间时为空。
+	DeadlineAt *time.Time
+}
+
+// BackgroundTaskSnapshots 返回当前进程后台任务的非敏感状态快照副本。
+// 该方法只读且不修改注册表，供 MCP 等只读运维视图投影使用。
+func (s *Server) BackgroundTaskSnapshots() []BackgroundTaskSnapshot {
+	// snapshots 是注册表返回的后台任务状态副本。
+	snapshots := s.taskRegistryForServer().list()
+	// result 是转换后的对外快照列表。
+	result := make([]BackgroundTaskSnapshot, 0, len(snapshots))
+	// snapshot 是当前待转换的后台任务状态。
+	for _, snapshot := range snapshots {
+		result = append(result, BackgroundTaskSnapshot{
+			ID: snapshot.ID, Name: snapshot.Name, State: string(snapshot.State),
+			StartedAt: snapshot.StartedAt, FinishedAt: snapshot.FinishedAt, DeadlineAt: snapshot.DeadlineAt,
+		})
+	}
+	return result
+}
+
 // listAdminTasks 返回管理员可见的 Server 后台任务状态，不包含任务参数和敏感数据。
 func (s *Server) listAdminTasks(w http.ResponseWriter, r *http.Request) {
 	// limit 控制单次响应的历史任务数量，避免管理端一次读取过大结果。

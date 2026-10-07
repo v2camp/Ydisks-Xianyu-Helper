@@ -143,8 +143,8 @@ func TestLoadScopeMalformedFallback(t *testing.T) {
 	defer cleanup()
 	// a 是待测 AI 实现。
 	a := NewAIReplier("cid", s, nil)
-	// scope、err 是非法配置下的读取结果，应回落内置。
-	scope, err := a.loadScope(context.Background())
+	// scope 是非法配置下的读取结果，应回落内置；读取错误在本用例中不参与断言。
+	scope, _ := a.loadScope(context.Background())
 	// take 是砍价文本的判定结果，内置边界应接管。
 	if take, _ := scope.decide("能便宜点吗"); !take {
 		t.Fatal("内置应接管砍价")

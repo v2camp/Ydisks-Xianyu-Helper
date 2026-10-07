@@ -437,3 +437,72 @@ func TestServiceCoversRemainingCRUDBoundaries(t *testing.T) {
 }
 
 var _ Repository = (*cardRepositoryStub)(nil)
+
+// apiTesterStub 是连通性测试组件替身，记录收到的完整配置并回传固定诊断。
+type apiTesterStub struct {
+	// gotConfig 是测试用例实际收到的完整 API 配置。
+	gotConfig string
+	// result 是回传的非敏感诊断结果。
+	result APIRequestTestResult
+	// err 是回传的测试请求错误。
+	err error
+	// calls 是测试组件被调用的次数。
+	calls int
+}
+
+// Test 记录测试请求并回传预设诊断。
+func (t *apiTesterStub) Test(_ context.Context, input APIRequestTestInput) (APIRequestTestResult, error) {
+	t.calls++
+	t.gotConfig = input.Config
+	return t.result, t.err
+}
+
+// TestServiceTestSavedAPI 验证已保存 API 卡券连通性测试的归属、类型、装配与配置传递边界。
+func TestServiceTestSavedAPI(t *testing.T) {
+	// ctx 是连通性测试用例上下文。
+	ctx := context.Background()
+	// fullConfig 是只应在应用层内部流转的完整 API 模板。
+	fullConfig := `{"url":"https://api.example.com/card","method":"POST","timeout_seconds":5,"headers":{"Authorization":"Bearer secret-token"}}`
+	// repository 是归属于用户 7 的 api 卡券持久化替身。
+	repository := &cardRepositoryStub{card: Card{ID: 21, UserID: 7, Type: "api", APIConfig: fullConfig}}
+	// service 是绑定替身仓储的卡券应用服务。
+	service := NewService(repository)
+	// tester 是回传成功诊断的测试组件替身。
+	tester := &apiTesterStub{result: APIRequestTestResult{Status: "success", StatusCode: 200, ResponseContentType: "application/json"}}
+	// result、err 保存连通性测试诊断结果。
+	result, err := service.TestSavedAPI(ctx, 7, 21, tester)
+	if err != nil || result.StatusCode != 200 || tester.calls != 1 || tester.gotConfig != fullConfig {
+		t.Fatalf("连通性测试结果异常 result=%+v calls=%d config=%q err=%v", result, tester.calls, tester.gotConfig, err)
+	}
+	repository.gotCardID = 0
+	// err 表示未装配测试组件时返回的稳定装配错误，且不得读取完整配置。
+	if _, err := service.TestSavedAPI(ctx, 7, 21, nil); !errors.Is(err, ErrAPITesterUnavailable) || repository.gotCardID != 0 {
+		t.Fatalf("测试组件缺失应在读取卡券前拒绝，id=%d err=%v", repository.gotCardID, err)
+	}
+	// repository.card 切换为 data 类型，验证类型约束且不触达测试组件。
+	repository.card.Type = "data"
+	// err 表示非 api 卡券被连通性测试拒绝的类型错误。
+	if _, err := service.TestSavedAPI(ctx, 7, 21, tester); !errors.Is(err, ErrNotAPIType) || tester.calls != 1 {
+		t.Fatalf("非 api 类型应拒绝且零触达，calls=%d err=%v", tester.calls, err)
+	}
+	// repository.card 恢复 api 类型但改为他人所有，验证归属边界。
+	repository.card.Type = "api"
+	repository.card.UserID = 9
+	// err 表示跨用户测试被所有权检查拒绝。
+	if _, err := service.TestSavedAPI(ctx, 7, 21, tester); !errors.Is(err, ErrForbidden) || tester.calls != 1 {
+		t.Fatalf("跨用户测试应拒绝且零触达，calls=%d err=%v", tester.calls, err)
+	}
+	// repository.card 恢复归属并注入资源缺失错误。
+	repository.card.UserID = 7
+	repository.getErr = ErrNotFound
+	// err 表示卡券不存在时返回的稳定未找到错误。
+	if _, err := service.TestSavedAPI(ctx, 7, 21, tester); !errors.Is(err, ErrNotFound) || tester.calls != 1 {
+		t.Fatalf("缺失卡券应返回未找到且零触达，calls=%d err=%v", tester.calls, err)
+	}
+	// err 表示无效用户身份在任何读取前被拒绝。
+	if _, err := service.TestSavedAPI(ctx, 0, 21, tester); !errors.Is(err, ErrInvalidUser) {
+		t.Fatalf("无效用户应拒绝，err=%v", err)
+	}
+}
+
+var _ APIRequestTester = (*apiTesterStub)(nil)

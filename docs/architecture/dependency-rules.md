@@ -117,6 +117,28 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 - 并发状态必须由明确组件拥有，禁止共享无边界的可变结构；
 - 外部动作必须保留幂等、checkpoint 和结果不确定语义。
 
+### 3.7 `internal/mcp`（对外开放 MCP 传输层）
+
+`internal/mcp` 是与 `internal/server` 并列的第二传输层，对 Harness 提供 Streamable HTTP 协议服务。
+
+允许：
+
+- 依赖标准库与 `github.com/mark3labs/mcp-go`；
+- 依赖 `internal/application/*` 的应用模型；
+- 在包内定义工具、资源与提示所需的最小消费者端口。
+
+禁止：
+
+- 导入 `internal/server`、`internal/db`、`internal/xianyu`、`internal/browser`；
+- 导入 `internal/automation`、`internal/engine`、`internal/adapter`、`internal/composition`；
+- 直接拼装 SQL、读取平台凭证、决定自动化规则或浏览器行为；
+- 使用万能服务容器或服务定位器，端口必须由组合层投影实现。
+
+`internal/server` 只保留 `/mcp` 的通用挂载缝：不得导入 `mcp-go`，也不得出现 JSON-RPC 协议语义。
+`/mcp` 是非业务协议端点，不进 OpenAPI 登记；管理员管理接口固定在 `/api/v1/mcp/*` 并登记进 `api/openapi.yaml`。
+`XIANYU_MCP_TOKEN` 是部署者通过进程环境注入的引导令牌，应用只从环境读取，不落库、不写日志。
+00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，三方言结构一致。
+
 ## 4. 数据与秘密边界
 
 - AccountSummary 不包含 Cookie、Token、密码或加密 metadata；
@@ -139,6 +161,8 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 - 删除兼容层必须有调用方迁移和契约测试证据。
 - `/api/v1/**` 与 `/health` 的唯一 HTTP 契约源是 `api/openapi.yaml`；新增 operation 必须同步更新规范、生成
   TypeScript schema 和真实 handler 响应校验，禁止恢复手写 `transport.ts` 或 DTO 名单门禁。
+- `/mcp` 是非业务协议端点，不进 OpenAPI；MCP 管理接口固定在 `/api/v1/mcp/*` 并登记进规范。
+- MCP 令牌明文只在生成/轮换响应出现一次，状态与审计接口永不回显明文。
 
 ## 6. React 边界
 
@@ -152,6 +176,7 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 - 组件不得直接调用 `fetch` 或 `axios`；
 - 通用 HTTP client 不包含订单、账号等领域归一逻辑；
 - 生成 API 类型只读，UI model 由 feature adapter 创建；
+- 每个 feature 只有一个 `api.ts` 承担传输契约读取与 UI model 转换，其余文件只能依赖它；
 - 生成 schema 只能由 shared 契约层导入，feature、组件和 Hook 不得直接读取；
 - 原始 `get/post/put/del/postForm` 只能留在旧客户端兼容实现，feature 不得导入或调用；
 - 禁止通过大型 barrel 文件隐藏实际依赖。

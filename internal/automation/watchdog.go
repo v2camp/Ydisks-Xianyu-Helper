@@ -29,13 +29,6 @@ const silenceWatchdogResolveTimeout = 5 * time.Second
 // 覆盖闲鱼卖家夜间无买家的真实闲时，避免正常低谷误报。
 const defaultSilenceAlertMinutes = 180
 
-// businessSilenceEventType 是业务静默告警的通知事件类型编码；
-// 与 notify.EventBusinessSilence 保持同一字符串，automation 包不反向依赖 notify。
-const businessSilenceEventType = "business_silence"
-
-// businessSilenceAlertLevel 是业务静默告警的通知级别；静默属于需要人工介入的警告而非错误。
-const businessSilenceAlertLevel = "warn"
-
 // BusinessSilenceActivityReader 读取最近一次业务活动时间；返回零值 time.Time 表示数据库尚无任何业务记录。
 // 由装配层把 db.AnalyticsQueries.LatestBusinessActivityAt 注入为函数值，本包不直接依赖具体仓储。
 type BusinessSilenceActivityReader func(ctx context.Context) (time.Time, error)

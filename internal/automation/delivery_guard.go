@@ -289,8 +289,11 @@ func CheckDeliveryLinks(ctx context.Context, text string) []LinkHit {
 		return nil
 	}
 	if ctx == nil {
-		// 历史独立动作测试允许 nil Context；探活改用可取消的基础上下文，超时仍由客户端约束。
-		ctx = context.Background()
+		// 历史独立动作测试允许 nil Context；探活改用带显式超时的有限收口预算，避免裸根上下文。
+		// bounded 是本次探活的有限收口预算；cancel 是配套取消函数，在函数退出时释放。
+		bounded, cancel := context.WithTimeout(context.Background(), deliveryLinkCheckTimeout)
+		defer cancel()
+		ctx = bounded
 	}
 	// client 按 netguard 出站策略构造，重定向与拨号都受公网策略约束。
 	client := newDeliveryLinkHTTPClient(deliveryLinkCheckTimeout)

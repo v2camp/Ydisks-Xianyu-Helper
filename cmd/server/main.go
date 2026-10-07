@@ -446,6 +446,7 @@ func buildServerRuntime(opts serverOptions, infrastructure serverInfrastructure)
 	// runtime、buildErr 分别是组合层返回的完整运行时快照及其装配失败原因。
 	runtime, buildErr := compositionruntime.BuildRuntime(compositionruntime.RuntimeOptions{
 		NoBrowser: opts.noBrowser, SecureCookie: opts.secure, WebDir: opts.webDir, Addr: opts.addr,
+		MCPEnvironmentToken: strings.TrimSpace(os.Getenv("XIANYU_MCP_TOKEN")),
 	}, compositionruntime.RuntimeInfrastructure{Store: infrastructure.store, Logger: infrastructure.logger})
 	if buildErr != nil {
 		return serverRuntime{}, buildErr

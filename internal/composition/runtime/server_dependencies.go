@@ -187,6 +187,8 @@ type HTTPDependencies struct {
 	Logger *slog.Logger
 	// DatabaseHealth 是健康检查使用的窄数据库探测 Port。
 	DatabaseHealth server.DatabaseHealthPort
+	// ExtraRoutes 是组合根构造的额外协议处理器挂载项（如 /mcp）。
+	ExtraRoutes []server.ExtraRoute
 }
 
 // ServerDependencies 将组合层服务投影为 HTTP Server 需要的不可变最小 Port 快照。
@@ -201,6 +203,7 @@ func ServerDependencies(services *composition.Services, base HTTPDependencies, s
 	}
 	return server.Dependencies{
 		Auth: base.Auth, WebDir: base.WebDir, Addr: base.Addr, Logger: base.Logger, DatabaseHealth: base.DatabaseHealth,
+		ExtraRoutes: base.ExtraRoutes,
 		Applications: server.NewApplicationPorts(server.ApplicationPortsInput{
 			Orders: ordersTransport{services: ports.Orders}, OrderRefreshJobs: orderRefreshJobsTransport{service: ports.OrderRefreshJobs, lifecycleContext: services.LifecycleContext},
 			ItemSinglePublish: ports.ItemSinglePublish, ItemBatchPreview: ports.ItemBatchPreview,
@@ -218,6 +221,7 @@ func ServerDependencies(services *composition.Services, base HTTPDependencies, s
 			Analytics: ports.Analytics, AutomationIssues: ports.AutomationIssues, AutomationRules: ports.AutomationRules, DeliveryTemplates: ports.DeliveryTemplates,
 			Cards: ports.Cards, APIRequestTester: ports.APICardTester, PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies,
 			Keywords: ports.Keywords, Settings: ports.Settings, Admin: ports.Admin,
+			MCPAdmin: ports.MCPAdmin,
 		}),
 	}, nil
 }

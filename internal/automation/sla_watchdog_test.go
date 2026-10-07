@@ -671,7 +671,8 @@ func TestDeliverySLAWatchdogStartStopLifecycle(t *testing.T) {
 	// watchdog 是被测对象；周期设为 1 小时，仅启动首轮会扫描，便于证明幂等。
 	watchdog := newTestSLAWatchdog(settings, orders, notifier, clock)
 	watchdog.period = time.Hour
-	watchdog.Start(nil)
+	// 必须显式传入 nil 才能覆盖 Start 的防御分支，故局部豁免 staticcheck 的 nil Context 提示。
+	watchdog.Start(nil) //nolint:staticcheck
 	if watchdog.running {
 		t.Fatal("nil Context 不应启动扫描协程")
 	}

@@ -38,6 +38,12 @@ type APIRequestTester interface {
 	Test(context.Context, APIRequestTestInput) (APIRequestTestResult, error)
 }
 
+// ErrAPITesterUnavailable 表示进程未装配 API 连通性测试组件，用例无法发起受控外部请求。
+var ErrAPITesterUnavailable = errors.New("API 连通性测试组件不可用")
+
+// ErrNotAPIType 表示只有 api 类型卡券组允许使用已保存配置发起连通性测试。
+var ErrNotAPIType = errors.New("只有 api（接口取卡）类型支持连通性测试")
+
 // apiConfigDocument 是 API 卡券持久化使用的规范化 JSON 文档。
 type apiConfigDocument struct {
 	URL          string         `json:"url"`

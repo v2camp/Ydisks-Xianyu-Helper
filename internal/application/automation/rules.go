@@ -23,6 +23,21 @@ var ErrPricingModeConflict = errors.New("该账号已启用 AI 议价，不能�
 // ErrDeliveryTemplateUnavailable 表示规则写入时引用的发货模板状态已发生并发变化。
 var ErrDeliveryTemplateUnavailable = errors.New("发货模板不存在或已不可用")
 
+// ValidationError 表示规则草稿不满足稳定的业务约束；Message 是可直接展示给调用方的中文提示，
+// 传输层据此归一为参数类错误，不包含数据库、SQL 或任何凭证细节。
+type ValidationError struct {
+	// Message 是面向调用方的中文校验提示。
+	Message string
+}
+
+// Error 返回规则输入的中文校验提示，空值时回落稳定兜底文案。
+func (e *ValidationError) Error() string {
+	if e == nil || e.Message == "" {
+		return "自动化规则输入无效"
+	}
+	return e.Message
+}
+
 // TriggerOrderCreated 表示买家拍下未付款触发器。
 const TriggerOrderCreated = "order_created"
 
@@ -380,7 +395,7 @@ func (s *RuleService) normalize(ctx context.Context, userID int64, draft RuleDra
 	draft.Name = strings.TrimSpace(draft.Name)
 	draft.TriggerType = strings.TrimSpace(draft.TriggerType)
 	if draft.TriggerType != TriggerOrderCreated && draft.TriggerType != TriggerOrderPaid && draft.TriggerType != TriggerBuyerReviewed && draft.TriggerType != TriggerReviewMissingTimeout {
-		return RuleInput{}, errors.New("不支持的触发类型")
+		return RuleInput{}, &ValidationError{Message: "不支持的触发类型"}
 	}
 	// owned 表示账号是否归当前用户所有；err 表示归属查询失败。
 	owned, err := s.ownership.OwnsAccount(ctx, userID, draft.CookieID)
@@ -388,7 +403,7 @@ func (s *RuleService) normalize(ctx context.Context, userID int64, draft RuleDra
 		return RuleInput{}, err
 	}
 	if !owned {
-		return RuleInput{}, errors.New("账号不存在或不属于当前用户")
+		return RuleInput{}, &ValidationError{Message: "账号不存在或不属于当前用户"}
 	}
 	if draft.ItemID != "" {
 		owned, err = s.ownership.OwnsItem(ctx, userID, draft.CookieID, draft.ItemID)
@@ -396,7 +411,7 @@ func (s *RuleService) normalize(ctx context.Context, userID int64, draft RuleDra
 			return RuleInput{}, err
 		}
 		if !owned {
-			return RuleInput{}, errors.New("商品不属于当前用户")
+			return RuleInput{}, &ValidationError{Message: "商品不属于当前用户"}
 		}
 	}
 	if draft.Priority <= 0 {
@@ -406,10 +421,10 @@ func (s *RuleService) normalize(ctx context.Context, userID int64, draft RuleDra
 		draft.ConfigJSON = "{}"
 	}
 	if !isJSONObject(draft.ConfigJSON) {
-		return RuleInput{}, errors.New("规则配置必须是 JSON 对象")
+		return RuleInput{}, &ValidationError{Message: "规则配置必须是 JSON 对象"}
 	}
 	if len(draft.Actions) == 0 {
-		return RuleInput{}, errors.New("至少需要一个自动化动作")
+		return RuleInput{}, &ValidationError{Message: "至少需要一个自动化动作"}
 	}
 	if draft.Name == "" {
 		draft.Name = defaultRuleName(draft.TriggerType, draft.ItemID)
@@ -484,10 +499,10 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 			flags.hasSendCard = flags.hasSendCard || enabled
 		case ActionSendTemplate:
 			if triggerType != TriggerOrderPaid && triggerType != TriggerBuyerReviewed {
-				return nil, flags, errors.New("发货模板动作仅支持付款发货或评价赠品")
+				return nil, flags, &ValidationError{Message: "发货模板动作仅支持付款发货或评价赠品"}
 			}
 			if draftAction.DeliveryTemplateID <= 0 {
-				return nil, flags, errors.New("发货模板动作必须选择发货模板")
+				return nil, flags, &ValidationError{Message: "发货模板动作必须选择发货模板"}
 			}
 			// templateOwnership 保存可选的模板归属能力，兼容只支持旧动作的测试仓储。
 			templateOwnership, ok := s.ownership.(interface {
@@ -504,7 +519,7 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 			// retained 表示停用模板是否为当前更新规则已经存在的引用。
 			retainedTemplateID, retained := allowedDisabledTemplateIDs[draftAction.ID]
 			if !template.Enabled && (!retained || retainedTemplateID != draftAction.DeliveryTemplateID) {
-				return nil, flags, errors.New("发货模板不存在或已停用")
+				return nil, flags, &ValidationError{Message: "发货模板不存在或已停用"}
 			}
 			// bindingErr 保存模板变量绑定校验失败原因。
 			if bindingErr := validateTemplateBindings(ctx, s.ownership, userID, template.Keys, draftAction.TemplateBindings); bindingErr != nil {
@@ -517,7 +532,7 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 			flags.hasSendTemplate = flags.hasSendTemplate || enabled
 		case ActionSendText:
 			if strings.TrimSpace(draftAction.MessageTemplate) == "" {
-				return nil, flags, errors.New("发送文本动作必须填写文案")
+				return nil, flags, &ValidationError{Message: "发送文本动作必须填写文案"}
 			}
 			flags.hasSendText = flags.hasSendText || enabled
 		case ActionAdjustPrice:
@@ -527,19 +542,19 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 			}
 			flags.hasAdjustPrice = flags.hasAdjustPrice || enabled
 		default:
-			return nil, flags, errors.New("不支持的动作类型")
+			return nil, flags, &ValidationError{Message: "不支持的动作类型"}
 		}
 		if draftAction.DeliveryCount <= 0 {
 			draftAction.DeliveryCount = 1
 		}
 		if draftAction.DelaySeconds < 0 || draftAction.DelaySeconds > 3600 {
-			return nil, flags, errors.New("动作延时必须在 0 到 3600 秒之间")
+			return nil, flags, &ValidationError{Message: "动作延时必须在 0 到 3600 秒之间"}
 		}
 		if draftAction.ConfigJSON == "" {
 			draftAction.ConfigJSON = "{}"
 		}
 		if !isJSONObject(draftAction.ConfigJSON) {
-			return nil, flags, errors.New("动作配置必须是 JSON 对象")
+			return nil, flags, &ValidationError{Message: "动作配置必须是 JSON 对象"}
 		}
 		if draftAction.ActionType == ActionSendTemplate {
 			// 进入此处前已通过 isJSONObject 校验，配置来源可编码 JSON，因此不会产生写入错误。
@@ -559,7 +574,7 @@ func (s *RuleService) normalizeDraftActions(ctx context.Context, userID int64, t
 func validateTemplateCustomVariables(keys []string, values map[string]string) error {
 	for /* key 表示模板引用的自定义变量键。 */ _, key := range keys {
 		if strings.TrimSpace(values[key]) == "" {
-			return fmt.Errorf("请填写发货模板自定义变量 %q", key)
+			return &ValidationError{Message: fmt.Sprintf("请填写发货模板自定义变量 %q", key)}
 		}
 	}
 	return nil
@@ -571,7 +586,7 @@ func withCustomVariables(configJSON string, values map[string]string) (string, e
 	config := make(map[string]any)
 	// err 保存动作配置 JSON 解码错误。
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		return "", errors.New("动作配置必须是 JSON 对象")
+		return "", &ValidationError{Message: "动作配置必须是 JSON 对象"}
 	}
 	// normalized 保存去除键和值首尾空白后的自定义变量键值表。
 	normalized := make(map[string]string, len(values))
@@ -629,7 +644,7 @@ func copyCustomVariables(values map[string]string) map[string]string {
 // validateSendCardAction 校验发卡动作的卡密选择和归属；具体卡券类型由执行器处理。
 func (s *RuleService) validateSendCardAction(ctx context.Context, userID int64, draftAction ActionDraft) error {
 	if draftAction.CardID <= 0 {
-		return errors.New("发送卡密动作必须选择卡密组")
+		return &ValidationError{Message: "发送卡密动作必须选择卡密组"}
 	}
 	// card 是归属校验通过的卡密摘要；cardErr 表示卡密读取或归属校验失败。
 	card, cardErr := s.ownership.GetCard(ctx, userID, draftAction.CardID)
@@ -637,10 +652,10 @@ func (s *RuleService) validateSendCardAction(ctx context.Context, userID int64, 
 		if !errors.Is(cardErr, ErrRuleNotFound) {
 			return cardErr
 		}
-		return errors.New("卡密组不存在或不属于当前用户")
+		return &ValidationError{Message: "卡密组不存在或不属于当前用户"}
 	}
 	if card.Type == "api" && !card.APIReady {
-		return errors.New("API 卡券配置无效，请重新保存后再选择")
+		return &ValidationError{Message: "API 卡券配置无效，请重新保存后再选择"}
 	}
 	return nil
 }
@@ -648,7 +663,7 @@ func (s *RuleService) validateSendCardAction(ctx context.Context, userID int64, 
 // validateTemplateBindings 校验模板变量覆盖完整且每个卡密组属于当前用户；API 卡券必须已经通过配置校验。
 func validateTemplateBindings(ctx context.Context, ownership RuleOwnership, userID int64, keys []string, bindings []TemplateBinding) error {
 	if len(keys) != len(bindings) {
-		return errors.New("发货模板的卡密变量绑定不完整")
+		return &ValidationError{Message: "发货模板的卡密变量绑定不完整"}
 	}
 	// expected 保存模板变量键集合，避免重复绑定或遗漏。
 	expected := make(map[string]bool, len(keys))
@@ -659,7 +674,7 @@ func validateTemplateBindings(ctx context.Context, ownership RuleOwnership, user
 	seen := make(map[string]bool, len(bindings))
 	for /* binding 表示当前变量到卡密组的绑定。 */ _, binding := range bindings {
 		if !expected[binding.VariableKey] || seen[binding.VariableKey] || binding.CardID <= 0 {
-			return errors.New("发货模板的卡密变量绑定无效")
+			return &ValidationError{Message: "发货模板的卡密变量绑定无效"}
 		}
 		seen[binding.VariableKey] = true
 		// card 保存绑定卡密组的非敏感摘要。
@@ -668,13 +683,13 @@ func validateTemplateBindings(ctx context.Context, ownership RuleOwnership, user
 			return err
 		}
 		if card.Type != "text" && card.Type != "data" && card.Type != "api" {
-			return errors.New("发货模板只能绑定文本、批量数据或 API 卡密组")
+			return &ValidationError{Message: "发货模板只能绑定文本、批量数据或 API 卡密组"}
 		}
 		if card.Type == "api" && !card.APIReady {
-			return errors.New("发货模板不能绑定配置无效的 API 卡密组")
+			return &ValidationError{Message: "发货模板不能绑定配置无效的 API 卡密组"}
 		}
 		if !card.Enabled {
-			return errors.New("发货模板不能绑定已停用的卡密组")
+			return &ValidationError{Message: "发货模板不能绑定已停用的卡密组"}
 		}
 	}
 	return nil
@@ -685,34 +700,34 @@ func validateTriggerActionCombination(triggerType string, flags ruleActionFlags)
 	switch triggerType {
 	case TriggerOrderCreated:
 		if flags.hasConfirmShipment || flags.hasSendCard {
-			return errors.New("拍下未付款规则只能包含改价和文本动作")
+			return &ValidationError{Message: "拍下未付款规则只能包含改价和文本动作"}
 		}
 		if !flags.hasAdjustPrice {
-			return errors.New("拍下未付款规则至少需要一个已启用的改价动作")
+			return &ValidationError{Message: "拍下未付款规则至少需要一个已启用的改价动作"}
 		}
 	case TriggerOrderPaid:
 		if flags.hasAdjustPrice {
-			return errors.New("改价动作只能用于拍下未付款规则")
+			return &ValidationError{Message: "改价动作只能用于拍下未付款规则"}
 		}
 		if !flags.hasSendCard && !flags.hasSendTemplate {
-			return errors.New("付款后自动发货至少需要一个已启用的发送卡密或模板动作")
+			return &ValidationError{Message: "付款后自动发货至少需要一个已启用的发送卡密或模板动作"}
 		}
 	case TriggerBuyerReviewed:
 		if flags.hasConfirmShipment {
-			return errors.New("评价后规则不能包含确认发货动作")
+			return &ValidationError{Message: "评价后规则不能包含确认发货动作"}
 		}
 		if flags.hasAdjustPrice {
-			return errors.New("改价动作只能用于拍下未付款规则")
+			return &ValidationError{Message: "改价动作只能用于拍下未付款规则"}
 		}
 		if !flags.hasSendCard && !flags.hasSendTemplate && !flags.hasSendText {
-			return errors.New("评价后规则至少需要一个已启用的发送动作")
+			return &ValidationError{Message: "评价后规则至少需要一个已启用的发送动作"}
 		}
 	case TriggerReviewMissingTimeout:
 		if flags.hasConfirmShipment || flags.hasSendCard || flags.hasAdjustPrice {
-			return errors.New("求评价规则只能发送文本")
+			return &ValidationError{Message: "求评价规则只能发送文本"}
 		}
 		if !flags.hasSendText {
-			return errors.New("求评价规则至少需要一个已启用的文本动作")
+			return &ValidationError{Message: "求评价规则至少需要一个已启用的文本动作"}
 		}
 	}
 	return nil
@@ -750,20 +765,20 @@ func validateAdjustPriceConfig(configJSON string) error {
 		TargetPrice string `json:"target_price"`
 	}
 	if json.Unmarshal([]byte(configJSON), &cfg) != nil {
-		return errors.New("改价动作配置必须是 JSON 对象")
+		return &ValidationError{Message: "改价动作配置必须是 JSON 对象"}
 	}
 	// raw 是去空白后的目标价格文本。
 	raw := strings.TrimSpace(cfg.TargetPrice)
 	if raw == "" {
-		return errors.New("改价动作必须填写目标价格")
+		return &ValidationError{Message: "改价动作必须填写目标价格"}
 	}
 	// cents 是经统一整数解析器计算出的目标价格分值。
 	cents, parseErr := money.ParseYuanToCents(raw)
 	if parseErr != nil {
-		return errors.New("目标价格必须是最多两位小数的金额")
+		return &ValidationError{Message: "目标价格必须是最多两位小数的金额"}
 	}
 	if cents <= 0 || cents > 100000000 {
-		return errors.New("目标价格必须在 0.01 到 1000000 元之间")
+		return &ValidationError{Message: "目标价格必须在 0.01 到 1000000 元之间"}
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/heartbeat"
+	"xianyu-go/internal/mcp"
 	"xianyu-go/internal/netguard"
 	"xianyu-go/internal/renewal"
 	"xianyu-go/internal/server"
@@ -29,6 +30,8 @@ type RuntimeOptions struct {
 	WebDir string
 	// Addr 是 HTTP 监听地址。
 	Addr string
+	// MCPEnvironmentToken 是 XIANYU_MCP_TOKEN 引导令牌；空白表示不配置环境令牌。
+	MCPEnvironmentToken string
 }
 
 // RuntimeInfrastructure 是 cmd 打开后交给组合根的基础设施资源。
@@ -45,6 +48,8 @@ type Runtime struct {
 	HTTPServer *server.Server
 	// Lifecycle 是 cmd 独占启动和关闭的后台组件协调器。
 	Lifecycle *lifecycle.Coordinator
+	// MCPEndpoint 是已挂载到 /mcp 的协议端点，供后续注册工具与设置变更后失效缓存。
+	MCPEndpoint *mcp.Endpoint
 }
 
 // BuildRuntime 构造全部基础设施适配器、应用服务和生命周期组件，但不启动任何 worker。
@@ -72,39 +77,9 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		return Runtime{}, fmt.Errorf("构造账号运行时依赖失败: %w", bundleErr)
 	}
 	// lifecycleCoordinator 由 cmd 最终拥有，用于按顺序启动并逆序关闭后台组件。
-	lifecycleCoordinator := lifecycle.NewCoordinator()
-	if browserManager != nil {
-		// addErr 是浏览器组件登记失败原因，失败时运行时不得继续暴露。
-		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "browser", Component: lifecycle.FuncComponent{StartFunc: browserManager.InitializeContext, CloseFunc: browserManager.CloseContext}}); addErr != nil {
-			return Runtime{}, fmt.Errorf("登记浏览器生命周期组件失败: %w", addErr)
-		}
-	}
-	// automationScheduler、renewalScheduler 分别负责自动化延迟任务和凭证续期扫描。
-	automationScheduler := automation.NewScheduler(runtimeBundle.Automation)
-	// renewalScheduler 负责账号凭证的定期续期，其运行与停止由生命周期协调器统一拥有。
-	renewalScheduler := renewal.NewScheduler(infrastructure.Store, runtimeBundle.Manager, runtimeBundle.Adapter, infrastructure.Logger, runtimeBundle.Notifier)
-	// heartbeatStore 是进程心跳表的持久化边界；供应用内心跳写者与宿主检查共用，只写自有数据库。
-	heartbeatStore := db.NewHeartbeatStore(infrastructure.Store.DB, infrastructure.Store.Dialect, "")
-	// heartbeatWriter 是进程级心跳写者；XIANYU_HEARTBEAT_INTERVAL_SECONDS 为 0 时返回 nil 表示显式关闭。
-	heartbeatWriter := heartbeat.NewWriter(heartbeatStore, infrastructure.Logger)
-	if heartbeatWriter != nil {
-		// addErr 是进程心跳写者登记失败原因；关闭（nil）时不登记，宿主检查发现空表即「未配置」。
-		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "process-heartbeat", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go heartbeatWriter.Run(ctx); return nil }, CloseFunc: heartbeatWriter.WaitContext}}); addErr != nil {
-			return Runtime{}, fmt.Errorf("登记进程心跳写者失败: %w", addErr)
-		}
-	}
-	// component 是按依赖顺序登记的基础后台组件，协调器负责后续取消和等待。
-	for _, component := range []lifecycle.NamedComponent{
-		{Name: "notifier", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { runtimeBundle.Notifier.Start(ctx); return nil }, CloseFunc: runtimeBundle.Notifier.WaitContext}},
-		{Name: "account-manager", Component: lifecycle.FuncComponent{StartFunc: runtimeBundle.Manager.StartAll, CloseFunc: runtimeBundle.Manager.StopAllContext}},
-		{Name: "account-watchdog", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go runtimeBundle.Manager.RunWatchdog(ctx); return nil }, CloseFunc: runtimeBundle.Manager.WaitWatchdog}},
-		{Name: "automation-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go automationScheduler.Run(ctx); return nil }, CloseFunc: automationScheduler.WaitContext}},
-		{Name: "renewal-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go renewalScheduler.Run(ctx); return nil }, CloseFunc: renewalScheduler.StopContext}},
-	} {
-		// addErr 是当前后台组件登记失败原因。
-		if addErr := lifecycleCoordinator.Add(component); addErr != nil {
-			return Runtime{}, fmt.Errorf("登记生命周期组件 %q 失败: %w", component.Name, addErr)
-		}
+	lifecycleCoordinator, lifecycleErr := buildRuntimeLifecycleCoordinator(infrastructure, runtimeBundle, browserManager)
+	if lifecycleErr != nil {
+		return Runtime{}, lifecycleErr
 	}
 	// orderDependencies、orderErr 分别是订单应用服务的仓储适配器及其构造错误。
 	orderDependencies, orderErr := adapter.NewOrderDependencies(infrastructure.Store)
@@ -166,10 +141,17 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 			return Runtime{}, fmt.Errorf("登记二维码生命周期组件失败: %w", addErr)
 		}
 	}
+	// mcpEndpoint、mcpRoute、mcpErr 分别是 MCP 协议端点、/mcp 挂载条目与装配错误。
+	// 端点只依赖数据库仓储，先于应用服务装配，以便把安全守卫作为配置变更失效端口注入管理用例。
+	mcpEndpoint, mcpRoute, mcpErr := BuildMCPEndpoint(infrastructure.Store, options.MCPEnvironmentToken)
+	if mcpErr != nil {
+		return Runtime{}, fmt.Errorf("构造 MCP 端点失败: %w", mcpErr)
+	}
 	// transportApplications、transportErr 分别是通知等共享应用服务集合及其构造错误。
 	transportApplications, transportErr := adapter.NewTransportApplicationServices(adapter.TransportApplicationServiceOptions{
 		AutomationDependencies: automationDependencies, MiscDependencies: miscDependencies, AdminSettingsDependencies: adminSettingsDependencies,
 		AdminRuntime: runtimeBundle.Manager, AccountTaskRunner: adapter.NewAccountTaskRunner(runtimeBundle.Automation), ChannelSender: runtimeBundle.Notifier, ModelClient: adapter.NewAIModelClient(), OutboundPolicy: netguard.DefaultPolicy(),
+		MCPInvalidator: mcpEndpoint.Guard(),
 	})
 	if transportErr != nil {
 		return Runtime{}, fmt.Errorf("构造 transport 应用服务失败: %w", transportErr)
@@ -200,10 +182,20 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if buildErr != nil {
 		return Runtime{}, fmt.Errorf("构造应用服务集合失败: %w", buildErr)
 	}
+	// httpServerRef 保存 HTTP 服务构造完成后的引用，供 MCP 后台任务总览按调用时读取。
+	var httpServerRef *server.Server
+	// mcpBackgroundTasks 延迟读取进程后台任务快照；服务未就绪时返回空列表。
+	mcpBackgroundTasks := func() []mcp.BackgroundTask {
+		if httpServerRef == nil {
+			return nil
+		}
+		return mcpBackgroundTasksFromSnapshots(httpServerRef.BackgroundTaskSnapshots())
+	}
 	// serverDependencies、dependenciesErr 分别是投影给 HTTP transport 的依赖快照及其构造错误。
 	serverDependencies, dependenciesErr := ServerDependencies(services, HTTPDependencies{
 		Auth: &auth.Service{Store: infrastructure.Store, Logger: infrastructure.Logger, Secure: options.SecureCookie}, WebDir: options.WebDir, Addr: options.Addr,
 		Logger: infrastructure.Logger, DatabaseHealth: databaseHealth,
+		ExtraRoutes: []server.ExtraRoute{mcpRoute},
 	}, sessionRecovery)
 	if dependenciesErr != nil {
 		return Runtime{}, dependenciesErr
@@ -213,6 +205,9 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if serverErr != nil {
 		return Runtime{}, fmt.Errorf("构造 HTTP 服务失败: %w", serverErr)
 	}
+	httpServerRef = httpServer
+	// 应用服务与 HTTP 服务均就绪后把各域工具注册到同一个 MCP 协议服务器。
+	RegisterMCPTools(mcpEndpoint, services.TransportPorts(), services.LifecycleContext, mcpBackgroundTasks)
 	// component 是应用服务返回的 worker 生命周期组件，由协调器而非 Server 登记。
 	for _, component := range services.LifecycleComponents() {
 		// addErr 是应用 worker 组件登记失败原因。
@@ -220,5 +215,48 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 			return Runtime{}, fmt.Errorf("登记应用 worker 生命周期组件 %q 失败: %w", component.Name, addErr)
 		}
 	}
-	return Runtime{HTTPServer: httpServer, Lifecycle: lifecycleCoordinator}, nil
+	return Runtime{HTTPServer: httpServer, Lifecycle: lifecycleCoordinator, MCPEndpoint: mcpEndpoint}, nil
+}
+
+// buildRuntimeLifecycleCoordinator 按依赖顺序登记基础后台组件，返回尚未启动的生命周期协调器。
+// 参数 infrastructure 提供数据库与日志；runtimeBundle 是账号运行时依赖集合；
+// browserManager 是可选浏览器生命周期拥有者，nil 表示禁用浏览器。
+// 返回值是完成登记的协调器；error 非空时组合根必须立即失败，不得暴露半装配运行时。
+func buildRuntimeLifecycleCoordinator(infrastructure RuntimeInfrastructure, runtimeBundle *adapter.RuntimeBundle, browserManager *browser.Manager) (*lifecycle.Coordinator, error) {
+	// lifecycleCoordinator 收纳本次登记的全部基础后台组件，由 cmd 负责启动与逆序关闭。
+	lifecycleCoordinator := lifecycle.NewCoordinator()
+	if browserManager != nil {
+		// addErr 是浏览器组件登记失败原因，失败时运行时不得继续暴露。
+		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "browser", Component: lifecycle.FuncComponent{StartFunc: browserManager.InitializeContext, CloseFunc: browserManager.CloseContext}}); addErr != nil {
+			return nil, fmt.Errorf("登记浏览器生命周期组件失败: %w", addErr)
+		}
+	}
+	// automationScheduler、renewalScheduler 分别负责自动化延迟任务和凭证续期扫描。
+	automationScheduler := automation.NewScheduler(runtimeBundle.Automation)
+	// renewalScheduler 负责账号凭证的定期续期，其运行与停止由生命周期协调器统一拥有。
+	renewalScheduler := renewal.NewScheduler(infrastructure.Store, runtimeBundle.Manager, runtimeBundle.Adapter, infrastructure.Logger, runtimeBundle.Notifier)
+	// heartbeatStore 是进程心跳表的持久化边界；供应用内心跳写者与宿主检查共用，只写自有数据库。
+	heartbeatStore := db.NewHeartbeatStore(infrastructure.Store.DB, infrastructure.Store.Dialect, "")
+	// heartbeatWriter 是进程级心跳写者；XIANYU_HEARTBEAT_INTERVAL_SECONDS 为 0 时返回 nil 表示显式关闭。
+	heartbeatWriter := heartbeat.NewWriter(heartbeatStore, infrastructure.Logger)
+	if heartbeatWriter != nil {
+		// addErr 是进程心跳写者登记失败原因；关闭（nil）时不登记，宿主检查发现空表即「未配置」。
+		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "process-heartbeat", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go heartbeatWriter.Run(ctx); return nil }, CloseFunc: heartbeatWriter.WaitContext}}); addErr != nil {
+			return nil, fmt.Errorf("登记进程心跳写者失败: %w", addErr)
+		}
+	}
+	// component 是按依赖顺序登记的基础后台组件，协调器负责后续取消和等待。
+	for _, component := range []lifecycle.NamedComponent{
+		{Name: "notifier", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { runtimeBundle.Notifier.Start(ctx); return nil }, CloseFunc: runtimeBundle.Notifier.WaitContext}},
+		{Name: "account-manager", Component: lifecycle.FuncComponent{StartFunc: runtimeBundle.Manager.StartAll, CloseFunc: runtimeBundle.Manager.StopAllContext}},
+		{Name: "account-watchdog", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go runtimeBundle.Manager.RunWatchdog(ctx); return nil }, CloseFunc: runtimeBundle.Manager.WaitWatchdog}},
+		{Name: "automation-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go automationScheduler.Run(ctx); return nil }, CloseFunc: automationScheduler.WaitContext}},
+		{Name: "renewal-scheduler", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go renewalScheduler.Run(ctx); return nil }, CloseFunc: renewalScheduler.StopContext}},
+	} {
+		// addErr 是当前后台组件登记失败原因。
+		if addErr := lifecycleCoordinator.Add(component); addErr != nil {
+			return nil, fmt.Errorf("登记生命周期组件 %q 失败: %w", component.Name, addErr)
+		}
+	}
+	return lifecycleCoordinator, nil
 }

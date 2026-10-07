@@ -405,8 +405,9 @@ func TestCheckDeliveryLinksNetworkFailures(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer aliveServer.Close()
-	// nilCtxHits 验证历史 nil Context 调用被规范为可用上下文后仍能探活。
-	nilCtxHits := CheckDeliveryLinks(nil, "见 "+aliveServer.URL+"/s/1")
+	// nilCtxHits 验证历史 nil Context 调用被规范为可用上下文后仍能探活；
+	// 该用例必须显式传入 nil 才能覆盖防御分支，故局部豁免 staticcheck 的 nil Context 提示。
+	nilCtxHits := CheckDeliveryLinks(nil, "见 "+aliveServer.URL+"/s/1") //nolint:staticcheck
 	if len(nilCtxHits) != 1 || nilCtxHits[0].Health != LinkHealthOK {
 		t.Fatalf("nil Context 探活失败: %+v", nilCtxHits)
 	}

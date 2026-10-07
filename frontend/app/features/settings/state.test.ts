@@ -1,11 +1,15 @@
 import { expect,test } from 'vitest';
 import type { SystemSettings } from './api';
 import {
+  buildMCPHarnessConfig,
   buildPersistableSettings,
   createCredentials,
   createCredentialsMessage,
+  createMCPServiceMessage,
   DEFAULT_DELIVERY_GUARD_CONFIG,
+  formatMCPUnixSeconds,
   isCurrentSettingsRequest,
+  MCP_AUDIT_CATEGORY_LABELS,
   parseDeliveryGuardConfig,
   serializeDeliveryGuardConfig,
   validateCredentials,
@@ -125,4 +129,26 @@ test('门禁配置额外违禁词保存逗号竖线原文',
     const raw = serializeDeliveryGuardConfig(config);
     expect(JSON.parse(raw).extra_block_words).toBe('加微信,\n扫码进群|QQ');
     expect(parseDeliveryGuardConfig(raw).config.extra_block_words).toBe('加微信,\n扫码进群|QQ');
+  });
+
+test('MCP Harness 配置示例在缺少令牌时使用占位符',
+  // 配置示例测试验证接入地址与令牌占位符不会误导管理员复制无效凭据。
+  () => {
+    // withToken 是携带真实一次性令牌的配置示例。
+    const withToken = JSON.parse(buildMCPHarnessConfig('http://127.0.0.1:59188/mcp', 'plain-token'));
+    expect(withToken.mcpServers['ydisks-xianyu-helper'].url).toBe('http://127.0.0.1:59188/mcp');
+    expect(withToken.mcpServers['ydisks-xianyu-helper'].headers.Authorization).toBe('Bearer plain-token');
+    // withoutToken 是尚未生成令牌时的配置示例。
+    const withoutToken = JSON.parse(buildMCPHarnessConfig('http://127.0.0.1:59188/mcp', ''));
+    expect(withoutToken.mcpServers['ydisks-xianyu-helper'].headers.Authorization).toBe('Bearer <请先生成令牌>');
+  });
+
+test('MCP 时间与提示辅助函数覆盖占位与成功分支',
+  // 辅助函数测试验证 Unix 秒占位边界与操作提示结构。
+  () => {
+    expect(formatMCPUnixSeconds(0)).toBe('—');
+    expect(formatMCPUnixSeconds(-1)).toBe('—');
+    expect(formatMCPUnixSeconds(1_700_000_000)).not.toBe('—');
+    expect(createMCPServiceMessage('success', '已保存')).toEqual({ type: 'success', text: '已保存' });
+    expect(MCP_AUDIT_CATEGORY_LABELS.tool).toBe('工具调用');
   });
