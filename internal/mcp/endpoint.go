@@ -47,6 +47,8 @@ type EndpointConfig struct {
 type Endpoint struct {
 	// guard 是 Bearer/loopback/启用门安全守卫。
 	guard *Guard
+	// config 是启用状态与网络策略端口，供 resources/read 的 health 视图读取启用状态。
+	config ConfigPort
 	// audit 是工具/资源/提示调用审计端口；写失败只记日志不影响业务结果。
 	audit AuditPort
 	// auditLister 是审计分页查询端口，供 mcp_audit_list 使用。
@@ -97,13 +99,14 @@ func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 	// 2026-07-28 无状态核心的请求按协议版本逐请求识别、不受该开关影响；本应用固定单实例部署，无粘滞问题。
 	streamable := mcpserver.NewStreamableHTTPServer(mcpInstance, mcpserver.WithStateful(true))
 	return &Endpoint{
-		guard:        guard,
-		audit:        cfg.Audit,
-		auditLister:  cfg.AuditLister,
+		guard:         guard,
+		config:        cfg.Config,
+		audit:         cfg.Audit,
+		auditLister:   cfg.AuditLister,
 		systemVersion: cfg.SystemVersion,
-		mcpServer:    mcpInstance,
-		streamable:   streamable,
-		toolDefs:     make(map[string]ToolDef),
+		mcpServer:     mcpInstance,
+		streamable:    streamable,
+		toolDefs:      make(map[string]ToolDef),
 	}, nil
 }
 

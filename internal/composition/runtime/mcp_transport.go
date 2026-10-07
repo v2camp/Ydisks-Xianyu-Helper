@@ -190,4 +190,7 @@ func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, 
 	endpoint.RegisterAITools(newMCPSettingsPorts(ports))
 	// 管理员全局域工具：删除用户复用 AdminService，后台任务总览只读当前进程。
 	endpoint.RegisterAdminTools(newMCPAdminPorts(ports, backgroundTasks))
+	// 只读资源复用各域只读用例，内容与对应工具 DTO 一致且同样脱敏；运维提示不依赖业务端口。
+	endpoint.RegisterResources(newMCPResourcePorts(ports))
+	endpoint.RegisterPrompts()
 }
