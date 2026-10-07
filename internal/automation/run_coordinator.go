@@ -101,6 +101,24 @@ func (r automationRunCoordinator) executeRule(ctx context.Context, task Task, ru
 				"order_id", task.OrderID, "trigger", task.TriggerType, "sent_count", sent)
 		}
 	}()
+	// obsoleteReason 说明付款发货任务在动作前已失去待发货事实的原因；非空时必须取消运行且不发卡。
+	obsoleteReason := r.paidRunObsoleteReason(ctx, task)
+	if obsoleteReason != "" {
+		// canceled、cancelErr 保存按运行快照条件取消的结果与错误。
+		canceled, cancelErr := r.store.Automation.CancelObsoletePaidRecoveryRun(ctx, *run, obsoleteReason)
+		if cancelErr != nil {
+			return fmt.Errorf("取消已失效付款运行: %w", cancelErr)
+		}
+		if !canceled {
+			// 取消条件不满足说明运行已被其他流程推进或订单重新进入待发货，交回正常执行路径。
+			r.logger.Info("付款运行未满足取消失效条件，继续按正常流程执行", "run_id", run.ID, "account", task.AccountID, "order_id", task.OrderID)
+		} else {
+			// 取消已写入终态，跳过 defer 的 FinishRun 与结果通知，避免覆盖状态或误报发货失败。
+			finish = false
+			r.logger.Info("订单已不再待发货，取消付款运行且未执行任何动作", "run_id", run.ID, "account", task.AccountID, "order_id", task.OrderID, "reason", obsoleteReason)
+			return nil
+		}
+	}
 	// actions 是当前规则生成的完整动作计划。
 	actions := task.ActionPlan
 	if task.TriggerType == TriggerOrderPaid && !r.planner.hasMatchingSendCard(task, actions) {
@@ -393,6 +411,37 @@ func (r automationRunCoordinator) tryContinueAfterUncertain(
 	// 待核对原因必须同时写入任务快照：收尾动作带延迟时本次调用会先返回，恢复只能凭快照继续收口。
 	markPendingUncertainty(task, reason, actionErr)
 	return &uncertainActionState{reason: reason, proof: proofInput, sent: sentPlusN, err: actionErr}, deliveryProof, nil
+}
+
+// paidRunObsoleteReason 判断付款发货任务在执行任何外部动作前是否已失去待发货事实。
+// 返回非空原因表示订单已进入明确终态（取消、退款、完成或已发货），必须取消运行且不发卡。
+// 只依据「明确终态」判断而不使用「非待发货」：本地状态可能是 unknown 等未映射值，
+// 那属于事实不足而非订单失效，误取消会造成漏发。order_paid 之外或订单不可读时一律放行，
+// 由动作执行器的既有门禁与平台返回兜底。
+func (r automationRunCoordinator) paidRunObsoleteReason(ctx context.Context, task Task) string {
+	if task.TriggerType != TriggerOrderPaid || strings.TrimSpace(task.OrderID) == "" {
+		return ""
+	}
+	// order、orderErr 保存动作执行前的最新本地订单事实与读取错误。
+	order, orderErr := r.store.Orders.Get(ctx, task.OrderID)
+	if orderErr != nil || order == nil {
+		// 本地没有订单事实属于正常情况（付款事件先于订单同步到达），只有真实读取错误才需要诊断。
+		if orderErr != nil && !errors.Is(orderErr, db.ErrNotFound) {
+			r.logger.Warn("动作前读取订单事实失败，继续按原流程执行", "order_id", task.OrderID, "account", task.AccountID, "err", orderErr)
+		}
+		return ""
+	}
+	// 归属不一致时不能借用其他账号的订单事实判断本运行，交回正常流程。
+	if order.CookieID != "" && order.CookieID != task.AccountID {
+		return ""
+	}
+	if order.SystemShipped {
+		return fmt.Sprintf("订单已发货（状态 %s），不再需要自动发货", firstNonEmpty(order.OrderStatus, "未知"))
+	}
+	if isOrderTerminalWithoutDelivery(order.OrderStatus) {
+		return fmt.Sprintf("订单当前状态为 %s，不再需要自动发货", firstNonEmpty(order.OrderStatus, "未知"))
+	}
+	return ""
 }
 
 // executeRunActions 按动作游标执行计划，并在每个外部动作前后保存检查点。
