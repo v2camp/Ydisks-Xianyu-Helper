@@ -1,5 +1,6 @@
 import type { SystemSettings } from './api';
 import { AI_SETTING_KEYS, SETTINGS_SAVE_OMIT_KEYS, SYSTEM_SETTING_KEYS } from './constants';
+import type { MCPServiceMessage } from './models';
 import type { CredentialsForm,CredentialsMessage,SettingsScope } from './types';
 
 /** 将配置草稿裁剪为当前 scope 允许保存到后端的字段：先剔除兼容字段与空值，再按保存范围白名单过滤。 */
@@ -130,3 +131,29 @@ export const parseDeliveryGuardConfig = (raw: unknown): DeliveryGuardParseResult
 
 /** 将门禁配置序列化为设置草稿存储的 JSON 字符串，供保存系统配置时提交。 */
 export const serializeDeliveryGuardConfig = (config: DeliveryGuardConfig): string => JSON.stringify(config);
+
+/** MCP 审计列表的默认页大小。 */
+export const MCP_AUDIT_PAGE_SIZE = 10;
+
+/** MCP 审计类别对应的中文标签；未知类别回退原文。 */
+export const MCP_AUDIT_CATEGORY_LABELS: Record<string, string> = {
+  tool: '工具调用',
+  resource: '资源读取',
+  prompt: '提示调用',
+};
+
+/** 创建 MCP 卡片操作结果提示。 */
+export const createMCPServiceMessage = (type: MCPServiceMessage['type'], text: string): MCPServiceMessage => ({ type, text });
+
+/** 把 Unix 秒格式化为本地时间文本；非正数表示从未发生，返回占位符。 */
+export const formatMCPUnixSeconds = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '—';
+  return new Date(value * 1000).toLocaleString('zh-CN', { hour12: false });
+};
+
+/** 构造 Harness 接入本服务的 MCP 配置 JSON 示例；令牌为空时用占位符提示需先生成。 */
+export const buildMCPHarnessConfig = (endpoint: string, token: string): string => {
+  // authHeader 是示例中展示的 Bearer 头；没有真实令牌时用占位符避免被误当可用凭据。
+  const authHeader = `Bearer ${token || '<请先生成令牌>'}`;
+  return JSON.stringify({ mcpServers: { 'ydisks-xianyu-helper': { url: endpoint, headers: { Authorization: authHeader } } } }, null, 2);
+};

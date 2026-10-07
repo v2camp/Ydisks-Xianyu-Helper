@@ -96,3 +96,71 @@ export interface OperationResponse {
   /** 操作完成后是否需要重新登录。 */
   requires_relogin?: boolean;
 }
+
+/** MCP 对外服务状态 UI 模型；来自管理接口，不包含令牌明文或哈希。 */
+export interface MCPServiceStatus {
+  /** 服务是否已启用。 */
+  enabled: boolean;
+  /** 是否显式放行非本机来源访问。 */
+  allowNonLoopback: boolean;
+  /** 当前是否存在可用持久化令牌（含宽限期内旧令牌）。 */
+  hasToken: boolean;
+  /** 当前令牌创建时间的 Unix 秒，无令牌为 0。 */
+  tokenCreatedAt: number;
+  /** 当前令牌最近一次鉴权成功时间的 Unix 秒，从未使用为 0。 */
+  tokenLastUsedAt: number;
+  /** 是否存在宽限期内的旧令牌。 */
+  hasPreviousToken: boolean;
+  /** 宽限旧令牌失效时刻的 Unix 秒，无旧令牌为 0。 */
+  previousTokenExpiresAt: number;
+  /** Harness 应使用的接入地址。 */
+  endpoint: string;
+}
+
+/** 一条 MCP 调用审计 UI 模型；参数摘要已由服务端按白名单键级脱敏。 */
+export interface MCPAuditRecord {
+  /** 审计行主键。 */
+  id: number;
+  /** 调用发生时间的 Unix 秒。 */
+  createdAt: number;
+  /** 执行调用的固定管理员本地用户标识。 */
+  userId: number;
+  /** 本次调用的令牌来源（persisted/environment）。 */
+  tokenSource: string;
+  /** 调用类别：tool、resource 或 prompt。 */
+  category: string;
+  /** 被调用的工具、资源或提示名称。 */
+  name: string;
+  /** 调用目标账号标识；无账号归属时为空串。 */
+  cookieId: string;
+  /** 键级脱敏后的参数 JSON 摘要。 */
+  arguments: string;
+  /** 调用是否成功完成。 */
+  success: boolean;
+  /** 失败类别的稳定标识；成功时为空串。 */
+  errorClass: string;
+  /** 调用耗时（毫秒）。 */
+  durationMs: number;
+}
+
+/** MCP 调用审计分页 UI 模型。 */
+export interface MCPAuditPage {
+  /** 当前页审计记录。 */
+  records: MCPAuditRecord[];
+  /** 满足筛选条件的总记录数。 */
+  total: number;
+  /** 当前页码。 */
+  page: number;
+  /** 当前页大小。 */
+  pageSize: number;
+  /** 总页数。 */
+  totalPages: number;
+}
+
+/** MCP 卡片操作结果提示。 */
+export interface MCPServiceMessage {
+  /** 提示类型：成功或失败。 */
+  type: 'success' | 'error';
+  /** 直接展示给管理员的中文提示文本。 */
+  text: string;
+}
