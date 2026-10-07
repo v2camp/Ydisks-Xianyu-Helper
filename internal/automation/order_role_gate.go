@@ -188,11 +188,9 @@ func (c *Center) deferUnknownRoleTask(ctx context.Context, task Task, reason str
 
 // roleVerificationTaskKey 为未知角色事件生成稳定键；优先使用平台事件键，缺失时对脱敏事实和原始事件做哈希。
 func roleVerificationTaskKey(task Task) string {
-	if task.Raw != nil {
-		// marker、ok 保存历史待核验任务中已固化的键及其类型判断结果。
-		if marker, ok := task.Raw[roleVerificationTaskKeyField].(string); ok && strings.TrimSpace(marker) != "" {
-			return strings.TrimSpace(marker)
-		}
+	// marker 是历史待核验任务中已固化的稳定键；沿用可避免补齐订单号后键发生变化。
+	if marker := roleVerificationMarker(task); marker != "" {
+		return marker
 	}
 	// key 保存平台事件已有的稳定业务键；存在时无需再次计算哈希。
 	if key := buildTriggerKey(task); key != "" {
@@ -243,7 +241,7 @@ func sameOrderIdentity(left, right string) bool {
 }
 
 // roleVerificationMarker 取出历史未知角色任务已固化的防重键；不存在或非字符串时返回空串。
-// buildTriggerKey 必须优先沿用它，避免同一事件在补齐订单号前后被算成两条不同的延期任务。
+// buildTriggerKey 与 roleVerificationTaskKey 优先沿用它，防止补齐订单号后防重键漂移。
 func roleVerificationMarker(task Task) string {
 	if task.Raw == nil {
 		return ""

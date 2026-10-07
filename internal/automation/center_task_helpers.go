@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"xianyu-go/internal/db"
 )
@@ -69,11 +68,9 @@ func (c *Center) deferTaskWithError(ctx context.Context, task Task, dueAt int64,
 
 // buildTriggerKey 生成任务的持久化防重键，优先沿用未知角色事件的稳定标记。
 func buildTriggerKey(task Task) string {
-	if task.Raw != nil {
-		// marker 是未知角色事件在订单号补齐前生成的稳定防重键；恢复时必须优先沿用它。
-		if marker, ok := task.Raw[roleVerificationTaskKeyField].(string); ok && strings.TrimSpace(marker) != "" {
-			return strings.TrimSpace(marker)
-		}
+	// marker 是未知角色事件在订单号补齐前生成的稳定防重键；恢复时必须优先沿用它。
+	if marker := roleVerificationMarker(task); marker != "" {
+		return marker
 	}
 	if task.TriggerType == TriggerReviewMissingTimeout && task.OrderID != "" {
 		if // attempt、ok 用于本次流程后续判断的attempt、ok
