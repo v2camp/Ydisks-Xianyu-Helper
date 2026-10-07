@@ -42,13 +42,15 @@ type slaDualNotifier struct {
 }
 
 // NotifyAutomationRun 满足旧 Notifier 接口；本测试不关心自动化运行终态。
-func (n *slaDualNotifier) NotifyAutomationRun(context.Context, int64, string, string, string, string, string, string) {}
+func (n *slaDualNotifier) NotifyAutomationRun(context.Context, int64, string, string, string, string, string, string) {
+}
 
 // slaAutomationOnlyNotifier 只满足旧 Notifier 接口，用于验证能力提取失败时的降级。
 type slaAutomationOnlyNotifier struct{}
 
 // NotifyAutomationRun 满足旧 Notifier 接口；不提供账号事件能力。
-func (slaAutomationOnlyNotifier) NotifyAutomationRun(context.Context, int64, string, string, string, string, string, string) {}
+func (slaAutomationOnlyNotifier) NotifyAutomationRun(context.Context, int64, string, string, string, string, string, string) {
+}
 
 // slaTestSettings 是可编程的系统设置读取替身。
 type slaTestSettings struct {

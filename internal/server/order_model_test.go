@@ -77,12 +77,12 @@ func TestApplyDeliverySLA(t *testing.T) {
 		},
 		{
 			name: "账号覆盖优先", dto: orderDTO{CookieID: "acc2", PaidAt: &paidRef},
-			cfg: deliverySLAConfig{DefaultMinutes: 120, PerAccount: map[string]int{"acc2": 30}},
+			cfg:         deliverySLAConfig{DefaultMinutes: 120, PerAccount: map[string]int{"acc2": 30}},
 			wantMinutes: 30, wantDeadline: "2026-09-30T10:30:00Z",
 		},
 		{
 			name: "账号覆盖零值关闭", dto: orderDTO{CookieID: "acc3", PaidAt: &paidRef},
-			cfg: deliverySLAConfig{DefaultMinutes: 60, PerAccount: map[string]int{"acc3": 0}},
+			cfg:         deliverySLAConfig{DefaultMinutes: 60, PerAccount: map[string]int{"acc3": 0}},
 			wantMinutes: 0, wantDeadline: "",
 		},
 		{

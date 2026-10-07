@@ -187,18 +187,18 @@ func (c *credentialCoordinator) refreshTokenWithMinGap(ctx context.Context, _ bo
 			return "", "", fmt.Errorf("绑定 token 凭证状态: %w", fingerprintErr)
 		}
 		a.saveTokenCache(ctx, deviceID, res.AccessToken, res.AccessTokenExpireAt, credentialFP)
-	a.mu.Lock()
-	a.credentialFP = credentialFP
-	a.tokenCredentialFP = credentialFP
-	a.lastCaptchaFailure = time.Time{}
-	// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
-	a.captchaFailureStreak = 0
-	a.tokenFetchFailures = 0
-	a.lastTokenStatus = tokenRefreshSuccess
-	a.mu.Unlock()
-	// 只有真实拿到有效 token 才解除持久化风控冷却；扫码换 Cookie 但仍被惩罚时不得提前清除。
-	c.clearPersistedTokenRiskCooldown(ctx)
-	a.runtimeMu.Lock()
+		a.mu.Lock()
+		a.credentialFP = credentialFP
+		a.tokenCredentialFP = credentialFP
+		a.lastCaptchaFailure = time.Time{}
+		// 成功后连续风控失败计数归零，下次再遇到风控从基础冷却重新开始。
+		a.captchaFailureStreak = 0
+		a.tokenFetchFailures = 0
+		a.lastTokenStatus = tokenRefreshSuccess
+		a.mu.Unlock()
+		// 只有真实拿到有效 token 才解除持久化风控冷却；扫码换 Cookie 但仍被惩罚时不得提前清除。
+		c.clearPersistedTokenRiskCooldown(ctx)
+		a.runtimeMu.Lock()
 		a.lastMsgReceived = time.Time{}
 		a.runtimeMu.Unlock()
 		return res.AccessToken, cookieStr, nil
