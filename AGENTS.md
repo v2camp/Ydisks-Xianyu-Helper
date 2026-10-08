@@ -477,21 +477,26 @@ git tag -a "<版本>-local-<日期>" -m "<中文说明：解决了什么问题>"
 - 替换本地镜像前先给旧镜像打 rollback 备份 tag。
 - 备份 tag 必须在构建前打，构建会覆盖 local 指向。
 - 本地构建必须传 APP_VERSION，否则 version 显示 dev。
+- 重新发布前必须在账号管理停用全部已启用账号。
+- 停用账号是为避免发布期报错触发闲鱼风控。
+- 部署完成并核对健康后，恢复原账号启用状态。
 - 构建后重启 app，核对容器镜像 ID 与 /health 状态。
 - 重启 compose 必须同时带主文件与 override 文件。
 - Web UI 动线冒烟随 functional 门禁运行，复用生产镜像自带的 Chromium。
 
 ```bash
-# 1. 先备份当前 local 指向的旧镜像
+# 1. 先在账号管理停用全部已启用账号
+# 2. 备份当前 local 指向的旧镜像
 docker tag ydisks-xianyu-helper:local ydisks-xianyu-helper:rollback-<日期>
-# 2. 再构建新镜像，必须显式传版本号
+# 3. 构建新镜像，必须显式传版本号
 docker build -f Dockerfile.debian13 --build-arg APP_VERSION=<版本>-local-<日期> \
   -t ydisks-xianyu-helper:local .
-# 3. 用本地镜像重启 app（主文件与 override 都要带）
+# 4. 用本地镜像重启 app（主文件与 override 都要带）
 docker compose -f compose.yml -f compose.override.yml up -d app
-# 4. 核对状态与版本号
+# 5. 核对状态与版本号
 docker ps --filter name=ydisks-xianyu-helper-app-1 --format '{{.Image}} {{.Status}}'
 curl -s http://127.0.0.1:59188/health
+# 6. 在账号管理恢复发布前的账号启用状态
 ```
 
 ### 4.2 桌面打包
