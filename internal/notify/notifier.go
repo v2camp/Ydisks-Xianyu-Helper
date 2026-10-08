@@ -116,13 +116,14 @@ func NewWithRepository(cookieID string, repository Repository, logger *slog.Logg
 // 通知只写数据库，不在订单/账号处理调用栈中等待外部网络。
 // Start 启动当前值。
 func (n *Notifier) Start(ctx context.Context) {
-	// nil Context 无法提供取消边界，拒绝启动以免创建无法回收的后台 worker。
-	if ctx == nil {
+	// nil 接收者或 nil Context 都无法提供取消边界，拒绝启动以免创建无法回收的后台 worker。
+	if n == nil || ctx == nil {
 		return
 	}
 	// lifecycleCtx 在启动时绑定进程生命周期，供 QQ 令牌刷新等后台协程继承 owner。
 	n.lifecycleCtx = ctx
-	if n == nil || n.repository == nil || !n.started.CompareAndSwap(false, true) {
+	// repository 未装配或已启动时跳过：重复 Start 不产生第二个 outbox worker。
+	if n.repository == nil || !n.started.CompareAndSwap(false, true) {
 		return
 	}
 	n.workers.Add(1)
