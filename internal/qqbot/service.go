@@ -14,9 +14,6 @@ const commandTimeout = 15 * time.Second
 // defaultChatsPerAccount 是「会话」命令默认每个账号提取的会话数量。
 const defaultChatsPerAccount = 3
 
-// maxChatsPerAccount 是「会话」命令每个账号允许提取的会话数量上限。
-const maxChatsPerAccount = 10
-
 // ErrCommandsDisabled 表示入站命令总开关未打开，调用方不应回复任何内容。
 var ErrCommandsDisabled = errors.New("qq 入站命令未启用")
 
