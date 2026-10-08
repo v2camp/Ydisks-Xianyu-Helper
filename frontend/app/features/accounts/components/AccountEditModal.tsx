@@ -129,28 +129,6 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
             <input type="text" value={account.id} disabled className="w-full ios-input px-4 py-3 rounded-xl bg-gray-50 text-gray-500" />
           </div>
 
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">备注</label>
-            <input
-              type="text"
-              value={editForm.remark}
-              onChange={handleRemarkChange}
-              placeholder="为账号添加备注"
-              className="w-full ios-input px-4 py-3 rounded-xl"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Cookie</label>
-            <textarea
-              value={editForm.cookie}
-              onChange={handleCookieChange}
-              placeholder="更新账号Cookie"
-              className="w-full ios-input px-4 py-3 rounded-xl h-32 resize-none font-mono text-xs"
-            />
-            <p className="text-xs text-gray-500 mt-1">当前Cookie长度: {editForm.cookie.length} 字符</p>
-          </div>
-
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
             <div>
               <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-green-500" />自动发货</div>
@@ -274,6 +252,28 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
                   />
                   <span className="text-sm font-bold text-gray-700">清空已保存密码</span>
                 </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">备注</label>
+                <input
+                  type="text"
+                  value={editForm.remark}
+                  onChange={handleRemarkChange}
+                  placeholder="为账号添加备注"
+                  className="w-full ios-input px-4 py-3 rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Cookie</label>
+                <textarea
+                  value={editForm.cookie}
+                  onChange={handleCookieChange}
+                  placeholder="更新账号Cookie"
+                  className="w-full ios-input px-4 py-3 rounded-xl h-32 resize-none font-mono text-xs"
+                />
+                <p className="text-xs text-gray-500 mt-1">当前Cookie长度: {editForm.cookie.length} 字符</p>
               </div>
 
               <div className="flex items-center justify-between">
