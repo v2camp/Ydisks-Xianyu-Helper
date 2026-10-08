@@ -212,7 +212,7 @@ func TestPendingShipScansReportStorageFailures(t *testing.T) {
 		t.Fatal("存储不可用时续跑扫描应返回错误")
 	}
 	// _, reopenErr 是存储关闭后的重开运行结果。
-	if _, reopenErr := s.Automation.ReopenRunForRecovery(ctx, 1, 1, 0); reopenErr == nil {
+	if _, reopenErr := s.Automation.ReopenRunForRecovery(ctx, 1, 1, 0, 0); reopenErr == nil {
 		t.Fatal("存储不可用时重开运行应返回错误")
 	}
 }
@@ -380,8 +380,8 @@ func TestReopenRunForRecoveryRequiresUnchangedAttempt(t *testing.T) {
 	}
 	// leaseAt 是本次恢复分配的租约到期时间。
 	leaseAt := time.Now().UTC().Add(5 * time.Minute).Unix()
-	// reopened、reopenErr 保存以原代次抢占的结果。
-	reopened, reopenErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, leaseAt)
+	// reopened、reopenErr 保存以原代次抢占的结果；续跑下标回退到冻结计划的下标 1。
+	reopened, reopenErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, 1, leaseAt)
 	if reopenErr != nil || !reopened {
 		t.Fatalf("原代次抢占应成功: reopened=%v err=%v", reopened, reopenErr)
 	}
@@ -393,16 +393,19 @@ func TestReopenRunForRecoveryRequiresUnchangedAttempt(t *testing.T) {
 	if run.Status != "running" || run.ActionStarted || run.AttemptCount != 2 || run.ErrorMessage != "" {
 		t.Fatalf("重开后的运行状态异常: %+v", run)
 	}
+	if run.ActionCursor != 1 {
+		t.Fatalf("重开后动作游标应为传入的续跑下标 1: %d", run.ActionCursor)
+	}
 	if run.LeaseExpiresAt != leaseAt {
 		t.Fatalf("重开后租约应更新为本次恢复的到期时间: %d", run.LeaseExpiresAt)
 	}
 	// 代次已变化，再次以旧代次抢占必须失败。
-	staleReopened, staleErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, leaseAt)
+	staleReopened, staleErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, 1, leaseAt)
 	if staleErr != nil || staleReopened {
 		t.Fatalf("旧代次抢占必须失败: reopened=%v err=%v", staleReopened, staleErr)
 	}
 	// 状态已变为 running，新代次抢占同样必须失败。
-	raceReopened, raceErr := s.Automation.ReopenRunForRecovery(ctx, runID, 2, leaseAt)
+	raceReopened, raceErr := s.Automation.ReopenRunForRecovery(ctx, runID, 2, 1, leaseAt)
 	if raceErr != nil || raceReopened {
 		t.Fatalf("running 状态不允许重开: reopened=%v err=%v", raceReopened, raceErr)
 	}
@@ -534,7 +537,7 @@ RETURNING id`, ruleID, cookieID, "item-race", orderID, "buyer-"+orderID, "chat-r
 			defer waitGroup.Done()
 			<-startGate
 			// reopened、reopenErr 保存当前并发重开结果。
-			reopened, reopenErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, time.Now().Add(5*time.Minute).Unix())
+			reopened, reopenErr := s.Automation.ReopenRunForRecovery(ctx, runID, 1, 0, time.Now().Add(5*time.Minute).Unix())
 			results <- struct {
 				reopened bool
 				err      error

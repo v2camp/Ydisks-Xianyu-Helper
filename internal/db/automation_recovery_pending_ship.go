@@ -134,12 +134,12 @@ type PendingShipResume struct {
 	Attempt int
 	// ActionCursor 是尚未执行的下一个动作下标。
 	ActionCursor int
-	// Status 是运行当前状态（needs_review 或 failed）。
+	// Status 是运行当前状态（needs_review、failed 或 success）；success 表示收尾的确认发货动作曾被静默跳过。
 	Status string
 }
 
-// PendingShipResumableRunsAfter 用订单 ID 作为稳定游标分页扫描「已付款待发货、且存在剩余动作
-// 全部为幂等状态动作的未完成 order_paid 运行」的订单，供调度器从检查点继续执行。
+// PendingShipResumableRunsAfter 用订单 ID 作为稳定游标分页扫描「已付款待发货、且存在尚可执行的确认发货动作」的订单，
+// 供调度器从幂等尾部继续执行。
 //
 // 与 PendingShipOrdersWithoutPaidRunAfter 的分工：
 //   - 前者覆盖「完全没有运行记录」的订单（付款事件在准备阶段就被卡死）；
@@ -177,12 +177,13 @@ SELECT o.order_id,o.item_id,o.buyer_id,o.spec_name,o.spec_value,o.quantity,o.amo
   FROM orders o
   JOIN automation_runs r ON r.order_id=o.order_id AND r.trigger_type='order_paid'
 WHERE o.order_status='pending_ship'
+   AND o.system_shipped=0
    AND o.deleted_at IS NULL
    AND COALESCE(o.chat_id,'')<>''
    AND (o.is_bargain=0 OR EXISTS (SELECT 1 FROM bargain_free_shipping_stages bfs
                                   WHERE bfs.order_id=o.order_id AND bfs.cookie_id=o.cookie_id AND bfs.status IN ('ready','succeeded')))
    AND r.cookie_id=o.cookie_id
-   AND r.status IN ('needs_review','failed')
+   AND r.status IN ('needs_review','failed','success')
    AND r.attempt_count<?
    AND r.id=(SELECT latest.id
                FROM automation_runs latest

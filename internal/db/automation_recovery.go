@@ -543,11 +543,17 @@ WHERE o.system_shipped=1
 	return out, rows.Err()
 }
 
-// ReopenRunForRecovery 在账号→订单锁内把处于人工核对或明确失败的运行重新置为可执行，并递增代次使旧检查点失效。
+// ReopenRunForRecovery 在账号→订单锁内把尚未真正完成发货的运行重新置为可执行，并递增代次使旧检查点失效。
+// actionCursor 是本次续跑应当从冻结计划中继续执行的动作下标；调用方只允许回退到幂等的确认发货尾部，
+// 且 update 语句在 action_cursor<actionCursor 时拒绝写入，防止把游标向前推到未曾确认完成的发卡或消息动作。
+// 状态集合包含 success：账号未开启自动确认发货时该动作被静默跳过而运行仍然收口成功，只有允许重开才能在外卖开关打开后补上。
 // 同一订单已有其它 order_paid 运行处于 running 时拒绝抢占；返回 false 表示运行状态、代次或订单执行权已经变化。
-func (a *AutomationRules) ReopenRunForRecovery(ctx context.Context, runID int64, attempt int, leaseExpiresAt int64) (bool, error) {
+func (a *AutomationRules) ReopenRunForRecovery(ctx context.Context, runID int64, attempt int, actionCursor int, leaseExpiresAt int64) (bool, error) {
 	if a == nil || a.DB == nil {
 		return false, errors.New("自动化运行存储未初始化")
+	}
+	if actionCursor < 0 {
+		return false, errors.New("待发货续跑的动作下标不能为负")
 	}
 	// cookieID、orderID 保存运行固定的归属身份，仅用于取得账号与订单写锁，不读取任务快照或凭证。
 	var cookieID, orderID string
@@ -585,9 +591,10 @@ SELECT COUNT(*) FROM automation_runs
 	}
 	// res、updateErr 保存带状态、代次和动作占用条件的原子重开结果。
 	res, updateErr := transaction.ExecContext(ctx, `UPDATE automation_runs
-	   SET status='running',action_started=0,attempt_count=attempt_count+1,
+	   SET status='running',action_started=0,attempt_count=attempt_count+1,action_cursor=?,
 	       lease_expires_at=?,next_retry_at=0,error_message='',updated_at=CURRENT_TIMESTAMP
-	 WHERE id=? AND attempt_count=? AND status IN ('needs_review','failed') AND action_started=0`, leaseExpiresAt, runID, attempt)
+	 WHERE id=? AND attempt_count=? AND status IN ('needs_review','failed','success')
+	   AND action_started=0 AND action_cursor>=?`, actionCursor, leaseExpiresAt, runID, attempt, actionCursor)
 	if updateErr != nil {
 		return false, updateErr
 	}

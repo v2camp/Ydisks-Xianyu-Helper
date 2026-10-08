@@ -670,20 +670,24 @@ func TestPendingShipResumeFrozenPlanBoundaries(t *testing.T) {
 	}
 	// tailPlan 是「发卡 + 确认发货」的冻结计划。
 	tailPlan := `[{"ActionType":"send_card","Enabled":true},{"ActionType":"confirm_shipment","Enabled":true}]`
-	// cases 覆盖放行、剩余动作仍会联系买家、快照缺失或损坏、归属不符与游标越界五类边界。
+	// cases 覆盖放行、回退到确认发货尾部、剩余动作仍会联系买家、快照缺失或损坏、归属不符与游标越界等边界。
+	// 其中「计划已名义跑完」的用例体现修复后的语义：订单仍待发货时允许回退到幂等尾部补确认发货。
 	cases := []struct {
-		name    string
-		raw     string
-		cursor  int
-		order   db.Order
-		want    bool
-		wantErr bool
+		name       string
+		raw        string
+		cursor     int
+		order      db.Order
+		want       bool
+		wantCursor int
+		wantErr    bool
 	}{
-		{name: "游标已越过发卡动作", raw: snapshot("frozen-acc", "o-frozen", tailPlan), cursor: 1, order: ownerOrder, want: true},
-		{name: "仅确认发货计划", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"confirm_shipment","Enabled":true}]`), cursor: 0, order: ownerOrder, want: true},
+		{name: "游标已越过发卡动作", raw: snapshot("frozen-acc", "o-frozen", tailPlan), cursor: 1, order: ownerOrder, want: true, wantCursor: 1},
+		{name: "仅确认发货计划", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"confirm_shipment","Enabled":true}]`), cursor: 0, order: ownerOrder, want: true, wantCursor: 0},
 		{name: "剩余动作仍含发卡", raw: snapshot("frozen-acc", "o-frozen", tailPlan), cursor: 0, order: ownerOrder, want: false},
 		{name: "剩余动作仍含文本", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"send_text","Enabled":true},{"ActionType":"confirm_shipment","Enabled":true}]`), cursor: 0, order: ownerOrder, want: false},
-		{name: "游标已在计划末尾", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"confirm_shipment","Enabled":true}]`), cursor: 1, order: ownerOrder, want: false},
+		{name: "确认发货被跳过后回退到尾部", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"confirm_shipment","Enabled":true}]`), cursor: 1, order: ownerOrder, want: true, wantCursor: 0},
+		{name: "发卡加确认发货全部名义完成后回退到尾部", raw: snapshot("frozen-acc", "o-frozen", tailPlan), cursor: 2, order: ownerOrder, want: true, wantCursor: 1},
+		{name: "确认发货后仍有发卡动作时不回退", raw: snapshot("frozen-acc", "o-frozen", `[{"ActionType":"confirm_shipment","Enabled":true},{"ActionType":"send_card","Enabled":true}]`), cursor: 2, order: ownerOrder, want: false},
 		{name: "快照无法解析", raw: `{`, cursor: 0, order: ownerOrder, wantErr: true},
 		{name: "快照缺少计划", raw: `{"AccountID":"frozen-acc","OrderID":"o-frozen"}`, cursor: 0, order: ownerOrder, wantErr: true},
 		{name: "快照归属不符", raw: snapshot("other-acc", "o-frozen", tailPlan), cursor: 1, order: ownerOrder, wantErr: true},
@@ -693,8 +697,8 @@ func TestPendingShipResumeFrozenPlanBoundaries(t *testing.T) {
 	for _, tc := range cases {
 		// candidate 保存本用例的候选运行。
 		candidate := db.PendingShipResume{Order: tc.order, RawEventJSON: tc.raw, ActionCursor: tc.cursor}
-		// plan、eligible、err 保存恢复出的冻结计划、是否放行与不可续跑原因。
-		plan, eligible, err := pendingShipResumeFrozenPlan(candidate)
+		// plan、resumeCursor、eligible、err 保存恢复出的冻结计划、续跑起始下标、是否放行与不可续跑原因。
+		plan, resumeCursor, eligible, err := pendingShipResumeFrozenPlan(candidate)
 		if tc.wantErr {
 			if err == nil {
 				t.Fatalf("%s: 期望返回错误，实际 eligible=%v", tc.name, eligible)
@@ -707,8 +711,13 @@ func TestPendingShipResumeFrozenPlanBoundaries(t *testing.T) {
 		if eligible != tc.want {
 			t.Fatalf("%s: eligible=%v want %v", tc.name, eligible, tc.want)
 		}
-		if tc.want && len(plan) == 0 {
-			t.Fatalf("%s: 放行时必须把冻结计划交回调用方", tc.name)
+		if tc.want {
+			if len(plan) == 0 {
+				t.Fatalf("%s: 放行时必须把冻结计划交回调用方", tc.name)
+			}
+			if resumeCursor != tc.wantCursor {
+				t.Fatalf("%s: resumeCursor=%d want %d", tc.name, resumeCursor, tc.wantCursor)
+			}
 		}
 	}
 }
