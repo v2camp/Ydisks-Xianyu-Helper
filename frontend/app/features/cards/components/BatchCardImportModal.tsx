@@ -68,6 +68,8 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
               <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-xs text-blue-900 leading-5">
                 上传表格，每行一个卡密组。表头：<code className="bg-blue-100/70 px-1.5 py-0.5 rounded">名称,类型,内容,描述,启用,延迟秒,多规格,规格名,规格值</code>。
                 类型填 text/data/image；data 类型的“内容”按行存卡密（CSV 单元格内换行需用引号包裹）。
+                <span className="mt-2 block font-bold text-blue-950">「内容」列 = 自动发货时发给买家的文字/卡密（必填，买家实际收到这一列）；「描述」列 = 仅自己可见的备注，绝不会发送给买家。</span>
+                <span className="mt-1 block">若把链接/卡密误填进「描述」，买家将收不到交付内容；如被检测为填反，该行会被拒绝。</span>
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={downloadCardTemplate} className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 text-sm transition-colors">
