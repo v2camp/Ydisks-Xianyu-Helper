@@ -1,6 +1,7 @@
 import {
   Database,
   Eye,EyeOff,
+  Hourglass,
   LockKeyhole,
   PlugZap,
   RefreshCw,
@@ -10,7 +11,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import React from 'react';
-import { LOG_LEVELS } from '../constants';
+import { BACKUP_INTERVAL_OPTIONS, LOG_LEVELS } from '../constants';
 import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
 import { MCPServiceCard } from '../components/MCPServiceCard';
 import { QQConnectorCard } from '../components/QQConnectorCard';
@@ -69,7 +70,8 @@ const Settings: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* 两栏瀑布流：每栏内部卡片独立堆叠不互相拉伸，lg 以下退化为单列。 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         {/* Left Column */}
         <div className="space-y-8">
           {/* Basic Settings */}
@@ -115,12 +117,30 @@ const Settings: React.FC = () => {
                 <input
                   type="number"
                   value={settings.renewal_log_retention_days ?? 10}
-                  onChange={/* 当前回调处理用户交互或异步状态变化。 */ (e) => setSettings({ ...settings, renewal_log_retention_days: parseInt(e.target.value) || 0 })}
+                  onChange={/* 输入变化更新续期日志保留天数草稿，非数字回落不清理（0）。 */ (e) => setSettings({ ...settings, renewal_log_retention_days: parseInt(e.target.value) || 0 })}
                   className="w-full ios-input px-4 py-3 rounded-xl"
                   min="0"
                   max="365"
                 />
                 <p className="text-xs text-gray-500">0 表示不自动清理续期日志</p>
+              </div>
+
+              {/* 定时备份间隔：只备份卡密与自动化规则，档位与后端校验一致，0 表示关闭。 */}
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-gray-800 flex items-center gap-2">
+                  <Hourglass className="w-4 h-4 text-gray-500" />
+                  数据定时备份
+                </label>
+                <select
+                  value={settings.backup_interval_hours || '24'}
+                  onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setSettings({ ...settings, backup_interval_hours: event.target.value })}
+                  className="w-full ios-input px-4 py-3 rounded-xl"
+                >
+                  {BACKUP_INTERVAL_OPTIONS.map(/* option 是当前遍历的间隔档位。 */ option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">按设定间隔把卡密与自动化规则快照保存到服务器数据目录 backups/ 下，保留最近 14 份</p>
               </div>
 
               <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer">
@@ -172,19 +192,6 @@ const Settings: React.FC = () => {
 
             {/* 发货内容门禁配置卡：违禁词拒发与链接健康检查开关及额外违禁词，保存后随系统配置一起提交。 */}
             <DeliveryGuardCard settings={settings} onChange={/* patch 合并进系统配置草稿，由统一保存按钮提交。 */ patch => setSettings({ ...settings, ...patch })} />
-          </section>
-
-          {/* MCP 服务：对外暴露本服务能力，自带独立管理接口与保存动作，不随系统配置草稿提交。 */}
-          <section className="space-y-4">
-            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-indigo-500 text-white">
-                <PlugZap className="w-4 h-4" />
-              </div>
-              MCP 服务
-            </h3>
-
-            {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存。 */}
-            <MCPServiceCard />
           </section>
 
           {/* 连接器：对外平台机器人凭据，保存后由通知渠道继承复用。 */}
@@ -262,6 +269,19 @@ const Settings: React.FC = () => {
                 配置地址和秘钥后优先调用远程服务；只有网络不可用或超时才回退本机引擎，远程明确返回失败时不会重复触发本机验证。
               </p>
             </div>
+          </section>
+
+          {/* MCP 服务：对外暴露本服务能力，自带独立管理接口与保存动作，不随系统配置草稿提交。 */}
+          <section className="space-y-4">
+            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-500 text-white">
+                <PlugZap className="w-4 h-4" />
+              </div>
+              MCP 服务
+            </h3>
+
+            {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存。 */}
+            <MCPServiceCard />
           </section>
 
           <section className="space-y-4">
