@@ -184,20 +184,45 @@ func (o *Orders) ByCookie(ctx context.Context, cookieID string, limit int) ([]Or
 	return o.ByCookiePage(ctx, cookieID, limit, 0)
 }
 
-// FindLatestPendingByChat 按账号和会话查找最近一笔待发货订单，供简化系统消息补回订单号及商品事实。
+// orderStatusesPendingShip 是按会话回填待发货订单时接受的状态集合，覆盖本地与参考项目的文本及数字别名。
+var orderStatusesPendingShip = []string{"pending_ship", "paid", "2", "pending_delivery", "partial_success", "partial_pending_finalize"}
+
+// orderStatusesOpen 是按会话回填未终结订单时接受的状态集合，额外包含待付款状态以覆盖拍下类提醒。
+var orderStatusesOpen = []string{"processing", "1", "pending_ship", "paid", "2", "pending_delivery", "partial_success", "partial_pending_finalize"}
+
+// FindLatestPendingByChat 按账号和会话查找最近一笔待发货订单，供付款类简化系统消息补回订单号及商品事实。
 // buyerID、itemID 非空时同时作为串单防线；多个候选按最近更新时间和订单号稳定选择。
 func (o *Orders) FindLatestPendingByChat(ctx context.Context, cookieID, chatID, buyerID, itemID string) (*Order, error) {
+	return o.findLatestByChat(ctx, cookieID, chatID, buyerID, itemID, orderStatusesPendingShip)
+}
+
+// FindLatestOpenByChat 按账号和会话查找最近一笔未终结订单（含待付款），供拍下类简化系统消息补回订单事实。
+// 拍下提醒对应的订单尚未付款（本地可能仍为 processing），因此不能只认待发货状态，否则会永久缺商品事实。
+func (o *Orders) FindLatestOpenByChat(ctx context.Context, cookieID, chatID, buyerID, itemID string) (*Order, error) {
+	return o.findLatestByChat(ctx, cookieID, chatID, buyerID, itemID, orderStatusesOpen)
+}
+
+// findLatestByChat 按账号、会话与状态集合查找最近一笔订单；buyerID、itemID 非空时作为串单防线。
+// 状态集合为空时安全返回空结果，避免退化为按账号扫描全表。
+func (o *Orders) findLatestByChat(ctx context.Context, cookieID, chatID, buyerID, itemID string, statuses []string) (*Order, error) {
 	// accountID 是经过空白清理的账号标识，限制订单归属范围。
 	accountID := strings.TrimSpace(cookieID)
 	// sessionID 是去除协议后缀的会话标识，兼容订单表历史存储格式。
 	sessionID := strings.TrimSpace(strings.TrimSuffix(chatID, "@goofish"))
-	if accountID == "" || sessionID == "" {
+	if accountID == "" || sessionID == "" || len(statuses) == 0 {
 		return nil, nil
 	}
+	// placeholders 保存状态集合对应的 IN 占位符。
+	placeholders := make([]string, len(statuses))
+	// args 保存 where 条件对应的绑定参数，首个元素为账号，随后的会话与状态集合顺序须与 where 一致。
+	args := []any{accountID, sessionID}
+	// i、status 分别表示占位符序号与当前状态别名。
+	for i, status := range statuses {
+		placeholders[i] = "?"
+		args = append(args, status)
+	}
 	// where 保存跨数据库通用的订单筛选条件。
-	where := []string{"cookie_id=?", "chat_id=?", "deleted_at IS NULL", "order_status IN (?,?,?,?,?,?)"}
-	// args 保存 where 条件对应的绑定参数，状态集合覆盖本地和参考项目的待发货别名。
-	args := []any{accountID, sessionID, "pending_ship", "paid", "2", "pending_delivery", "partial_success", "partial_pending_finalize"}
+	where := []string{"cookie_id=?", "chat_id=?", "deleted_at IS NULL", "order_status IN (" + strings.Join(placeholders, ",") + ")"}
 	// normalizedBuyerID 是去除协议后缀的买家标识，用于兼容裸值和带后缀值。
 	if normalizedBuyerID := strings.TrimSuffix(strings.TrimSpace(buyerID), "@goofish"); normalizedBuyerID != "" {
 		where = append(where, "buyer_id IN (?,?)")
@@ -208,7 +233,7 @@ func (o *Orders) FindLatestPendingByChat(ctx context.Context, cookieID, chatID, 
 		where = append(where, "item_id=?")
 		args = append(args, productID)
 	}
-	// orderID 保存查询出的最近待发货订单业务标识。
+	// orderID 保存查询出的最近订单业务标识。
 	var orderID string
 	// query 保存按更新时间和订单号倒序选择候选订单的 SQL。
 	query := `SELECT order_id FROM orders WHERE ` + strings.Join(where, " AND ") + ` ORDER BY updated_at DESC, order_id DESC LIMIT 1`

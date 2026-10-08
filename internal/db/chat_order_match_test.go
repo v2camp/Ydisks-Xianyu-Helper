@@ -137,3 +137,50 @@ func TestFindLatestPendingByChat(t *testing.T) {
 		t.Fatalf("错误商品不应命中订单: order=%+v err=%v", missingOrder, missingErr)
 	}
 }
+
+// TestFindLatestOpenByChat 验证拍下类简化消息可按账号、会话回填含待付款的未终结订单，并与待发货查询区分语义。
+func TestFindLatestOpenByChat(t *testing.T) {
+	// store、cleanup 保存迁移后的临时 SQLite 数据库及关闭责任。
+	store, cleanup := newTestDB(t)
+	defer cleanup()
+	// ctx 是本测试共用的数据库上下文。
+	ctx := context.Background()
+	// _, cookieID 保存测试账号归属；用户标识只用于构造有效外键。
+	_, cookieID := seedAccount(t, store)
+	// writeErr 保存待付款订单初始化失败，模拟拍下提醒抵达时订单尚未付款。
+	if writeErr := store.Orders.Upsert(ctx, "open-order", OrderUpsertOpts{
+		CookieID: cookieID, ChatID: "open-chat", BuyerID: "buyer-1", ItemID: "item-1", OrderStatus: "processing",
+	}); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	// order、queryErr 保存拍下类会话回填出的订单及查询错误。
+	order, queryErr := store.Orders.FindLatestOpenByChat(ctx, cookieID, "open-chat@goofish", "buyer-1@goofish", "item-1")
+	if queryErr != nil || order == nil || order.OrderID != "open-order" {
+		t.Fatalf("拍下类会话订单回填异常: order=%+v err=%v", order, queryErr)
+	}
+	// missingOrder、missingErr 验证错误商品不会串到其他未终结订单。
+	missingOrder, missingErr := store.Orders.FindLatestOpenByChat(ctx, cookieID, "open-chat", "buyer-1", "other-item")
+	if missingErr != nil || missingOrder != nil {
+		t.Fatalf("错误商品不应命中订单: order=%+v err=%v", missingOrder, missingErr)
+	}
+	// pendingOrder、pendingErr 验证待发货回填不会命中待付款订单，保持付款与拍下语义区分。
+	pendingOrder, pendingErr := store.Orders.FindLatestPendingByChat(ctx, cookieID, "open-chat", "buyer-1", "item-1")
+	if pendingErr != nil || pendingOrder != nil {
+		t.Fatalf("待发货回填不应命中待付款订单: order=%+v err=%v", pendingOrder, pendingErr)
+	}
+	// emptyAccount、emptyAccountErr 验证缺少账号时安全返回空结果，不降级为跨账号扫描。
+	emptyAccount, emptyAccountErr := store.Orders.findLatestByChat(ctx, "", "open-chat", "buyer-1", "item-1", orderStatusesOpen)
+	if emptyAccountErr != nil || emptyAccount != nil {
+		t.Fatalf("空账号不应命中订单: order=%+v err=%v", emptyAccount, emptyAccountErr)
+	}
+	// emptySession、emptySessionErr 验证缺少会话时安全返回空结果。
+	emptySession, emptySessionErr := store.Orders.findLatestByChat(ctx, cookieID, "", "buyer-1", "item-1", orderStatusesOpen)
+	if emptySessionErr != nil || emptySession != nil {
+		t.Fatalf("空会话不应命中订单: order=%+v err=%v", emptySession, emptySessionErr)
+	}
+	// emptyStatuses、emptyStatusesErr 验证空状态集合不会产生空 IN 子句或全表扫描。
+	emptyStatuses, emptyStatusesErr := store.Orders.findLatestByChat(ctx, cookieID, "open-chat", "buyer-1", "item-1", nil)
+	if emptyStatusesErr != nil || emptyStatuses != nil {
+		t.Fatalf("空状态集合不应命中订单: order=%+v err=%v", emptyStatuses, emptyStatusesErr)
+	}
+}
