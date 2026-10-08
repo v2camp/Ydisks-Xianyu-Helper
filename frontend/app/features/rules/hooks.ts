@@ -64,7 +64,7 @@ export const useRulesData = (options: RulesDataOptions): RulesDataResult => {
   // automationTriggerCounts 保存服务端按触发类型聚合的规则数量。
   const [automationTriggerCounts, setAutomationTriggerCounts] = useState<Record<string, number>>({});
 
-  // loadReferenceData 并行加载规则编辑器所需的全部参考数据。
+  // loadReferenceData 并行加载规则编辑器所需的全部参考数据；账号筛选只由用户操作决定，不回写。
   const loadReferenceData = useCallback(
     // 参考数据加载器把共享结果写入 Hook 状态。
     async () => {
@@ -84,12 +84,8 @@ export const useRulesData = (options: RulesDataOptions): RulesDataResult => {
     setItems(itemList);
     setDefaultReplies(defaultReplyMap);
     setDeliveryTemplates(deliveryTemplateList);
-    options.setSelectedAccountId(
-      // 账号选择器保留用户已有选择，否则回填首个账号。
-      current => current || accountList[0]?.id || '',
-    );
     },
-    [options.setSelectedAccountId],
+    [],
   );
 
   // loadAutomationRules 加载自动化规则和异常，并丢弃过期列表响应。

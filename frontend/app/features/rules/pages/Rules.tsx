@@ -60,7 +60,6 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
     debouncedAutomationSearch,
     automationPage,
     automationPageSize,
-    setSelectedAccountId,
     onAutomationPageChange: setAutomationPage,
   });
   // 解构数据 解构得到当前 Hook 返回的状态和操作函数。
@@ -291,7 +290,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
           <aside className="min-w-0 space-y-4">
             <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
               <h3 className="font-black text-gray-900 mb-1">新建规则</h3>
-              <p className="text-sm text-gray-500 mb-4">先选自动化类型，再配置对应动作。</p>
+              <p className="text-sm text-gray-500 mb-4">{selectedAccountId ? '先选自动化类型，再配置对应动作。' : '请先在上方选择闲鱼账号，再创建规则。'}</p>
               <div className="space-y-3">
                 {triggerOrder.map(/* 当前回调处理集合中的单个元素。 */ trigger => {
                   // meta 元数据。
@@ -302,8 +301,9 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                     <button
                       key={trigger}
                       type="button"
+                      disabled={!selectedAccountId}
                       onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => openNewAutomationRule(trigger)}
-                      className={`w-full text-left rounded-2xl border p-4 transition-colors ${accentClasses(meta.accent)}`}
+                      className={`w-full text-left rounded-2xl border p-4 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${accentClasses(meta.accent)}`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white/80 flex items-center justify-center shrink-0">
