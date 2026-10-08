@@ -517,6 +517,21 @@ func validateSystemValue(key, value string) error {
 		if n, err := strconv.Atoi(trimmed); err != nil || n < 0 {
 			return validationErrorf("%s 必须是非负整数", key)
 		}
+	case "backup_interval_hours":
+		// 空串表示清空或未配置，落库后由备份服务按默认 24 小时处理。
+		if trimmed == "" {
+			return nil
+		}
+		// hours 是解析出的间隔小时数；仅允许 0（关闭）与 12/24/48 三档，防止误填过密拖垮数据库。
+		hours, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return validationErrorf("%s 必须是整数小时", key)
+		}
+		switch hours {
+		case 0, 12, 24, 48:
+		default:
+			return validationErrorf("%s 仅支持 12、24、48 小时或 0（关闭）", key)
+		}
 	case "ai_reply_review_mode":
 		// 允许的开关取值与 engine.reviewModeEnabled 保持一致；非法值拒绝落库。
 		switch strings.ToLower(trimmed) {

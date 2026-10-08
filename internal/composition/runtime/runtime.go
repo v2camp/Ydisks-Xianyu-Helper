@@ -10,6 +10,7 @@ import (
 	orderapp "xianyu-go/internal/application/orders"
 	"xianyu-go/internal/auth"
 	"xianyu-go/internal/automation"
+	"xianyu-go/internal/backup"
 	"xianyu-go/internal/browser"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
@@ -32,6 +33,8 @@ type RuntimeOptions struct {
 	Addr string
 	// MCPEnvironmentToken 是 XIANYU_MCP_TOKEN 引导令牌；空白表示不配置环境令牌。
 	MCPEnvironmentToken string
+	// BackupDir 是卡密与自动化规则定时备份的落盘目录；空白表示不启用定时备份。
+	BackupDir string
 }
 
 // RuntimeInfrastructure 是 cmd 打开后交给组合根的基础设施资源。
@@ -77,7 +80,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		return Runtime{}, fmt.Errorf("构造账号运行时依赖失败: %w", bundleErr)
 	}
 	// lifecycleCoordinator 由 cmd 最终拥有，用于按顺序启动并逆序关闭后台组件。
-	lifecycleCoordinator, lifecycleErr := buildRuntimeLifecycleCoordinator(infrastructure, runtimeBundle, browserManager)
+	lifecycleCoordinator, lifecycleErr := buildRuntimeLifecycleCoordinator(infrastructure, runtimeBundle, browserManager, options.BackupDir)
 	if lifecycleErr != nil {
 		return Runtime{}, lifecycleErr
 	}
@@ -224,9 +227,10 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 
 // buildRuntimeLifecycleCoordinator 按依赖顺序登记基础后台组件，返回尚未启动的生命周期协调器。
 // 参数 infrastructure 提供数据库与日志；runtimeBundle 是账号运行时依赖集合；
-// browserManager 是可选浏览器生命周期拥有者，nil 表示禁用浏览器。
+// browserManager 是可选浏览器生命周期拥有者，nil 表示禁用浏览器；
+// backupDir 是卡密与自动化规则定时备份目录，空白表示不启用该服务。
 // 返回值是完成登记的协调器；error 非空时组合根必须立即失败，不得暴露半装配运行时。
-func buildRuntimeLifecycleCoordinator(infrastructure RuntimeInfrastructure, runtimeBundle *adapter.RuntimeBundle, browserManager *browser.Manager) (*lifecycle.Coordinator, error) {
+func buildRuntimeLifecycleCoordinator(infrastructure RuntimeInfrastructure, runtimeBundle *adapter.RuntimeBundle, browserManager *browser.Manager, backupDir string) (*lifecycle.Coordinator, error) {
 	// lifecycleCoordinator 收纳本次登记的全部基础后台组件，由 cmd 负责启动与逆序关闭。
 	lifecycleCoordinator := lifecycle.NewCoordinator()
 	if browserManager != nil {
@@ -247,6 +251,16 @@ func buildRuntimeLifecycleCoordinator(infrastructure RuntimeInfrastructure, runt
 		// addErr 是进程心跳写者登记失败原因；关闭（nil）时不登记，宿主检查发现空表即「未配置」。
 		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "process-heartbeat", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go heartbeatWriter.Run(ctx); return nil }, CloseFunc: heartbeatWriter.WaitContext}}); addErr != nil {
 			return nil, fmt.Errorf("登记进程心跳写者失败: %w", addErr)
+		}
+	}
+	// backupSource 是卡密与自动化规则的只读投影；备份服务经它读取两份业务资产。
+	backupSource := adapter.NewBackupSource(infrastructure.Store)
+	// backupService 是定时备份服务；备份目录为空白时返回 nil，表示部署方未启用。
+	backupService := backup.NewService(backupSource, backupDir, infrastructure.Logger)
+	if backupService != nil {
+		// addErr 是定时备份服务登记失败原因；登记失败时运行时不得继续暴露。
+		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "data-backup", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go backupService.Run(ctx); return nil }, CloseFunc: backupService.WaitContext}}); addErr != nil {
+			return nil, fmt.Errorf("登记定时备份服务失败: %w", addErr)
 		}
 	}
 	// component 是按依赖顺序登记的基础后台组件，协调器负责后续取消和等待。

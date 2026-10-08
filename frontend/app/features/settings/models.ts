@@ -61,6 +61,8 @@ export interface SystemSettings {
   'mcp.servers'?: string;
   /** 发货内容门禁 JSON 字符串：enabled 违禁词门禁、link_check 链接健康检查、extra_block_words 额外违禁词。 */
   delivery_content_guard?: string;
+  /** 定时备份间隔（小时）的字符串档位：'12'/'24'/'48'，'0' 表示关闭；未配置回落默认 24。 */
+  backup_interval_hours?: string;
   /** 兼容未来配置键的扩展字段。 */
   /** 未知设置键只能承载服务端声明的标量值，敏感值不进入该 UI 模型。 */
   [key: string]: string | number | boolean | undefined;

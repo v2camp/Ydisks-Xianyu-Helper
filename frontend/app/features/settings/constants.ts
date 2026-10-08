@@ -48,7 +48,16 @@ export const SYSTEM_SETTING_KEYS = new Set([
   'captcha.remote_secret_key',
   'captcha.remote_pass_cookies',
   'delivery_content_guard',
+  'backup_interval_hours',
 ]);
+
+/** 定时备份间隔选择项；value 与后端校验档位保持一致，'0' 表示关闭定时备份。 */
+export const BACKUP_INTERVAL_OPTIONS = [
+  { value: '12', label: '每 12 小时' },
+  { value: '24', label: '每 24 小时（默认）' },
+  { value: '48', label: '每 48 小时' },
+  { value: '0', label: '关闭定时备份' },
+];
 
 /** AI 设置页允许保存的字段白名单；命中后仍会经过省略键与空值过滤。 */
 export const AI_SETTING_KEYS = new Set([
