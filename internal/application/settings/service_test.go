@@ -685,6 +685,14 @@ func TestValidateSystemValue(t *testing.T) {
 		{name: "回复确认关闭", key: "ai_reply_review_mode", value: "false", wantErr: false},
 		{name: "回复确认空串", key: "ai_reply_review_mode", value: "", wantErr: false},
 		{name: "回复确认非法", key: "ai_reply_review_mode", value: "maybe", wantErr: true},
+		{name: "备份间隔默认档", key: "backup_interval_hours", value: "24", wantErr: false},
+		{name: "备份间隔12小时", key: "backup_interval_hours", value: "12", wantErr: false},
+		{name: "备份间隔48小时", key: "backup_interval_hours", value: "48", wantErr: false},
+		{name: "备份间隔关闭", key: "backup_interval_hours", value: "0", wantErr: false},
+		{name: "备份间隔空白放行", key: "backup_interval_hours", value: "", wantErr: false},
+		{name: "备份间隔非法档位", key: "backup_interval_hours", value: "6", wantErr: true},
+		{name: "备份间隔非法文本", key: "backup_interval_hours", value: "每天", wantErr: true},
+		{name: "备份间隔负值", key: "backup_interval_hours", value: "-12", wantErr: true},
 		{name: "其它设置放行", key: "theme_color", value: "blue", wantErr: false},
 	}
 	for // tc 表示当前遍历过程中的用例

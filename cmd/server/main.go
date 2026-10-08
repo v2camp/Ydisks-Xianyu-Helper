@@ -33,11 +33,13 @@ import (
 
 // serverOptions 保存命令行和环境变量解析后的进程启动选项。
 type serverOptions struct {
-	dbPath                string
-	dbURL                 string
-	addr                  string
-	webDir                string
-	workDir               string
+	dbPath  string
+	dbURL   string
+	addr    string
+	webDir  string
+	workDir string
+	// backupDir 是卡密与自动化规则定时备份的落盘目录；由数据目录推导或默认跟随当前目录布局。
+	backupDir             string
 	playwrightRuntimeRoot string
 	playwrightDriverDir   string
 	playwrightBrowserDir  string
@@ -265,6 +267,11 @@ func prepareServerStartup(opts *serverOptions) (serverStartupConfig, error) {
 			opts.playwrightBrowserDir = filepath.Join(dataDir, "playwright-browsers")
 		}
 	}
+	// opts.backupDir 跟随数据目录推导：桌面模式落在数据目录下，容器与本地布局落在相对数据卷 data/backups。
+	opts.backupDir = filepath.Join("data", "backups")
+	if dataDir != "" {
+		opts.backupDir = filepath.Join(dataDir, "backups")
+	}
 	if opts.playwrightDriverDir != "" {
 		// err 表示写入 Playwright driver 路径环境变量失败。
 		if err := os.Setenv("PLAYWRIGHT_DRIVER_PATH", opts.playwrightDriverDir); err != nil {
@@ -451,6 +458,7 @@ func buildServerRuntime(opts serverOptions, infrastructure serverInfrastructure)
 	runtime, buildErr := compositionruntime.BuildRuntime(compositionruntime.RuntimeOptions{
 		NoBrowser: opts.noBrowser, SecureCookie: opts.secure, WebDir: opts.webDir, Addr: opts.addr,
 		MCPEnvironmentToken: strings.TrimSpace(os.Getenv("XIANYU_MCP_TOKEN")),
+		BackupDir:           opts.backupDir,
 	}, compositionruntime.RuntimeInfrastructure{Store: infrastructure.store, Logger: infrastructure.logger})
 	if buildErr != nil {
 		return serverRuntime{}, buildErr
