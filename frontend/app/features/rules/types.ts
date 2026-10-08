@@ -129,8 +129,6 @@ export interface RulesDataOptions {
   automationPage: number;
   // automationPageSize 是当前自动化规则分页大小。
   automationPageSize: number;
-  // setSelectedAccountId 用于在参考数据加载后选择首个账号。
-  setSelectedAccountId: Dispatch<SetStateAction<string>>;
   // onAutomationPageChange 接收服务端修正后的有效页码。
   onAutomationPageChange?: (page: number) => void;
 }

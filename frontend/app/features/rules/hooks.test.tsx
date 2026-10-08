@@ -69,12 +69,10 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
   });
 
   test('加载参考数据、自动化规则并处理服务端页码修正', /* 当前回调验证自动化页的主要成功路径。 */ async () => {
-    // setSelectedAccountId 是参考数据加载后回填首个账号的状态替身。
-    const setSelectedAccountId = vi.fn();
     // onPageChange 接收服务端修正后的页码。
     const onPageChange = vi.fn();
     // options 是自动化页的固定筛选条件。
-    const options = { activeTab: 'automation' as const, selectedAccountId: 'account-1', automationTriggerFilter: '' as const, automationStatusFilter: 'all' as const, debouncedAutomationSearch: '测试', automationPage: 2, automationPageSize: 10, setSelectedAccountId, onAutomationPageChange: onPageChange };
+    const options = { activeTab: 'automation' as const, selectedAccountId: 'account-1', automationTriggerFilter: '' as const, automationStatusFilter: 'all' as const, debouncedAutomationSearch: '测试', automationPage: 2, automationPageSize: 10, onAutomationPageChange: onPageChange };
     shippingPageMock.mockResolvedValueOnce({ success: true, data: [shippingFixture], total: 1, page: 1, page_size: 10, total_pages: 1, trigger_counts: { order_paid: 1 } });
     // hook 是规则数据 Hook 的渲染结果。
     const hook = renderHook(
@@ -87,11 +85,6 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
     );
     expect(hook.result.current.accounts).toEqual([accountFixture]);
     expect(hook.result.current.cards).toEqual([cardFixture]);
-    expect(setSelectedAccountId).toHaveBeenCalled();
-    // selectedAccountUpdater 是规则 Hook 回填账号时交给 React 的函数式更新器。
-    const selectedAccountUpdater = setSelectedAccountId.mock.calls[0][0] as (current: string) => string;
-    expect(selectedAccountUpdater('')).toBe('account-1');
-    expect(selectedAccountUpdater('existing')).toBe('existing');
     await act(
       // automationAction 加载分页规则和异常。
       async () => hook.result.current.loadAutomationRules(),
@@ -104,12 +97,10 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
   });
 
   test('异常请求失败不阻断规则展示，关键词和默认回复按页签刷新', /* 当前回调验证异常隔离和三个页签刷新分支。 */ async () => {
-    // setSelectedAccountId 是页签刷新所需的账号状态替身。
-    const setSelectedAccountId = vi.fn();
     // activeTab 是当前规则页签，可在测试中切换。
     let activeTab: 'automation' | 'reply' | 'default' = 'automation';
     // optionsFactory 根据当前页签生成 Hook 参数。
-    const optionsFactory = () => ({ activeTab, selectedAccountId: 'account-1', automationTriggerFilter: 'order_paid' as const, automationStatusFilter: 'enabled' as const, debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 5, setSelectedAccountId });
+    const optionsFactory = () => ({ activeTab, selectedAccountId: 'account-1', automationTriggerFilter: 'order_paid' as const, automationStatusFilter: 'enabled' as const, debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 5 });
     issuesMock.mockRejectedValueOnce(new Error('异常接口不可用'));
     // hook 是多页签规则 Hook 的渲染结果。
     const hook = renderHook(
@@ -156,26 +147,23 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
     hook.unmount();
   });
 
-  test('参考账号为空时清空当前账号选择', /* 当前回调验证参考数据无账号的默认选择分支。 */ async () => {
-    // setSelectedAccountId 是空账号参考数据的选择状态替身。
-    const setSelectedAccountId = vi.fn();
+  test('账号参考为空时参考数据照常加载且不改写账号筛选', /* 当前回调验证「全部账号」筛选不会被参考数据加载覆盖。 */ async () => {
     accountsMock.mockResolvedValueOnce([]);
     // hook 是空账号参考数据场景的规则 Hook 渲染结果。
     const hook = renderHook(
       // emptyReferenceHookFactory 创建空账号参考数据的规则 Hook。
-      () => useRulesData({ activeTab: 'default', selectedAccountId: '', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10, setSelectedAccountId }),
+      () => useRulesData({ activeTab: 'default', selectedAccountId: '', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10 }),
     );
     await act(
       // referenceAction 加载空账号参考数据。
       async () => hook.result.current.loadReferenceData(),
     );
-    expect(setSelectedAccountId).toHaveBeenCalledWith(expect.any(Function));
+    expect(hook.result.current.accounts).toEqual([]);
+    expect(hook.result.current.defaultReplies).toEqual({ 'account-1': defaultReplyFixture });
     hook.unmount();
   });
 
   test('参考数据部分失败时仍保留账号，刷新时重新读取账号列表', /* 当前回调验证 Issue #20 的账号显示和刷新回归场景。 */ async () => {
-    // setSelectedAccountId 是规则页刷新首个账号选择的状态替身。
-    const setSelectedAccountId = vi.fn();
     // refreshedAccount 是账号管理页新增或登录后，刷新规则页应显示的新账号。
     const refreshedAccount = { ...accountFixture, id: 'account-2', nickname: '账号二' };
     // consoleLog 是参考数据部分失败日志的可控替身。
@@ -185,7 +173,7 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
     // hook 是自动化页参考数据和规则刷新的真实 Hook 实例。
     const hook = renderHook(
       // issue20HookFactory 创建 Issue #20 的部分参考请求失败场景。
-      () => useRulesData({ activeTab: 'automation', selectedAccountId: '', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10, setSelectedAccountId }),
+      () => useRulesData({ activeTab: 'automation', selectedAccountId: '', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10 }),
     );
     await act(/* 当前回调等待首次参考数据请求完成并保留可观察的失败结果。 */ async () => {
       // referenceAction 首次加载参考数据，卡密失败不应阻断账号列表收口。
@@ -205,12 +193,10 @@ describe('useRulesData', /* 当前回调处理规则页参考数据、分页和�
   });
 
   test('带分页回调的规则 Hook 入口保持数据契约', /* 当前回调验证分页兼容入口委托到统一规则 Hook。 */ async () => {
-    // setSelectedAccountId 是分页兼容入口所需的账号状态替身。
-    const setSelectedAccountId = vi.fn();
     // hook 是分页兼容入口的规则数据 Hook 渲染结果。
     const hook = renderHook(
       // pageChangeHookFactory 创建带分页回调的规则 Hook。
-      () => useRulesDataWithPageChange({ activeTab: 'automation', selectedAccountId: 'account-1', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10, setSelectedAccountId }),
+      () => useRulesDataWithPageChange({ activeTab: 'automation', selectedAccountId: 'account-1', automationTriggerFilter: '', automationStatusFilter: 'all', debouncedAutomationSearch: '', automationPage: 1, automationPageSize: 10 }),
     );
     await act(
       // refreshAction 通过兼容入口刷新规则数据。
