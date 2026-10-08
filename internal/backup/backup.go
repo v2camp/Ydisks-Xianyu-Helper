@@ -232,6 +232,11 @@ func (s *Service) snapshot(ctx context.Context) bool {
 		s.logger.Warn("序列化备份快照失败", "err", err)
 		return false
 	}
+	// mkdirErr 确保备份目录存在；os.WriteFile 不会创建多级父目录，首次运行必须显式建目录。
+	if mkdirErr := os.MkdirAll(s.dir, 0o700); mkdirErr != nil {
+		s.logger.Warn("创建备份目录失败", "dir", s.dir, "err", mkdirErr)
+		return false
+	}
 	// name 是备份文件名；精确到秒避免同秒覆盖。
 	name := filePrefix + s.now().Format("20060102-150405") + ".json"
 	// writeErr 是写文件错误；0600 限制只有本进程与管理员可读。

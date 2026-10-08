@@ -187,6 +187,25 @@ func TestServiceSkipsWhenReadFails(t *testing.T) {
 	}
 }
 
+// TestServiceCreatesMissingDirectory 验证备份目录不存在时首次快照会自动创建并落盘。
+func TestServiceCreatesMissingDirectory(t *testing.T) {
+	// dir 是尚不存在的多级备份目录；模拟容器首次启动的场景。
+	dir := filepath.Join(t.TempDir(), "data", "backups")
+	// source 预置一条卡密。
+	source := &fakeSource{cards: []CardRecord{{ID: 1, Name: "卡密"}}, rules: []RuleRecord{}, hours: 24}
+	// svc 是被测服务。
+	svc := NewService(source, dir, nil)
+	// ok 表示本次快照是否成功；目录自动创建后应成功。
+	if ok := svc.snapshot(context.Background()); !ok {
+		t.Fatal("备份目录不存在时首次快照应自动创建目录并成功")
+	}
+	// entries 是自动创建后的目录内容；应恰好有一份备份。
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil || len(entries) != 1 {
+		t.Fatalf("自动创建目录后应有一份备份: entries=%d err=%v", len(entries), readErr)
+	}
+}
+
 // waitForFile 轮询等待目录中出现首个备份文件，超时判定为服务未按契约产出。
 func waitForFile(t *testing.T, dir string) {
 	t.Helper()
