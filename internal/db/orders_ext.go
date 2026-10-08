@@ -297,6 +297,51 @@ func (o *Orders) ByCookieCursor(ctx context.Context, cookieID string, limit int,
 	return scanOrderRows(rows, cookieID)
 }
 
+// ExistsOpenSellerOrderByChat 判断会话内是否存在归属指定账号且未软删除的订单。
+// 会话内的订单不限状态：待付款与待发货都能证明该账号在这个会话里承担卖家义务，后续应收继续放行。
+func (o *Orders) ExistsOpenSellerOrderByChat(ctx context.Context, chatID, cookieID string) (bool, error) {
+	// sessionID、accountID 分别是去除协议后缀的会话标识与账号标识。
+	sessionID, accountID := strings.TrimSuffix(strings.TrimSpace(chatID), "@goofish"), strings.TrimSpace(cookieID)
+	if o == nil || o.DB == nil || sessionID == "" || accountID == "" {
+		return false, nil
+	}
+	// exists 保存归属查询的命中标记。
+	var exists int
+	// err 保存归属查询错误；驱动差异不影响「是否存在」的唯一答案。
+	if err := o.DB.QueryRowContext(ctx,
+		`SELECT 1 FROM orders WHERE chat_id IN (?,?) AND cookie_id=? AND deleted_at IS NULL LIMIT 1`,
+		sessionID, sessionID+"@goofish", accountID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return exists == 1, nil
+}
+
+// FindLatestForeignOrderByChat 查询会话内最近一笔不归属指定账号的未软删除订单，用于判定本账号是否为买家或无关账号。
+// 同一张平台交易卡片会同时投送到卖家和买家登录账号；只有确认订单完全不属于本账号时，调用方才能排除卖家视角。
+func (o *Orders) FindLatestForeignOrderByChat(ctx context.Context, chatID, cookieID string) (*Order, error) {
+	// sessionID、accountID 分别是去除协议后缀的会话标识与账号标识。
+	sessionID, accountID := strings.TrimSuffix(strings.TrimSpace(chatID), "@goofish"), strings.TrimSpace(cookieID)
+	if o == nil || o.DB == nil || sessionID == "" || accountID == "" {
+		return nil, nil
+	}
+	// orderID 保存查询出的最近订单业务标识。
+	var orderID string
+	// err 保存候选查询错误；没有命中表示会话内没有可比较身份的订单事实。
+	if err := o.DB.QueryRowContext(ctx,
+		`SELECT order_id FROM orders WHERE chat_id IN (?,?) AND cookie_id<>? AND deleted_at IS NULL
+		  ORDER BY updated_at DESC,order_id DESC LIMIT 1`,
+		sessionID, sessionID+"@goofish", accountID).Scan(&orderID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return o.Get(ctx, orderID)
+}
+
 // normalizeOrderCursorTime 将订单行时间转换为跨数据库可比较的 UTC 文本。
 func normalizeOrderCursorTime(value string) string {
 	// parsed 表示驱动层返回的标准时间值。
