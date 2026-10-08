@@ -9,6 +9,7 @@ import (
 )
 
 // resolvePaidTaskOrder 为交易系统消息回填本账号已有订单事实，避免未知角色事件因协议字段缺失而无法完成卖家核验。
+// 付款与待刀成阶段按待发货订单回填；拍下（待付款）阶段按含待付款的未终结订单回填，否则拍下事件会永久缺商品事实并死信。
 func (c *Center) resolvePaidTaskOrder(ctx context.Context, task Task) (Task, error) {
 	if c == nil || c.store == nil || c.store.Orders == nil || (task.TriggerType != TriggerOrderCreated && task.TriggerType != TriggerOrderPaid && task.TriggerType != TriggerBargainPending) {
 		return task, nil
@@ -24,11 +25,20 @@ func (c *Center) resolvePaidTaskOrder(ctx context.Context, task Task) (Task, err
 		}
 		return mergeOrderIntoTask(task, order), nil
 	}
-	if task.TriggerType == TriggerOrderCreated || task.ChatID == "" {
+	if task.ChatID == "" {
 		return task, nil
 	}
-	// order 保存按账号、会话以及可选买家和商品条件命中的待发货订单。
-	order, err := c.store.Orders.FindLatestPendingByChat(ctx, task.AccountID, task.ChatID, task.BuyerID, task.ItemID)
+	// order 保存按账号、会话以及可选买家和商品条件命中的本地订单。
+	var order *db.Order
+	// err 表示按会话回填订单时的查询错误。
+	var err error
+	if task.TriggerType == TriggerOrderCreated {
+		// 拍下事件对应订单尚未付款，须按含待付款的未终结订单回填商品与订单事实。
+		order, err = c.store.Orders.FindLatestOpenByChat(ctx, task.AccountID, task.ChatID, task.BuyerID, task.ItemID)
+	} else {
+		// 付款与待刀成事件只认待发货订单，避免把未付款订单当成可发货事实。
+		order, err = c.store.Orders.FindLatestPendingByChat(ctx, task.AccountID, task.ChatID, task.BuyerID, task.ItemID)
+	}
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			return task, nil
