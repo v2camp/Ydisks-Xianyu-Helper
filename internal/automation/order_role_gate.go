@@ -51,6 +51,10 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 	}
 	if task.TriggerType == TriggerOrderCreated {
 		if strings.TrimSpace(task.ItemID) == "" {
+			// foreignReason 保存用会话内其它归属订单否定本机卖家身份的结论；非空时不再延期等待。
+			if foreignReason := c.resolveBuyerRoleByForeignChatOrder(ctx, task); foreignReason != "" {
+				return task, false, foreignReason, nil
+			}
 			return task, false, "missing_local_item", nil
 		}
 		if c == nil || c.store == nil || c.store.Items == nil {
@@ -71,6 +75,10 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 		return task, false, "order_store_unavailable", nil
 	}
 	if strings.TrimSpace(task.OrderID) == "" {
+		// foreignReason 保存用会话内其它归属订单否定本机卖家身份的结论；非空时不再延期等待。
+		if foreignReason := c.resolveBuyerRoleByForeignChatOrder(ctx, task); foreignReason != "" {
+			return task, false, foreignReason, nil
+		}
 		return task, false, "missing_order_id", nil
 	}
 	// order、orderErr 保存当前账号的本地订单事实；读取范围随后还会再次核对账号归属。
@@ -82,6 +90,36 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 		return task, false, "", fmt.Errorf("核对未知角色订单事实: %w", orderErr)
 	}
 	return c.authorizeWebSocketSellerTaskWithOrder(ctx, task, order)
+}
+
+// resolveBuyerRoleByForeignChatOrder 在缺少订单或商品事实时，用会话内的订单归属判断本机是否为买家或无关账号。
+// 同一张平台交易卡片会同时送到卖家和买家登录账号：买家侧事件永远等不到属于它的卖家事实，若继续延期会在退避队列里
+// 反复重放，最终还会按重试上限发出「需要人工处理」告警，而买家侧根本没有发货义务。
+// 返回空串表示证据不足，调用方必须维持原行为继续延期；返回的拒绝原因都不在可重试集合内，事件会被直接收口。
+func (c *Center) resolveBuyerRoleByForeignChatOrder(ctx context.Context, task Task) string {
+	if c == nil || c.store == nil || c.store.Orders == nil || strings.TrimSpace(task.ChatID) == "" {
+		return ""
+	}
+	// ownerExists 表示该会话内是否存在归属本账号的订单；存在时本机仍可能是卖家，必须继续等待订单同步。
+	ownerExists, ownerErr := c.store.Orders.ExistsOpenSellerOrderByChat(ctx, task.ChatID, task.AccountID)
+	if ownerErr != nil {
+		// 读取失败时不得臆断身份，保留延期以免误杀真实的卖家发货义务。
+		return ""
+	}
+	if ownerExists {
+		return ""
+	}
+	// foreign 保存会话内最近一笔不归属本账号的订单；没有这类订单时同样没有否定卖家身份的依据。
+	foreign, foreignErr := c.store.Orders.FindLatestForeignOrderByChat(ctx, task.ChatID, task.AccountID)
+	if foreignErr != nil || foreign == nil {
+		return ""
+	}
+	if sameOrderIdentity(foreign.BuyerID, task.AccountID) {
+		// 买家标识与本账号一致：本机就是这笔订单的买家，不是卖家。
+		return "explicit_buyer_role"
+	}
+	// 订单归属其它账号且买家也不是本机：本机与该笔订单无关，不需要执行任何发货动作。
+	return "order_account_mismatch"
 }
 
 // authorizeWebSocketSellerTaskWithOrder 使用已读取的订单和当前账号商品表完成未知角色核验。
