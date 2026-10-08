@@ -329,8 +329,8 @@ func (s *Scheduler) scanPendingShipResumesWithContextAndLimit(ctx context.Contex
 			if !paid {
 				continue
 			}
-			// frozenPlan、eligible、planErr 保存运行快照里冻结的动作计划、是否可自动续跑及不可续跑原因。
-			frozenPlan, eligible, planErr := pendingShipResumeFrozenPlan(candidate)
+			// frozenPlan、resumeCursor、eligible、planErr 保存运行快照里冻结的动作计划、续跑起始下标、是否可自动续跑及不可续跑原因。
+			frozenPlan, resumeCursor, eligible, planErr := pendingShipResumeFrozenPlan(candidate)
 			if planErr != nil || !eligible {
 				s.center.logger.Info("待发货运行不满足自动续跑条件，保留人工核对",
 					"account", candidate.Order.CookieID, "order_id", candidate.Order.OrderID,
@@ -342,7 +342,7 @@ func (s *Scheduler) scanPendingShipResumesWithContextAndLimit(ctx context.Contex
 				continue
 			}
 			// reopened、reopenErr 保存重开运行结果；失败说明状态或代次已变化，放弃本次续跑。
-			reopened, reopenErr := s.center.store.Automation.ReopenRunForRecovery(ctx, candidate.RunID, candidate.Attempt, time.Now().UTC().Add(5*time.Minute).Unix())
+			reopened, reopenErr := s.center.store.Automation.ReopenRunForRecovery(ctx, candidate.RunID, candidate.Attempt, resumeCursor, time.Now().UTC().Add(5*time.Minute).Unix())
 			if reopenErr != nil || !reopened {
 				if reopenErr == nil {
 					// 已知没有取得数据库执行权，不应让失败的竞争者消耗订单冷却窗口。
@@ -357,7 +357,8 @@ func (s *Scheduler) scanPendingShipResumesWithContextAndLimit(ctx context.Contex
 			leftTasks--
 			s.center.logger.Info("待发货运行未完成，按检查点续跑剩余状态动作",
 				"account", candidate.Order.CookieID, "order_id", candidate.Order.OrderID,
-				"run_id", candidate.RunID, "action_cursor", candidate.ActionCursor, "previous_status", candidate.Status)
+				"run_id", candidate.RunID, "action_cursor", candidate.ActionCursor,
+				"resume_cursor", resumeCursor, "previous_status", candidate.Status)
 			// taskCtx 限制单次执行预算，上游接口挂起时不能让分钟级扫描被永久拖住。
 			taskCtx, cancel := context.WithTimeout(ctx, pendingShipTaskTimeout)
 			// task 携带运行快照里冻结的动作计划与运行标识：执行链必须沿用运行创建时的计划，

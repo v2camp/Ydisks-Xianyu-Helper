@@ -212,23 +212,49 @@ func pendingShipCatchupReady(order db.Order, now time.Time) (bool, string) {
 }
 
 // pendingShipResumeFrozenPlan 从运行的原始事件快照恢复冻结的动作计划，并判定能否自动续跑。
-func pendingShipResumeFrozenPlan(candidate db.PendingShipResume) ([]db.AutomationAction, bool, error) {
+// 返回值为完整计划、续跑起始动作下标与是否可续跑；订单仍待发货但运行已收口成功时，起始下标会回退到尚未真正生效的确认发货尾部。
+func pendingShipResumeFrozenPlan(candidate db.PendingShipResume) ([]db.AutomationAction, int, bool, error) {
 	// original 保存运行创建时冻结的任务事实与完整动作计划。
 	var original Task
 	// err 保存快照解析错误；历史快照损坏时不能猜测缺失的动作。
 	if err := json.Unmarshal([]byte(candidate.RawEventJSON), &original); err != nil {
-		return nil, false, fmt.Errorf("待发货续跑运行的原始计划无法解析: %w", err)
+		return nil, 0, false, fmt.Errorf("待发货续跑运行的原始计划无法解析: %w", err)
 	}
 	if original.AccountID != candidate.Order.CookieID || original.OrderID != candidate.Order.OrderID || len(original.ActionPlan) == 0 {
-		return nil, false, fmt.Errorf("待发货续跑运行的原始计划缺失或归属不符")
+		return nil, 0, false, fmt.Errorf("待发货续跑运行的原始计划缺失或归属不符")
 	}
 	if candidate.ActionCursor < 0 || candidate.ActionCursor > len(original.ActionPlan) {
-		return nil, false, fmt.Errorf("待发货续跑运行的游标越界: %d", candidate.ActionCursor)
+		return nil, 0, false, fmt.Errorf("待发货续跑运行的游标越界: %d", candidate.ActionCursor)
 	}
-	if !pendingShipOnlyIdempotentTail(original.ActionPlan[candidate.ActionCursor:]) {
-		return nil, false, nil
+	// resumeCursor 是本次续跑应当从冻结计划中开始执行的动作下标；不可续跑时为 -1。
+	resumeCursor := pendingShipIdempotentTailStart(original.ActionPlan, candidate.ActionCursor)
+	if resumeCursor < 0 {
+		return nil, 0, false, nil
 	}
-	return original.ActionPlan, true, nil
+	return original.ActionPlan, resumeCursor, true, nil
+}
+
+// pendingShipIdempotentTailStart 计算续跑应使用的动作下标；不可续跑时返回 -1。
+// 冻结计划末尾连续的确认发货动作构成幂等尾部：账号未开启自动确认发货时这些动作会被静默跳过且运行仍记为成功，
+// 订单保持待发货时必须从这个尾部重新开始；尾部之前的发卡与消息动作不能重演，因此游标不得向前跨越它们。
+func pendingShipIdempotentTailStart(plan []db.AutomationAction, cursor int) int {
+	// tailStart 从计划末尾向前定位幂等尾部的起点。
+	tailStart := len(plan)
+	for tailStart > 0 && plan[tailStart-1].ActionType == ActionConfirmShipment {
+		tailStart--
+	}
+	if tailStart == len(plan) {
+		// 计划没有以确认发货收尾，回退任何一步都会重演消息或发卡动作，只能保留人工核对。
+		return -1
+	}
+	if cursor < tailStart {
+		// 仍有非幂等动作没有确认完成，不得跨越它们只跑尾部的状态动作。
+		return -1
+	}
+	if !pendingShipOnlyIdempotentTail(plan[tailStart:]) {
+		return -1
+	}
+	return tailStart
 }
 
 // pendingShipOnlyIdempotentTail 判断剩余动作是否只包含平台侧幂等的状态动作。
