@@ -134,6 +134,14 @@ func (s *Server) batchCreateCards(w http.ResponseWriter, r *http.Request) {
 			draft.ImageURL = content
 		}
 
+		// 文本卡密若「内容」列无可发送特征而「描述」列含有链接/卡密，极可能是两列填反；
+		// 自动发货只会发送「内容」，填反会导致买家收不到交付内容，此处明确拒绝该行。
+		if cardType == "text" && !looksLikeDeliverableContent(content) && looksLikeDeliverableContent(draft.Description) {
+			results = append(results, cardBatchResultRow{RowNo: rowNo, Success: false, Name: name, Type: cardType, Error: "疑似「内容」与「描述」填反：自动发货只发送「内容」列，但该列没有链接/卡密等可发送内容，而「描述」列含有。请核对列后重新导入"})
+			failed++
+			continue
+		}
+
 		// id、err 保存应用服务创建的卡券标识及逐行错误。
 		id, err := s.cardsApplication().Create(r.Context(), sess.UserID, draft)
 		if err != nil {
@@ -195,4 +203,23 @@ func (s *Server) appendCardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cardAppendResponse{Success: true, Added: added})
+}
+
+// looksLikeDeliverableContent 判断文本是否含有可发送给买家的交付内容特征（链接、提取码、密码等）。
+// 该判定用于批量导入时识别「内容」与「描述」可能填反的情况，命中即视为可疑而非绝对。
+func looksLikeDeliverableContent(s string) bool {
+	// lower 是忽略大小写后用于特征匹配的文本。
+	lower := strings.ToLower(strings.TrimSpace(s))
+	if lower == "" {
+		return false
+	}
+	// markers 标记可能属于「内容」列的交付特征，按出现即判定。
+	markers := []string{"http://", "https://", "pan.baidu", "链接", "提取码", "提取密码", "密码：", "密码:", "pwd=", "pw=", "www."}
+	// marker 表示当前遍历过程中的可发送交付特征标记。
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

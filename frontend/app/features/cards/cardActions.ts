@@ -268,9 +268,9 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
     const headers = ['名称', '类型', '内容', '描述', '启用', '延迟秒', '多规格', '规格名', '规格值'];
     // rows 保存模板示例数据。
     const rows = [
-      ['VIP月卡', 'data', 'VIP-MONTH-001\nVIP-MONTH-002\nVIP-MONTH-003', '按行消费的卡密队列', '是', '0', '否', '', ''],
-      ['感谢文案', 'text', '感谢购买，如有问题联系客服～', '固定文本', '是', '0', '否', '', ''],
-      ['教程图', 'image', 'https://cdn.example.com/tutorial.jpg', '图片URL', '是', '0', '否', '', ''],
+      ['VIP月卡', 'data', 'VIP-MONTH-001\nVIP-MONTH-002\nVIP-MONTH-003', '内部备注（不发送）', '是', '0', '否', '', ''],
+      ['感谢文案', 'text', '感谢购买，如有问题联系客服～（这一列会发给买家）', '内部备注（不发送）', '是', '0', '否', '', ''],
+      ['教程图', 'image', 'https://cdn.example.com/tutorial.jpg', '内部备注（不发送）', '是', '0', '否', '', ''],
     ];
     // csv 保存转义后的模板文本。
     const csv = [headers, ...rows]
