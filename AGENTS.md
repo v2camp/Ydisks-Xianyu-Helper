@@ -23,7 +23,7 @@
 - 编译、测试、vet 与覆盖率一律在本机执行。
 - 容器只用于镜像、浏览器与 Web UI 冒烟。
 - functional 栈只能通过 scripts/compose-functional.sh 执行。
-- 禁止在部署工作区根目录执行任何 docker compose 命令。
+- 禁止在部署工作区根目录执行 functional 栈的 compose 命令。
 - 执行 compose 前后必须核对生产容器未被改动。
 - 看到 orphan 容器告警必须立即停止并核对项目名。
 - 本机验证前先跑 scripts/guard-local-dev-env.sh。
@@ -450,8 +450,9 @@ go test -coverprofile=/tmp/cover-core.out \
 - 止损要用同一项目名的 `stop` 或 `down`，或等待其自行结束。
 - 禁止对 functional 项目使用 `--remove-orphans`。
 - 该参数会把生产容器当作孤儿删除。
-- 禁止在部署工作区根目录执行任何 docker compose 命令。
+- 禁止在部署工作区根目录执行 functional 栈的 compose 命令。
 - 数据库依赖优先复用本机已运行实例，不新起容器。
+- 生产部署按 4.1 在部署根目录执行主文件与 override，不受本节限制。
 - 生产容器被替换即为事故，先恢复再排查，不要继续跑门禁。
 
 ## 3. 提交与评审

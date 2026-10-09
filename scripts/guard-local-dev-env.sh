@@ -133,7 +133,7 @@ fi
 # 判定依据是「当前工作目录」而非脚本位置：危险来自 CWD 下的 .env 会被 compose 读作项目名。
 if [ -f "$PWD/.env" ] && grep -q '^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=' "$PWD/.env"; then
     printf '[WARN] 当前目录 %s 的 .env 设置了 COMPOSE_PROJECT_NAME\n' "$PWD"
-    printf '[WARN] 禁止在此目录执行 docker compose；功能栈请改用 scripts/compose-functional.sh（须在 worktree 目录运行）\n'
+    printf '[WARN] 禁止在此目录执行 functional 栈的 compose 命令；请改用 scripts/compose-functional.sh（须在 worktree 目录运行）\n'
 fi
 
 # ---- 汇总退出 ----
