@@ -27,7 +27,7 @@
 - 严格对齐容器版本时加 GOTOOLCHAIN=go1.26.4 前缀。
 - 本机产物是 macOS 二进制，禁止进镜像或部署。
 - 部署镜像必须走 Dockerfile.debian13 的容器构建。
-- MySQL 与 Postgres 方言的回归证据只在容器内出。
+- PostgreSQL 方言的回归证据只在容器内出。
 - 浏览器与 Web UI 冒烟只在容器内跑。
 - 合并到 main 前必须补跑一次容器完整门禁。
 - 本机与容器的版本差异要在提交说明登记。
@@ -239,9 +239,9 @@ npm --prefix frontend run comments:check
 - 改用窄仓储方法或显式工作单元。
 - SQL 行结构、持久化模型、领域模型与 DTO 不得合并。
 - 敏感度或归属不同的类型尤其禁止合并。
-- 每次迁移保持三种方言的编号与最终 schema 一致。
+- 每次迁移保持两种方言的编号与最终 schema 一致。
 - 数据库行为变更要有 SQLite 聚焦测试。
-- 有环境时补 MySQL 与 Postgres 回归或 dbverify 证据。
+- 有环境时补 PostgreSQL 回归或 dbverify 证据。
 - 仓储与包拆分只在消费者接口与事务边界清晰后做。
 - 目录数量不是目标。
 - 禁止用全局变量或反射隐藏包循环。
@@ -372,9 +372,9 @@ docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
 - 本机未装 golangci-lint 时，提交前补跑容器 go-lint。
 - go fmt 会就地改写文件，提交前必须核对 git status。
 - 格式收口不在 CI 校验内，须单开任务避免夹带。
-- go-test 依赖健康的 mysql 与 postgres。
-- 执行 compose run 时会自动拉起这两个数据库。
-- 本机调试多方言可只起 mysql 与 postgres 两容器。
+- go-test 依赖健康的 postgres。
+- 执行 compose run 时会自动拉起该数据库。
+- 本机调试多方言可只起 postgres 容器。
 - 单测命令加 -run TestName -v -count=1。
 - 端到端验证用仓库脚本，不要手工拼命令。
 - scripts 目录提供 full、functional 与 persistence 三套脚本。

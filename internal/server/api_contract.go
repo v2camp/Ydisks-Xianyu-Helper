@@ -78,6 +78,16 @@ type cookieSummaryResponse struct {
 	LastPolishDate string `json:"last_polish_date"`
 	// LastPolishAt 是最近一次自动擦亮时间。
 	LastPolishAt int64 `json:"last_polish_at"`
+	// AutoDelistEnabled 表示每日定时下架是否启用。
+	AutoDelistEnabled bool `json:"auto_delist_enabled"`
+	// DelistTime 是每日定时下架的本地时间。
+	DelistTime string `json:"delist_time"`
+	// DelistItemIDs 是参与下架的商品白名单。
+	DelistItemIDs []string `json:"delist_item_ids"`
+	// LastDelistDate 是最近一次下架日期。
+	LastDelistDate string `json:"last_delist_date"`
+	// LastDelistAt 是最近一次下架时间。
+	LastDelistAt int64 `json:"last_delist_at"`
 }
 
 // writeErrRequest 写带请求追踪标识的统一错误响应。

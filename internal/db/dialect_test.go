@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-// TestDialectUpsert 表驱动断言三种方言的 UPSERT 子句生成。
-// 关键不变量：SQLite/Postgres 用 ON CONFLICT...DO UPDATE SET，MySQL 用 ON DUPLICATE KEY UPDATE；
-// 列名按字典序输出（保证幂等可重现）；MySQL 下 EXCLUDED.col 自动改写为 VALUES(col)，
-// 大小写不敏感；CURRENT_TIMESTAMP 等非 EXCLUDED 表达式原样保留。
+// TestDialectUpsert 表驱动断言两种方言的 UPSERT 子句生成。
+// 关键不变量：SQLite/Postgres 都用 ON CONFLICT...DO UPDATE SET；
+// 列名按字典序输出（保证幂等可重现）；CURRENT_TIMESTAMP 等非 EXCLUDED 表达式原样保留。
 // TestDialectUpsert 封装TestDialectUpsert业务协调。
 func TestDialectUpsert(t *testing.T) {
 	// cases 用于本次流程后续判断的cases
@@ -32,20 +31,6 @@ func TestDialectUpsert(t *testing.T) {
 			conflict: []string{"order_id"},
 			updates:  map[string]string{"status": "EXCLUDED.status"},
 			want:     " ON CONFLICT (order_id) DO UPDATE SET status=EXCLUDED.status",
-		},
-		{
-			name:     "mysql rewrites EXCLUDED to VALUES",
-			d:        DialectMySQL,
-			conflict: []string{"id"},
-			updates:  map[string]string{"value": "EXCLUDED.value", "updated_at": "CURRENT_TIMESTAMP"},
-			want:     " ON DUPLICATE KEY UPDATE updated_at=CURRENT_TIMESTAMP, value=VALUES(value)",
-		},
-		{
-			name:     "mysql lowercase excluded also rewritten",
-			d:        DialectMySQL,
-			conflict: []string{"id"},
-			updates:  map[string]string{"value": "excluded.value"},
-			want:     " ON DUPLICATE KEY UPDATE value=VALUES(value)",
 		},
 		{
 			name:     "multi-column conflict key",
@@ -81,8 +66,8 @@ func TestDialectUpsert(t *testing.T) {
 	}
 }
 
-// TestDialectInsertIgnore 断言“冲突即忽略”子句：MySQL 恒空（前缀模式负责），
-// SQLite/Postgres 生成 ON CONFLICT...DO NOTHING，空 conflictCols 时返回空。
+// TestDialectInsertIgnore 断言“冲突即忽略”子句：SQLite/Postgres 生成 ON CONFLICT...DO NOTHING，
+// 空 conflictCols 时返回空。
 // TestDialectInsertIgnore 封装TestDialectInsertIgnore业务协调。
 func TestDialectInsertIgnore(t *testing.T) {
 	// cases 用于本次流程后续判断的cases
@@ -93,8 +78,6 @@ func TestDialectInsertIgnore(t *testing.T) {
 	}{
 		{DialectSQLite, []string{"id"}, " ON CONFLICT (id) DO NOTHING"},
 		{DialectPostgres, []string{"order_id"}, " ON CONFLICT (order_id) DO NOTHING"},
-		{DialectMySQL, []string{"id"}, ""},
-		{DialectMySQL, nil, ""},
 		{DialectSQLite, nil, ""},
 	}
 	// c 表示当前遍历过程中的c
@@ -107,12 +90,8 @@ func TestDialectInsertIgnore(t *testing.T) {
 	}
 }
 
-// TestDialectInsertIgnorePrefix MySQL 走 INSERT IGNORE，其余走 INSERT。
+// TestDialectInsertIgnorePrefix 两种方言都使用标准 INSERT 前缀。
 func TestDialectInsertIgnorePrefix(t *testing.T) {
-	if // got 用于本次流程后续判断的got
-	got := DialectInsertIgnorePrefix(DialectMySQL); got != "INSERT IGNORE" {
-		t.Errorf("mysql prefix = %q; want INSERT IGNORE", got)
-	}
 	if // got 用于本次流程后续判断的got
 	got := DialectInsertIgnorePrefix(DialectSQLite); got != "INSERT" {
 		t.Errorf("sqlite prefix = %q; want INSERT", got)
@@ -123,7 +102,7 @@ func TestDialectInsertIgnorePrefix(t *testing.T) {
 	}
 }
 
-// TestDialectQuote Postgres 用双引号，SQLite/MySQL 用反引号。
+// TestDialectQuote Postgres 用双引号，SQLite 用反引号。
 func TestDialectQuote(t *testing.T) {
 	// cases 用于本次流程后续判断的cases
 	cases := []struct {
@@ -132,7 +111,6 @@ func TestDialectQuote(t *testing.T) {
 		want string
 	}{
 		{DialectSQLite, "users", "`users`"},
-		{DialectMySQL, "users", "`users`"},
 		{DialectPostgres, "users", `"users"`},
 		{DialectPostgres, "order_id", `"order_id"`},
 	}

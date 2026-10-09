@@ -111,6 +111,10 @@ export default defineConfig({
           ) {
             return 'item-location-picker';
           }
+          // 批量导入弹窗低频且体积可观，独立静态分片可保持卡密列表页下载预算稳定。
+          if (modulePath.includes('/app/features/cards/components/BatchCardImportModal.')) {
+            return 'card-batch-import';
+          }
           if (!modulePath.includes('/node_modules/')) {
             return undefined;
           }

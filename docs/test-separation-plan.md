@@ -45,7 +45,7 @@
 | 协议层 `internal/xianyu/protocol` | golden 录制（真实抓包样本锁定签名/解密） | 已有 `golden_test.go` |
 | MTOP/WS 层 `internal/xianyu/mtop`、`ws` | httptest 本地替身 + 录制响应回放 | 已有，覆盖发送/回显/凭证轮换 |
 | 引擎/自动化/适配 `internal/engine` 等 | 注入替身 + 内存数据库 + mock OpenAI server | 已有（`ai_scope_test.go` 等） |
-| DB 层 `internal/db` | SQLite 内存库 + 三方言功能栈 | 已有 `TestMultiDB_*` |
+| DB 层 `internal/db` | SQLite 内存库 + 双方言功能栈 | 已有 `TestMultiDB_*` |
 | 前端 | vitest + tsc | 已有 |
 
 覆盖率现状佐证（均无真实账号）：Go 全库 81.4%、前端 79%。核心链路包级覆盖为 automation 88.5%、engine 89.3%、xianyu/ws 88.8%、adapter 83.7%、db 82.1%；部分核心文件未达 100% 门槛（如 manual_delivery、automation_delivery_proof、adapter_events），明细见 `docs/architecture/core-chain-coverage.md`。

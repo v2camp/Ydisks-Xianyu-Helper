@@ -80,7 +80,7 @@ func (c *Cookies) UpdateRenewalCookie(ctx context.Context, cookieID, cookieValue
 		return fmt.Errorf("更新续期 Cookie 影响了 %d 行", rows)
 	}
 	if rows == 0 {
-		// MySQL 默认报告“实际变更行数”，同值且同秒更新可能返回 0；
+		// 关系型数据库默认报告“实际变更行数”，同值且同秒更新可能返回 0；
 		// 只有记录确实不存在时才应映射为 ErrNotFound。
 		// exists 用于本次流程后续判断的exists
 		var exists bool

@@ -1,5 +1,5 @@
 -- +goose Up
--- 与 SQLite/MySQL 保持同一审计契约，不保存任何账号秘密或任务载荷。
+-- 与 SQLite 保持同一审计契约，不保存任何账号秘密或任务载荷。
 CREATE TABLE order_ownership_repairs (
     id BIGSERIAL PRIMARY KEY,
     order_id TEXT NOT NULL,

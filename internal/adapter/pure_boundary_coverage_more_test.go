@@ -146,7 +146,6 @@ func TestAdapterPureHelpersCoverBoundaryInputs(t *testing.T) {
 		marker string
 	}{
 		{dialect: db.DialectSQLite, marker: "GLOB"},
-		{dialect: db.DialectMySQL, marker: "REGEXP"},
 		{dialect: db.DialectPostgres, marker: "DOUBLE PRECISION"},
 	}
 	// dialectCase 表示当前金额表达式方言样例。

@@ -3,7 +3,7 @@
 -- 闲鱼管家初始 schema（PostgreSQL 版）。
 -- 与 SQLite 00001 对齐，差异：
 --   - INTEGER PRIMARY KEY AUTOINCREMENT → BIGSERIAL PRIMARY KEY
---   - 布尔列用 INTEGER 0/1（与 SQLite/MySQL 一致，Go 代码用 boolToInt 写、int 读）
+--   - 布尔列用 INTEGER 0/1（与 SQLite 一致，Go 代码用 boolToInt 写、int 读）
 --     不用原生 BOOLEAN：pgx 对 BOOLEAN 严格按 bool 类型读写，与全仓库 ? 占位符 +
 --     int 扫描的写法不兼容（见 internal/db/pgx_compat.go）。
 --   - INSERT OR IGNORE → ON CONFLICT DO NOTHING（业务代码用方言适配器）

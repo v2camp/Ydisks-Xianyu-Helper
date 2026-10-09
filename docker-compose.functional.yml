@@ -1,30 +1,9 @@
 name: ydisks-xianyu-helper-functional
 
-x-mysql-url: &mysql-url mysql://root:xianyu_root_password@tcp(mysql:3306)/xianyu?parseTime=true&loc=UTC
 x-postgres-url: &postgres-url postgres://xianyu:xianyu_postgres_password@postgres:5432/xianyu?sslmode=disable&timezone=UTC
 x-data-key: &data-key docker-functional-data-key-v1
 
 services:
-  mysql:
-    image: mysql:8.4
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: xianyu_root_password
-      MYSQL_DATABASE: xianyu
-      MYSQL_USER: xianyu
-      MYSQL_PASSWORD: xianyu_mysql_password
-      TZ: UTC
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00"]
-    ports:
-      - "13306:3306"
-    volumes:
-      - mysql8_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
   postgres:
     image: postgres:17
     restart: unless-stopped
@@ -64,23 +43,6 @@ services:
         test "$(sqlite3 /seed/xianyu_data.db 'PRAGMA journal_mode=DELETE;')" = "delete"
         sqlite3 /seed/xianyu_data.db "PRAGMA quick_check" | grep -qx ok
 
-  seed-mysql:
-    image: ydisks-xianyu-helper:functional
-    build:
-      context: .
-      dockerfile: Dockerfile.debian13
-    restart: "no"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      sqlite-seed-copy:
-        condition: service_completed_successfully
-    volumes:
-      - sqlite_seed:/seed:ro
-    environment:
-      XIANYU_DATA_KEY: *data-key
-    command: ["/app/xianyu-dbseed", "-source", "/seed/xianyu_data.db", "-target", *mysql-url, "-limit", "20"]
-
   seed-sqlite:
     image: ydisks-xianyu-helper:functional
     build:
@@ -110,28 +72,6 @@ services:
     environment:
       XIANYU_DATA_KEY: *data-key
     command: ["/app/xianyu-dbseed", "-source", "/seed/xianyu_data.db", "-target", *postgres-url, "-limit", "20"]
-
-  app-mysql:
-    image: ydisks-xianyu-helper:functional
-    restart: unless-stopped
-    depends_on:
-      seed-mysql:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: *mysql-url
-      XIANYU_DATA_KEY: *data-key
-      TZ: Asia/Shanghai
-    command: ["/app/xianyu-server", "-addr", ":59188", "-no-browser"]
-    ports:
-      - "28081:59188"
-    volumes:
-      - app_mysql_data:/app/data
-      - app_mysql_browser_data:/app/browser_data
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:59188/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
 
   app-sqlite:
     image: ydisks-xianyu-helper:functional
@@ -183,12 +123,9 @@ services:
       dockerfile: Dockerfile.test
       target: go-test
     depends_on:
-      mysql:
-        condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
-      TEST_MYSQL_URL: *mysql-url
       TEST_POSTGRES_URL: *postgres-url
     command: ["go", "test", "-race", "-timeout=20m", "./..."]
 
@@ -232,15 +169,6 @@ services:
       target: frontend-test
     command: ["sh", "-c", "npm run typecheck && npm test && npm run build"]
 
-  dbverify-mysql:
-    image: ydisks-xianyu-helper:functional
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      XIANYU_DATA_KEY: *data-key
-    command: ["/app/xianyu-dbverify", *mysql-url]
-
   dbverify-sqlite:
     image: ydisks-xianyu-helper:functional
     environment:
@@ -264,8 +192,6 @@ services:
     depends_on:
       app-sqlite:
         condition: service_healthy
-      app-mysql:
-        condition: service_healthy
       app-postgres:
         condition: service_healthy
     volumes:
@@ -273,13 +199,10 @@ services:
     entrypoint: ["/bin/sh", "/tests/docker-functional-test.sh"]
 
 volumes:
-  mysql8_data:
   postgres17_data:
   sqlite_seed:
   sqlite_verify_data:
   app_sqlite_data:
-  app_mysql_data:
   app_postgres_data:
-  app_mysql_browser_data:
   app_postgres_browser_data:
   app_sqlite_browser_data:

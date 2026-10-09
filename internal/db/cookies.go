@@ -346,7 +346,7 @@ func (c *Cookies) UpdateValueExisting(ctx context.Context, cookieID, cookieValue
 func (c *Cookies) cookieSelectForUpdate(columns string) string {
 	// query 用于本次流程后续判断的查询
 	query := `SELECT ` + columns + ` FROM cookies WHERE id=?`
-	if c.Dialect == DialectMySQL || c.Dialect == DialectPostgres {
+	if c.Dialect == DialectPostgres {
 		query += ` FOR UPDATE`
 	}
 	return query

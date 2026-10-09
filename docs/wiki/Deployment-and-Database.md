@@ -8,10 +8,9 @@
 | --- | --- | --- |
 | Local trial or low-frequency single-user use | SQLite | No extra service; the database is one file. |
 | Docker production deployment | PostgreSQL 17 | The default Compose file provides the service, persistent volume, and health check. |
-| Existing MySQL operations | MySQL 8+ | Reuses existing backups, monitoring, and permission management. |
-| Multiple users or long-running service | PostgreSQL / MySQL | Better suited to concurrency, backups, and independent operations. |
+| Multiple users or long-running service | PostgreSQL | Better suited to concurrency, backups, and independent operations. |
 
-All three databases run embedded migrations automatically at application startup. Connection precedence is `DATABASE_URL` > `-db-url` > `-db`. Back up a production database before upgrading it.
+Both databases run embedded migrations automatically at application startup. Connection precedence is `DATABASE_URL` > `-db-url` > `-db`. Back up a production database before upgrading it.
 
 ## Docker + PostgreSQL (recommended)
 
@@ -104,17 +103,6 @@ DATABASE_URL="sqlite://data/xianyu_data.db" ./xianyu-server
 ```
 
 Stop the service before backing up, or use an SQLite online-backup tool. Do not copy only the main database file while its WAL is being written. Restore the database together with the original `XIANYU_DATA_KEY`.
-
-## MySQL
-
-Create a UTF-8 database and least-privilege account, then provide its URL:
-
-```bash
-DATABASE_URL="mysql://user:URL-encoded-password@tcp(db.example:3306)/xianyu" \
-  ./xianyu-server -addr :59188
-```
-
-The application adds the required MySQL connection parameters. URL-encode `@`, `:`, `/`, and similar characters in passwords. Configure TLS according to the driver and infrastructure requirements; do not put a real password in shell history.
 
 ## PostgreSQL (external service)
 

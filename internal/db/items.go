@@ -299,22 +299,10 @@ func (i *Items) SavePageFromRemote(ctx context.Context, cookieID string, rows []
 
 // upsertBasic 封装upsertBasic业务协调。
 func (i *Items) upsertBasic(ctx context.Context, execer sqlExecer, r *ItemInfoRow) error {
-	// 三种数据库的条件 upsert：非空才覆盖，空值保留旧值。
-	// SQLite/Postgres 用 EXCLUDED.col 引用插入值；MySQL 用 VALUES(col)。
+	// 两种数据库的条件 upsert：非空才覆盖，空值保留旧值。
+	// SQLite/Postgres 用 EXCLUDED.col 引用插入值。
 	// conflictClause 用于本次流程后续判断的conflictClause
-	var conflictClause string
-	switch i.Dialect {
-	case DialectMySQL:
-		conflictClause = ` ON DUPLICATE KEY UPDATE
-		   item_title=CASE WHEN VALUES(item_title) IS NOT NULL AND VALUES(item_title) != '' THEN VALUES(item_title) ELSE item_info.item_title END,
-		   item_description=CASE WHEN VALUES(item_description) IS NOT NULL AND VALUES(item_description) != '' THEN VALUES(item_description) ELSE item_info.item_description END,
-		   item_category=CASE WHEN VALUES(item_category) IS NOT NULL AND VALUES(item_category) != '' THEN VALUES(item_category) ELSE item_info.item_category END,
-		   item_price=CASE WHEN VALUES(item_price) IS NOT NULL AND VALUES(item_price) != '' THEN VALUES(item_price) ELSE item_info.item_price END,
-		   item_detail=CASE WHEN VALUES(item_detail) IS NOT NULL AND VALUES(item_detail) != '' THEN VALUES(item_detail) ELSE item_info.item_detail END,
-		   deleted_at=NULL,
-		   updated_at=CURRENT_TIMESTAMP`
-	default:
-		conflictClause = ` ON CONFLICT(cookie_id, item_id) DO UPDATE SET
+	conflictClause := ` ON CONFLICT(cookie_id, item_id) DO UPDATE SET
 		   item_title=CASE WHEN EXCLUDED.item_title IS NOT NULL AND EXCLUDED.item_title != '' THEN EXCLUDED.item_title ELSE item_info.item_title END,
 		   item_description=CASE WHEN EXCLUDED.item_description IS NOT NULL AND EXCLUDED.item_description != '' THEN EXCLUDED.item_description ELSE item_info.item_description END,
 		   item_category=CASE WHEN EXCLUDED.item_category IS NOT NULL AND EXCLUDED.item_category != '' THEN EXCLUDED.item_category ELSE item_info.item_category END,
@@ -322,7 +310,6 @@ func (i *Items) upsertBasic(ctx context.Context, execer sqlExecer, r *ItemInfoRo
 		   item_detail=CASE WHEN EXCLUDED.item_detail IS NOT NULL AND EXCLUDED.item_detail != '' THEN EXCLUDED.item_detail ELSE item_info.item_detail END,
 		   deleted_at=NULL,
 		   updated_at=CURRENT_TIMESTAMP`
-	}
 	// err 用于本次流程后续判断的err
 	_, err := execer.ExecContext(ctx,
 		`INSERT INTO item_info (cookie_id, item_id, item_title, item_description,

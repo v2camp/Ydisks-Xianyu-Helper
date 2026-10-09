@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// --- db.go: parseDBURL / mysqlDSN ---
+// --- db.go: parseDBURL ---
 
 // TestParseDBURL 覆盖各 scheme 与向后兼容路径。
 func TestParseDBURL(t *testing.T) {
@@ -22,7 +22,6 @@ func TestParseDBURL(t *testing.T) {
 		{name: "sqlite path (no scheme)", url: "/tmp/x.db", driver: driverSQLite, dialect: DialectSQLite, dsnHas: "file:/tmp/x.db"},
 		{name: "sqlite scheme", url: "sqlite://rel/path.db", driver: driverSQLite, dialect: DialectSQLite, dsnHas: "file:rel/path.db"},
 		{name: "sqlite3 scheme", url: "sqlite3://x.db", driver: driverSQLite, dialect: DialectSQLite, dsnHas: "file:x.db"},
-		{name: "mysql scheme", url: "mysql://user:pass@tcp(h:3306)/db", driver: driverMySQL, dialect: DialectMySQL, dsnHas: "clientFoundRows=true"},
 		{name: "postgres url scheme", url: "postgres://u:p@h:5432/db", driver: driverPgx, dialect: DialectPostgres, dsnHas: "postgres://u:p@h:5432/db"},
 		{name: "postgres url without user", url: "postgres://localhost:5432/db?sslmode=disable", driver: driverPgx, dialect: DialectPostgres, dsnHas: "postgres://localhost:5432/db?sslmode=disable"},
 		{name: "pgx alias", url: "pgx://u:p@h:5432/db", driver: driverPgx, dialect: DialectPostgres, dsnHas: "pgx://u:p@h:5432/db"},
@@ -62,33 +61,8 @@ func TestParseDBURL(t *testing.T) {
 	}
 }
 
-// TestMysqlDSN mysqlDSN 强制启用迁移和匹配行计数所需参数。
-func TestMysqlDSN(t *testing.T) {
-	// 无 query → 追加两个参数。
-	got := mysqlDSN("u:p@tcp(h:3306)/db")
-	if !strings.Contains(got, "multiStatements=true") || !strings.Contains(got, "clientFoundRows=true") || !strings.Contains(got, "time_zone=%27%2B00%3A00%27") || !strings.HasPrefix(got, "u:p@tcp(h:3306)/db?") {
-		t.Fatalf("无 query: %q", got)
-	}
-	// 已有 query → 保留原参数。
-	got = mysqlDSN("u:p@tcp(h:3306)/db?parseTime=true")
-	if !strings.Contains(got, "parseTime=true") || !strings.Contains(got, "multiStatements=true") || !strings.Contains(got, "clientFoundRows=true") {
-		t.Fatalf("已有 query: %q", got)
-	}
-	// 即使调用方显式关闭也要覆盖，否则 no-op UPDATE 会被误判为不存在。
-	got = mysqlDSN("u:p@tcp(h:3306)/db?multiStatements=false&clientFoundRows=false&loc=UTC")
-	if strings.Count(got, "multiStatements=") != 1 || strings.Count(got, "clientFoundRows=") != 1 ||
-		strings.Contains(got, "multiStatements=false") || strings.Contains(got, "clientFoundRows=false") || !strings.Contains(got, "loc=UTC") || !strings.Contains(got, "time_zone=%27%2B00%3A00%27") {
-		t.Fatalf("未正确强制参数: %q", got)
-	}
-}
-
-// TestParseDBURLForcesUTCSessionTimezone 验证 MySQL 参数保留强制 UTC，PostgreSQL 由结构化连接配置注入 UTC。
+// TestParseDBURLForcesUTCSessionTimezone 验证 PostgreSQL 由结构化连接配置注入 UTC。
 func TestParseDBURLForcesUTCSessionTimezone(t *testing.T) {
-	// mysqlDSNValue 保存 MySQL 连接参数，检查会话时区覆盖用户传入值。
-	_, _, mysqlDSNValue, err := parseDBURL("mysql://u:p@tcp(h:3306)/db?time_zone=Europe%2FParis")
-	if err != nil || !strings.Contains(mysqlDSNValue, "time_zone=%27%2B00%3A00%27") || strings.Contains(mysqlDSNValue, "Europe%2FParis") {
-		t.Fatalf("MySQL 时区未固定: dsn=%q err=%v", mysqlDSNValue, err)
-	}
 	// postgresDSNValue 保存 PostgreSQL URL，解析阶段保留原始 DSN，避免破坏带引号或编码的认证参数。
 	_, _, postgresDSNValue, err := parseDBURL("postgres://u:p@h:5432/db?sslmode=disable&timezone=Asia%2FShanghai")
 	if err != nil || !strings.Contains(postgresDSNValue, "timezone=Asia%2FShanghai") {

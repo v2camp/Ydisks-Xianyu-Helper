@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -72,12 +71,10 @@ func (u *Users) Create(ctx context.Context, username, email, plainPassword strin
 	return n > 0, nil
 }
 
-// isUniqueViolation 封装isUniqueViolation业务协调。
+// isUniqueViolation 判断错误是否来自唯一约束冲突；只覆盖 SQLite 与 PostgreSQL 两类驱动。
 func isUniqueViolation(err error) bool {
-	// mysqlErr 用于本次流程后续判断的mysqlErr
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
-		return mysqlErr.Number == 1062
+	if err == nil {
+		return false
 	}
 	// pgErr 用于本次流程后续判断的pgErr
 	var pgErr *pgconn.PgError

@@ -81,7 +81,7 @@ Ydisks 支持管理渠道、推广账号、原始链接、推广短链与域名�
 | AI 回复 | OpenAI 兼容 API、模型发现、完整连接链路测试、自定义提示词、议价轮次和让价范围控制 |
 | 数据看板 | 活跃账号、订单、营收、库存、商品销量与金额统计 |
 | 通知告警 | Bark、钉钉、飞书、企业微信、Telegram、邮件和自定义 Webhook |
-| 数据存储 | SQLite、MySQL、PostgreSQL，内置按方言执行的 Goose 数据库迁移 |
+| 数据存储 | SQLite、PostgreSQL，内置按方言执行的 Goose 数据库迁移 |
 | 安全能力 | 管理端会话、敏感字段 AES-256-GCM 加密、日志脱敏和出站地址校验 |
 | 容器部署 | PostgreSQL 17、健康检查、持久化卷、GHCR amd64/arm64 多架构镜像 |
 
@@ -90,7 +90,7 @@ Ydisks 支持管理渠道、推广账号、原始链接、推广短链与域名�
 ```mermaid
 flowchart LR
     UI["React 管理后台"] --> API["Go / chi HTTP API"]
-    API --> Store["SQLite / MySQL / PostgreSQL"]
+    API --> Store["SQLite / PostgreSQL"]
     API --> Manager["账号管理器"]
     Manager --> Engine["单账号运行时"]
     Engine --> WS["闲鱼 WebSocket"]
@@ -401,7 +401,7 @@ Docker Compose 还支持：
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
 | `-db` | `data/xianyu_data.db` | SQLite 数据库路径 |
-| `-db-url` | 空 | `sqlite://`、`mysql://` 或 `postgres://` 连接 URL |
+| `-db-url` | 空 | `sqlite://` 或 `postgres://` 连接 URL |
 | `-addr` | `:59188` | HTTP 监听地址 |
 | `-web` | 内嵌前端 | 外部前端静态资源目录，目录内需包含 `index.html` |
 | `-workdir` | 空 | 服务工作目录；桌面服务用它固定数据和浏览器目录 |
@@ -426,9 +426,6 @@ Docker Compose 还支持：
 ```bash
 # SQLite
 DATABASE_URL="sqlite://data/xianyu_data.db" ./xianyu-server
-
-# MySQL；应用会强制补齐 multiStatements=true 和 clientFoundRows=true
-DATABASE_URL="mysql://user:pass@tcp(127.0.0.1:3306)/xianyu" ./xianyu-server
 
 # PostgreSQL
 DATABASE_URL="postgres://user:pass@127.0.0.1:5432/xianyu?sslmode=disable" ./xianyu-server
@@ -694,7 +691,7 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-完整 Docker 功能回归会检查前端、Go `-race`、SQLite、MySQL 8.4、PostgreSQL 17、
+完整 Docker 功能回归会检查前端、Go `-race`、SQLite、PostgreSQL 17、
 API 功能和容器重启持久化：
 
 ```bash
@@ -705,7 +702,6 @@ API 功能和容器重启持久化：
 
 ```bash
 go run ./cmd/dbverify "sqlite:///tmp/xianyu-verify.db"
-go run ./cmd/dbverify "mysql://root:pass@tcp(127.0.0.1:3306)/xianyu"
 go run ./cmd/dbverify "postgres://user:pass@127.0.0.1:5432/xianyu"
 ```
 
@@ -816,7 +812,6 @@ go run ./cmd/server -init-admin -db data/xianyu_data.db -admin-password '新密�
 ```bash
 # 退出码：0=健康；1=心跳过期或尚未配置；2=无法确定（连接/读取失败）
 go run ./cmd/heartbeatcheck -db-url "postgres://user:pass@host:5432/db?sslmode=disable" -timeout 90
-go run ./cmd/heartbeatcheck -db-url "mysql://user:pass@tcp(host:3306)/db?parseTime=true" -timeout 90
 go run ./cmd/heartbeatcheck -db-url "sqlite://data/xianyu_data.db" -timeout 90
 # 缺省读 DATABASE_URL，再缺省用 data/xianyu_data.db
 go run ./cmd/heartbeatcheck -timeout 90

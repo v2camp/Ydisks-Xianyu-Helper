@@ -6,15 +6,12 @@ import (
 	"strings"
 )
 
-// DialectUpsert 生成 UPSERT 子句，处理三种数据库的语法差异。
+// DialectUpsert 生成 UPSERT 子句，处理两种数据库的语法差异。
 //
 // SQLite/Postgres: ON CONFLICT (conflictCols) DO UPDATE SET col=expr, ...
 //
-//	MySQL:           ON DUPLICATE KEY UPDATE col=expr, ...
-//
 // updateAssignments 是 列名 -> SQL表达式 的映射。表达式里用 "EXCLUDED.col"
-// 表示插入值（SQLite/Postgres 语法），MySQL 下自动转成 "VALUES(col)"。
-// 其他表达式（如 "CURRENT_TIMESTAMP"）原样保留。
+// 表示插入值（SQLite/Postgres 语法）。其他表达式（如 "CURRENT_TIMESTAMP"）原样保留。
 // DialectUpsert 封装DialectUpsert业务协调。
 func DialectUpsert(d Dialect, conflictCols []string, updateAssignments map[string]string) string {
 	if len(conflictCols) == 0 || len(updateAssignments) == 0 {
@@ -33,22 +30,9 @@ func DialectUpsert(d Dialect, conflictCols []string, updateAssignments map[strin
 	for _, col := range keys {
 		// expr 用于本次流程后续判断的expr
 		expr := updateAssignments[col]
-		if d == DialectMySQL {
-			// EXCLUDED.col / excluded.col → VALUES(col)（大小写不敏感）
-			upper := strings.ToUpper(expr)
-			if strings.HasPrefix(upper, "EXCLUDED.") {
-				field := expr[len("EXCLUDED."):] // 保留原大小写
-				expr = "VALUES(" + field + ")"
-			}
-		}
 		sets = append(sets, col+"="+expr)
 	}
-	switch d {
-	case DialectMySQL:
-		return " ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", ")
-	default:
-		return " ON CONFLICT (" + strings.Join(conflictCols, ", ") + ") DO UPDATE SET " + strings.Join(sets, ", ")
-	}
+	return " ON CONFLICT (" + strings.Join(conflictCols, ", ") + ") DO UPDATE SET " + strings.Join(sets, ", ")
 }
 
 // dialectUpsert 包内别名（db 包内部用小写）。
@@ -59,13 +43,9 @@ func dialectUpsert(d Dialect, cols []string, m map[string]string) string {
 // DialectInsertIgnore 返回"冲突即忽略"子句（VALUES 之后拼接）。
 //
 //	SQLite/Postgres: ON CONFLICT (cols) DO NOTHING
-//	MySQL: 空（调用方应用 DialectInsertIgnorePrefix）
 //
 // DialectInsertIgnore 封装DialectInsertIgnore业务协调。
 func DialectInsertIgnore(d Dialect, conflictCols []string) string {
-	if d == DialectMySQL {
-		return ""
-	}
 	if len(conflictCols) == 0 {
 		return ""
 	}
@@ -75,11 +55,8 @@ func DialectInsertIgnore(d Dialect, conflictCols []string) string {
 // dialectInsertIgnore 封装dialectInsertIgnore业务协调。
 func dialectInsertIgnore(d Dialect, cols []string) string { return DialectInsertIgnore(d, cols) }
 
-// DialectInsertIgnorePrefix 返回 INSERT 前缀（MySQL 用 INSERT IGNORE）。
+// DialectInsertIgnorePrefix 返回 INSERT 前缀；两种方言都使用标准 INSERT。
 func DialectInsertIgnorePrefix(d Dialect) string {
-	if d == DialectMySQL {
-		return "INSERT IGNORE"
-	}
 	return "INSERT"
 }
 
@@ -88,8 +65,8 @@ func dialectInsertIgnorePrefix(d Dialect) string { return DialectInsertIgnorePre
 
 // DialectQuote 返回方言下的标识符引用。
 //
-//	SQLite/MySQL: `name`（反引号）
-//	Postgres:     "name"（双引号）
+//	SQLite:   `name`（反引号）
+//	Postgres: "name"（双引号）
 //
 // DialectQuote 封装DialectQuote业务协调。
 func DialectQuote(d Dialect, name string) string {
@@ -121,7 +98,7 @@ type DBTX interface {
 
 // insertReturningID 执行 INSERT 并返回自增主键 id。
 // Postgres 的 pgx driver 不支持 Result.LastInsertId（Postgres 无该概念），
-// 改用 `INSERT ... RETURNING id` + QueryRow.Scan；SQLite/MySQL 走 res.LastInsertId()。
+// 改用 `INSERT ... RETURNING id` + QueryRow.Scan；SQLite 走 res.LastInsertId()。
 // query 必须是可安全追加 ` RETURNING id` 的单条 INSERT（无尾随分号/ON CONFLICT 亦可）。
 // insertReturningID 封装insertReturningID业务协调。
 func insertReturningID(ctx context.Context, exec DBTX, dialect Dialect, query string, args ...any) (int64, error) {

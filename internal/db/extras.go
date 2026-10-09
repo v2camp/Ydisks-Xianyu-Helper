@@ -161,7 +161,7 @@ func (i *ItemReplies) Set(ctx context.Context, cookieID, itemID, content string)
 		return err
 	}
 	defer tx.Rollback()
-	// 先删后插，跨 SQLite/MySQL/Postgres 一致（item_replay 无自然唯一键）。
+	// 先删后插，跨 SQLite/Postgres 一致（item_replay 无自然唯一键）。
 	if _, err := tx.ExecContext(ctx, `DELETE FROM item_replay WHERE cookie_id=? AND item_id=?`, cookieID, itemID); err != nil {
 		return err
 	}

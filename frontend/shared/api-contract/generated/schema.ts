@@ -2774,6 +2774,11 @@ export interface components {
             last_rate_scan_at: number;
             last_polish_date: string;
             last_polish_at: number;
+            auto_delist_enabled: boolean;
+            delist_time: string;
+            delist_item_ids: string[];
+            last_delist_date: string;
+            last_delist_at: number;
         };
         AccountDetailList: components["schemas"]["AccountDetailResponse"][];
         AccountStatusRequest: {

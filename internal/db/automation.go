@@ -547,7 +547,7 @@ func (a *AutomationRules) tryStartRun(ctx context.Context, execer sqlQueryExecer
 		return id, true, nil
 	}
 
-	// res、err 保存 SQLite/MySQL 幂等插入结果和数据库错误。
+	// res、err 保存 SQLite/PostgreSQL 幂等插入结果和数据库错误。
 	res, err := execer.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, false, err

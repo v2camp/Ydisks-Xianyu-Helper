@@ -15,20 +15,18 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// 本文件用真实 MySQL/Postgres 验证方言相关 SQL（UPSERT/INSERT IGNORE/RETURNING/
-// NULL 扫描/布尔读写）。SQLite 始终内联运行；MySQL/Postgres 在对应环境变量提供时
+// 本文件用真实 Postgres 验证方言相关 SQL（UPSERT/INSERT IGNORE/RETURNING/
+// NULL 扫描/布尔读写）。SQLite 始终内联运行；Postgres 在对应环境变量提供时
 // 自动创建一次性独立数据库运行，无则 t.Skip。
 //
-//	env TEST_MYSQL_URL=mysql://root:test123@tcp(localhost:3306)/xianyu
 //	env TEST_POSTGRES_URL=postgres://xianyu:test123@localhost:5432/xianyu
 //
-// MySQL 连接需有 CREATE/DROP DATABASE 权限（用 root 或授权用户）；Postgres 用
-// 初始化超户即可。独立数据库在测试结束自动 DROP，互不污染。
+// Postgres 用初始化超户即可。独立数据库在测试结束自动 DROP，互不污染。
 
 var multidbCounter uint64 // 生成一次性数据库名的原子计数器。
 
-// requireMultiDBEnv 控制多数据库回归是否必须同时连接 MySQL 与 PostgreSQL。
-// 未设置时，开发者可以只运行内置 SQLite；设为 1 时，缺少任一外部数据库配置会让门禁失败。
+// requireMultiDBEnv 控制多数据库回归是否必须连接 PostgreSQL。
+// 未设置时，开发者可以只运行内置 SQLite；设为 1 时，缺少外部数据库配置会让门禁失败。
 const requireMultiDBEnv = "REQUIRE_MULTIDB"
 
 // TestMain 关闭 goose 默认日志，避免每个目标库的迁移输出刷屏测试结果。
@@ -37,8 +35,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestMultiDB_TargetMatrix 输出本次运行实际具备的数据库矩阵，避免 SQLite 单库通过被误读为三库证据。
-// REQUIRE_MULTIDB=1 时，MySQL 与 PostgreSQL 必须同时配置 TEST_MYSQL_URL 和 TEST_POSTGRES_URL；
+// TestMultiDB_TargetMatrix 输出本次运行实际具备的数据库矩阵，避免 SQLite 单库通过被误读为两库证据。
+// REQUIRE_MULTIDB=1 时，PostgreSQL 必须配置 TEST_POSTGRES_URL；
 // 连接、迁移和敏感设置行为仍由各个 TestMultiDB_* 子测试实际验证。
 func TestMultiDB_TargetMatrix(t *testing.T) {
 	t.Run("sqlite", func(t *testing.T) {
@@ -50,7 +48,6 @@ func TestMultiDB_TargetMatrix(t *testing.T) {
 		name string
 		env  string
 	}{
-		{name: "mysql", env: "TEST_MYSQL_URL"},
 		{name: "postgres", env: "TEST_POSTGRES_URL"},
 	}
 	// target 保存当前正在报告的外部数据库目标。
@@ -69,7 +66,7 @@ func TestMultiDB_TargetMatrix(t *testing.T) {
 	}
 }
 
-// multiDBRequired 判断当前运行是否要求 MySQL 与 PostgreSQL 都必须可用。
+// multiDBRequired 判断当前运行是否要求 PostgreSQL 必须可用。
 // 只接受明确的 1/true/yes 值，避免普通开发环境中偶然继承的任意字符串改变门禁语义。
 func multiDBRequired() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(requireMultiDBEnv))) {
@@ -81,17 +78,14 @@ func multiDBRequired() bool {
 }
 
 // requireConfiguredExternalTargets 在实际创建测试数据库前检查严格矩阵门禁。
-// 它只检查配置是否存在；URL 格式、数据库连通性和迁移结果仍由 mysqlTarget/postgresTarget 验证。
+// 它只检查配置是否存在；URL 格式、数据库连通性和迁移结果仍由 postgresTarget 验证。
 func requireConfiguredExternalTargets(t *testing.T) {
 	t.Helper()
 	if !multiDBRequired() {
 		return
 	}
 	// missing 保存严格门禁下缺失的外部数据库目标名称。
-	missing := make([]string, 0, 2)
-	if strings.TrimSpace(os.Getenv("TEST_MYSQL_URL")) == "" {
-		missing = append(missing, "MySQL(TEST_MYSQL_URL)")
-	}
+	missing := make([]string, 0, 1)
 	if strings.TrimSpace(os.Getenv("TEST_POSTGRES_URL")) == "" {
 		missing = append(missing, "PostgreSQL(TEST_POSTGRES_URL)")
 	}
@@ -108,16 +102,12 @@ type testTarget struct {
 	cleanup func()
 }
 
-// allTestTargets 返回所有可用的测试目标。SQLite 永远包含；MySQL/Postgres 按环境变量追加。
+// allTestTargets 返回所有可用的测试目标。SQLite 永远包含；Postgres 按环境变量追加。
 func allTestTargets(t *testing.T) []testTarget {
 	t.Helper()
 	requireConfiguredExternalTargets(t)
 	// targets 用于本次流程后续判断的targets
 	targets := []testTarget{sqliteTarget(t)}
-	if // u 用于本次流程后续判断的u
-	u := os.Getenv("TEST_MYSQL_URL"); u != "" {
-		targets = append(targets, mysqlTarget(t, u))
-	}
 	if // u 用于本次流程后续判断的u
 	u := os.Getenv("TEST_POSTGRES_URL"); u != "" {
 		targets = append(targets, postgresTarget(t, u))
@@ -136,49 +126,6 @@ func sqliteTarget(t *testing.T) testTarget {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	return testTarget{name: "sqlite", dialect: DialectSQLite, store: NewStore(db, DialectSQLite), cleanup: func() { db.Close() }}
-}
-
-// mysqlTarget 在 MySQL 服务器上创建一次性数据库，跑迁移后返回 store。
-// 测试结束 DROP 该库，保证隔离。
-// mysqlTarget 封装mysqlTarget业务协调。
-func mysqlTarget(t *testing.T, url string) testTarget {
-	t.Helper()
-	// baseDSN、query 保存 MySQL 连接 authority 与查询参数，供临时库连接复用。
-	baseDSN, query := externalTargetURLParts(t, "TEST_MYSQL_URL", url)
-
-	// admin、err 用于本次流程后续判断的admin、err
-	adminDSN := baseDSN + "/"
-	if query != "" {
-		adminDSN += "?" + query
-	}
-	// admin、err 保存管理员连接及打开错误；连接只用于创建和销毁临时数据库。
-	admin, err := sql.Open("mysql", adminDSN)
-	if err != nil {
-		t.Fatalf("open mysql admin: %v", err)
-	}
-	// dbName 用于本次流程后续判断的db名称
-	dbName := fmt.Sprintf("xytest_%d", atomic.AddUint64(&multidbCounter, 1))
-	if // err 用于本次流程后续判断的err
-	_, err := admin.Exec("DROP DATABASE IF EXISTS " + dbName); err != nil {
-		t.Fatalf("drop stale mysql db: %v", err)
-	}
-	if // err 用于本次流程后续判断的err
-	_, err := admin.Exec("CREATE DATABASE " + dbName); err != nil {
-		t.Fatalf("create mysql db: %v", err)
-	}
-	// db、err 保存临时 MySQL 数据库连接及打开错误；query 保留 SSL、时区等测试配置。
-	db, _, err := Open(context.Background(), externalTargetDSN("mysql", baseDSN, dbName, query))
-	if err != nil {
-		_, _ = admin.Exec("DROP DATABASE " + dbName)
-		t.Fatalf("open mysql test db: %v", err)
-	}
-	// cleanup 用于本次流程后续判断的cleanup
-	cleanup := func() {
-		db.Close()
-		_, _ = admin.Exec("DROP DATABASE " + dbName)
-		admin.Close()
-	}
-	return testTarget{name: "mysql", dialect: DialectMySQL, store: NewStore(db, DialectMySQL), cleanup: cleanup}
 }
 
 // postgresTarget 在 Postgres 服务器上创建一次性数据库。
@@ -288,7 +235,6 @@ func TestSplitExternalTargetURLPreservesQuery(t *testing.T) {
 		authority string
 		query     string
 	}{
-		{name: "mysql", rawURL: "mysql://user:secret@tcp(host:3306)/xianyu?parseTime=true&loc=UTC", scheme: "mysql", authority: "user:secret@tcp(host:3306)", query: "parseTime=true&loc=UTC"},
 		{name: "postgres", rawURL: "postgres://user:secret@host:5432/xianyu?sslmode=disable&timezone=UTC", scheme: "postgres", authority: "user:secret@host:5432", query: "sslmode=disable&timezone=UTC"},
 	}
 	// testCase 保存当前 URL 解析用例，供子测试闭包使用。
@@ -1799,8 +1745,6 @@ func migrationTestSubdir(t *testing.T, dialect Dialect) (string, string) {
 	switch dialect {
 	case DialectSQLite:
 		return "sqlite", "sqlite3"
-	case DialectMySQL:
-		return "mysql", "mysql"
 	case DialectPostgres:
 		return "postgres", "postgres"
 	default:
@@ -1840,9 +1784,6 @@ func columnExistsForDialect(t *testing.T, db *sql.DB, dialect Dialect, table, co
 			t.Fatalf("column rows: %v", err)
 		}
 		return false
-	case DialectMySQL:
-		query = `SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?`
-		args = []any{table, col}
 	case DialectPostgres:
 		query = `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' AND table_name=? AND column_name=?`
 		args = []any{table, col}
@@ -1868,9 +1809,6 @@ func tableExistsForDialect(t *testing.T, db *sql.DB, dialect Dialect, table stri
 	switch dialect {
 	case DialectSQLite:
 		query = `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`
-		args = []any{table}
-	case DialectMySQL:
-		query = `SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?`
 		args = []any{table}
 	case DialectPostgres:
 		query = `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name=?`

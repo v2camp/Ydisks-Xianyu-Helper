@@ -78,7 +78,7 @@ links and view data.
 | Orders | Synchronization, editing, platform delivery, card resending, and exception handling. |
 | AI replies | OpenAI-compatible APIs, model discovery, end-to-end connection testing, custom prompts, bargaining rounds, and discount limits. |
 | Notifications | Bark, DingTalk, Feishu, WeCom, Telegram, email, and custom Webhooks. |
-| Storage and security | SQLite/MySQL/PostgreSQL, embedded Goose migrations, AES-256-GCM sensitive-field encryption, log redaction, and outbound-address validation. |
+| Storage and security | SQLite/PostgreSQL, embedded Goose migrations, AES-256-GCM sensitive-field encryption, log redaction, and outbound-address validation. |
 | Container deployment | PostgreSQL 17, health checks, persistent volumes, and multi-architecture GHCR images. |
 
 ## Architecture
@@ -86,7 +86,7 @@ links and view data.
 ~~~mermaid
 flowchart LR
     UI["React admin console"] --> API["Go / chi HTTP API"]
-    API --> Store["SQLite / MySQL / PostgreSQL"]
+    API --> Store["SQLite / PostgreSQL"]
     API --> Manager["Account manager"]
     Manager --> Engine["Per-account runtime"]
     Engine --> WS["Xianyu WebSocket"]
@@ -247,7 +247,7 @@ Important environment variables:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| DATABASE_URL | Empty | SQLite, MySQL, or PostgreSQL connection URL. |
+| DATABASE_URL | Empty | SQLite or PostgreSQL connection URL. |
 | XIANYU_DATA_KEY | Empty | Long-lived encryption key for Cookies, passwords, tokens, AI, SMTP, and notification credentials. |
 | XIANYU_ADMIN_PASSWORD | Empty | Docker Compose non-interactive administrator initialization. |
 | XIANYU_UPLOAD_DIR | data/uploads | Bulk-listing uploads and temporary resources. |

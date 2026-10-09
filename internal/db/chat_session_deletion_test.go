@@ -15,10 +15,6 @@ func chatSessionVisibilityIndexColumns(t *testing.T, database *sql.DB, dialect D
 	// query 和 args 是当前方言读取固定会话列表索引元数据的只读语句及参数。
 	query, args := `SELECT name FROM pragma_index_info(?) ORDER BY seqno`, []any{"idx_chat_sessions_account_visibility_recent"}
 	switch dialect {
-	case DialectMySQL:
-		query = `SELECT COLUMN_NAME FROM information_schema.STATISTICS
-			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=? ORDER BY SEQ_IN_INDEX`
-		args = []any{"chat_sessions", "idx_chat_sessions_account_visibility_recent"}
 	case DialectPostgres:
 		query = `SELECT pg_get_indexdef(i.indexrelid, positions.n, true)
 			FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid

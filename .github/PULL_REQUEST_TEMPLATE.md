@@ -13,7 +13,7 @@
 - [ ] `npm --prefix frontend test`（涉及前端时）
 - [ ] `npm --prefix frontend run build`（涉及前端时）
 - [ ] SQLite 定向测试（涉及数据库时）
-- [ ] `make test-multidb`（具备 MySQL/PostgreSQL 环境且涉及多数据库时）
+- [ ] `make test-multidb`（具备 PostgreSQL 环境且涉及多数据库时）
 - [ ] 浏览器或本地 Playwright 测试（涉及浏览器时）
 
 未运行的验证请说明原因：
