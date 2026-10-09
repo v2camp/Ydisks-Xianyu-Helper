@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -223,6 +224,62 @@ func TestServiceRejectsMissingAccountTaskRepository(t *testing.T) {
 	nilUpdateResult, nilUpdateErr := nilService.UpdateSettings(context.Background(), AccountTaskSettings{CookieID: "account-1", PolishTime: "03:00"})
 	if nilSettingsErr == nil || nilRunsErr == nil || nilUpdateErr == nil || nilUpdateResult.CookieID != "" {
 		t.Fatal("空服务指针的读取不应成功")
+	}
+}
+
+// TestServiceRunAcceptsAutoDelist 验证应用层接受每日定时下架任务类型并透传执行端口。
+func TestServiceRunAcceptsAutoDelist(t *testing.T) {
+	// runner 保存手动任务执行替身。
+	runner := &accountTaskRunnerFake{summary: TaskSummary{TaskType: TaskAutoDelist, Success: 3}}
+	// service 是绑定执行替身的应用服务。
+	service := NewService(nil, runner)
+	// summary、err 保存定时下架任务的手动执行结果。
+	summary, err := service.Run(context.Background(), "account-1", TaskAutoDelist)
+	if err != nil || summary.Success != 3 || runner.taskType != TaskAutoDelist {
+		t.Fatalf("定时下架执行结果错误: summary=%+v task=%q err=%v", summary, runner.taskType, err)
+	}
+}
+
+// TestServiceNormalizesDelistSettings 验证下架时间默认值、非法时间和白名单清洗规则。
+func TestServiceNormalizesDelistSettings(t *testing.T) {
+	// defaultRepository 保存未配置下架时间的账号任务持久化假对象。
+	defaultRepository := &accountTaskRepositoryFake{}
+	// defaultStored、defaultErr 保存缺省下架时间规范化后的设置及错误。
+	defaultStored, defaultErr := NewService(defaultRepository, nil).UpdateSettings(context.Background(), AccountTaskSettings{
+		CookieID: "account-1", PolishTime: "03:00", AutoDelistEnabled: true,
+	})
+	if defaultErr != nil || defaultStored.DelistTime != accountTaskDelistTimeDefault {
+		t.Fatalf("下架时间默认值错误: %+v err=%v", defaultStored, defaultErr)
+	}
+	// cleanedRepository 保存白名单清洗用例的持久化假对象。
+	cleanedRepository := &accountTaskRepositoryFake{}
+	// cleaned、cleanedErr 保存去重去空后的白名单设置及错误。
+	cleaned, cleanedErr := NewService(cleanedRepository, nil).UpdateSettings(context.Background(), AccountTaskSettings{
+		CookieID: "account-1", PolishTime: "03:00", DelistTime: "09:00", AutoDelistEnabled: true,
+		DelistItemIDs: []string{" item-1 ", "", "item-1", "item-2"},
+	})
+	if cleanedErr != nil || len(cleaned.DelistItemIDs) != 2 || cleaned.DelistItemIDs[0] != "item-1" || cleaned.DelistItemIDs[1] != "item-2" {
+		t.Fatalf("白名单清洗错误: %+v err=%v", cleaned.DelistItemIDs, cleanedErr)
+	}
+	// invalidRepository 保存非法下架时间的持久化假对象。
+	invalidRepository := &accountTaskRepositoryFake{}
+	// invalidErr 保存非法下架时间的校验错误。
+	if _, invalidErr := NewService(invalidRepository, nil).UpdateSettings(context.Background(), AccountTaskSettings{
+		CookieID: "account-1", PolishTime: "03:00", DelistTime: "9:0",
+	}); invalidErr == nil || !strings.Contains(invalidErr.Error(), "下架时间格式必须为 HH:mm") {
+		t.Fatalf("非法下架时间错误=%v", invalidErr)
+	}
+	// oversized 是超过白名单上限的商品标识集合。
+	oversized := make([]string, 0, accountTaskDelistMaxItems+5)
+	// index 是构造超限白名单时的循环序号。
+	for index := 0; index <= accountTaskDelistMaxItems; index++ {
+		oversized = append(oversized, "item-"+strconv.Itoa(index))
+	}
+	// oversizedErr 保存超限白名单的校验错误。
+	if _, oversizedErr := NewService(&accountTaskRepositoryFake{}, nil).UpdateSettings(context.Background(), AccountTaskSettings{
+		CookieID: "account-1", PolishTime: "03:00", DelistTime: "09:00", DelistItemIDs: oversized,
+	}); oversizedErr == nil || !strings.Contains(oversizedErr.Error(), "不能超过") {
+		t.Fatalf("超限白名单错误=%v", oversizedErr)
 	}
 }
 

@@ -105,7 +105,7 @@ type settingsAckDTO struct {
 	RuntimeWarning string `json:"runtime_warning,omitempty"`
 }
 
-// accountTaskSettingsDTO 是自动评价/擦亮配置视图。
+// accountTaskSettingsDTO 是自动评价/擦亮/每日下架配置视图。
 type accountTaskSettingsDTO struct {
 	// AccountID 是账号标识。
 	AccountID string `json:"account_id"`
@@ -121,6 +121,14 @@ type accountTaskSettingsDTO struct {
 	LastRateScanAt int64 `json:"last_rate_scan_at"`
 	// LastPolishDate 是最近擦亮日期 YYYY-MM-DD。
 	LastPolishDate string `json:"last_polish_date"`
+	// AutoDelistEnabled 是每日定时下架开关。
+	AutoDelistEnabled bool `json:"auto_delist_enabled"`
+	// DelistTime 是每日下架时间 HH:mm。
+	DelistTime string `json:"delist_time"`
+	// DelistItemIDs 是下架白名单商品标识。
+	DelistItemIDs []string `json:"delist_item_ids"`
+	// LastDelistDate 是最近下架日期 YYYY-MM-DD。
+	LastDelistDate string `json:"last_delist_date"`
 }
 
 // taskRunDTO 是账号任务运行记录视图。
@@ -281,6 +289,10 @@ func taskSettingsDTO(id string, s automationapp.AccountTaskSettings) accountTask
 		PolishTime:        s.PolishTime,
 		LastRateScanAt:    s.LastRateScanAt,
 		LastPolishDate:    s.LastPolishDate,
+		AutoDelistEnabled: s.AutoDelistEnabled,
+		DelistTime:        s.DelistTime,
+		DelistItemIDs:     s.DelistItemIDs,
+		LastDelistDate:    s.LastDelistDate,
 	}
 }
 

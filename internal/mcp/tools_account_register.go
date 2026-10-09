@@ -438,13 +438,16 @@ func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
 		},
 		ToolDef{
 			Name:        "account_task_update_settings",
-			Description: "更新账号自动评价开关/评价内容与每日擦亮开关/执行时间（仅本地配置）。",
+			Description: "更新账号自动评价开关/评价内容、每日擦亮开关/执行时间与每日定时下架开关/执行时间/商品白名单（仅本地配置，不触达平台）。",
 			Args: []ArgSpec{
 				accountID,
 				{Name: "auto_rate_enabled", Type: ArgBoolean, Description: "是否启用自动评价。"},
 				{Name: "rate_content", Type: ArgString, Description: "自动评价内容。"},
 				{Name: "auto_polish_enabled", Type: ArgBoolean, Description: "是否启用每日擦亮。"},
 				{Name: "polish_time", Type: ArgString, Description: "每日擦亮时间，格式 HH:mm。"},
+				{Name: "auto_delist_enabled", Type: ArgBoolean, Description: "是否启用每日定时下架。"},
+				{Name: "delist_time", Type: ArgString, Description: "每日下架时间，格式 HH:mm，默认 09:00。"},
+				{Name: "delist_item_ids", Type: ArgArray, ItemType: ArgString, Description: "下架商品白名单（平台商品 ID 数组），空数组表示不下架任何商品。"},
 			},
 			Handler: func(ctx context.Context, _ *CallIdentity, args Arguments) (any, error) {
 				// id 是目标账号标识。
@@ -460,6 +463,7 @@ func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
 				current.CookieID = id
 				applyNonPointerBool(args, "auto_rate_enabled", &current.AutoRateEnabled)
 				applyNonPointerBool(args, "auto_polish_enabled", &current.AutoPolishEnabled)
+				applyNonPointerBool(args, "auto_delist_enabled", &current.AutoDelistEnabled)
 				// value、ok 是评价内容入参及其存在性。
 				if value, ok := args["rate_content"]; ok {
 					// rateContent 是评价内容字符串。
@@ -469,6 +473,20 @@ func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
 				if value, ok := args["polish_time"]; ok {
 					// polishTime 是擦亮时间字符串。
 					current.PolishTime, _ = value.(string)
+				}
+				// value、ok 是下架时间入参及其存在性。
+				if value, ok := args["delist_time"]; ok {
+					// delistTime 是下架时间字符串。
+					current.DelistTime, _ = value.(string)
+				}
+				// 白名单为空数组时同样表示清空，因此以键是否存在判断是否覆盖。
+				if _, ok := args["delist_item_ids"]; ok {
+					// delistIDs、parseErr 是下架白名单及其解析错误。
+					delistIDs, parseErr := args.StringArray("delist_item_ids")
+					if parseErr != nil {
+						return nil, parseErr
+					}
+					current.DelistItemIDs = delistIDs
 				}
 				// saved、updateErr 是更新后的配置。
 				saved, updateErr := p.UpdateAccountTaskSettings(ctx, current)
@@ -480,7 +498,7 @@ func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
 		},
 		ToolDef{
 			Name:        "account_task_list_runs",
-			Description: "查询账号自动评价/擦亮的最近运行记录。只读。",
+			Description: "查询账号自动评价/擦亮/下架的最近运行记录。只读。",
 			Args: []ArgSpec{
 				accountID,
 				{Name: "limit", Type: ArgInteger, Description: "返回条数上限，默认 20，最大 200。"},
@@ -512,13 +530,13 @@ func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
 		},
 		ToolDef{
 			Name: "account_task_run",
-			Description: "立即执行一次账号自动评价或擦亮任务（真实平台触达，受账号开关与平台风控约束）。" +
-				"task_type 取 rate（评价）或 polish（擦亮）。必须显式 confirm=true。",
+			Description: "立即执行一次账号自动评价、擦亮或定时下架任务（真实平台触达，受账号开关与平台风控约束）。" +
+				"task_type 取 rate（评价）、polish（擦亮）或 delist（按下架白名单下架商品，不可逆，需人工重新上架）。必须显式 confirm=true。",
 			Destructive: true,
 			Args: []ArgSpec{
 				accountID,
-				{Name: "task_type", Type: ArgString, Required: true, Enum: []string{"rate", "polish"},
-					Description: "要立即执行的任务类型：rate=自动评价，polish=商品擦亮。"},
+				{Name: "task_type", Type: ArgString, Required: true, Enum: []string{"rate", "polish", "delist"},
+					Description: "要立即执行的任务类型：rate=自动评价，polish=商品擦亮，delist=按下架白名单下架商品。"},
 			},
 			Handler: func(ctx context.Context, _ *CallIdentity, args Arguments) (any, error) {
 				// id 是目标账号标识。

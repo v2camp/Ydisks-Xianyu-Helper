@@ -34,6 +34,8 @@ type AccountTaskRepository interface {
 	MarkRateScan(ctx context.Context, cookieID string, at int64) error
 	// MarkPolished 记录商品擦亮日期和时间。
 	MarkPolished(ctx context.Context, cookieID, date string, at int64) error
+	// MarkDelisted 记录商品下架日期和时间，用于每日去重。
+	MarkDelisted(ctx context.Context, cookieID, date string, at int64) error
 }
 
 // accountTaskCredentialLocker 表示账号任务写回凭证时可使用的短临界区锁。
@@ -127,6 +129,11 @@ func (r storeAccountTaskRepository) MarkRateScan(ctx context.Context, cookieID s
 // MarkPolished 委托商品擦亮时间写入。
 func (r storeAccountTaskRepository) MarkPolished(ctx context.Context, cookieID, date string, at int64) error {
 	return r.store.AccountTasks.MarkPolished(ctx, cookieID, date, at)
+}
+
+// MarkDelisted 委托商品下架时间写入。
+func (r storeAccountTaskRepository) MarkDelisted(ctx context.Context, cookieID, date string, at int64) error {
+	return r.store.AccountTasks.MarkDelisted(ctx, cookieID, date, at)
 }
 
 // newStoreAccountTaskRepository 从完整 Store 构造账号任务窄 repository。

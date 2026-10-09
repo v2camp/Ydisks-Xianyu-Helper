@@ -20,6 +20,8 @@ const (
 	PendingRateListAPI  = "https://h5api.m.goofish.com/h5/mtop.taobao.idle.merchant.rate.list/1.0/"
 	PolishItemAPI       = "https://h5api.m.goofish.com/h5/mtop.taobao.idle.item.polish/2.0/"
 	PolishItemBackupAPI = "https://h5api.m.goofish.com/h5/mtop.idle.item.polish/1.0/"
+	// DownshelfItemAPI 是闲鱼 PC 商品详情页「下架」按钮触发的官方端点，版本固定为 2.0。
+	DownshelfItemAPI = "https://h5api.m.goofish.com/h5/mtop.taobao.idle.item.downshelf/2.0/"
 )
 
 // PendingRateOrder 用于本次流程后续判断的PendingRate订单
@@ -157,6 +159,38 @@ func (c *ClientImpl) PolishItem(ctx context.Context, cookiesStr, itemID string) 
 	return nil, fmt.Errorf("擦亮主接口失败: %v；备用接口失败: %w", primaryErr, backupErr)
 }
 
+// DownshelfItem 把指定商品从闲鱼平台下架，商品已处于下架状态时按幂等成功处理。
+// ctx 控制请求生命周期；cookiesStr 是账号明文凭证（仅进入平台请求与签名）；
+// itemID 是平台商品 ID；成功后商品不再对外可见，只能由人工在平台侧重新上架。
+func (c *ClientImpl) DownshelfItem(ctx context.Context, cookiesStr, itemID string) (*AccountTaskResult, error) {
+	// decoded、updated、err 保存平台响应、轮换后的 Cookie 与调用错误。
+	decoded, updated, err := c.accountTaskRequest(ctx, cookiesStr,
+		firstNonEmptyURL(c.DownshelfItemURL, DownshelfItemAPI),
+		"mtop.taobao.idle.item.downshelf", "2.0", map[string]any{"itemId": itemID}, "https://www.goofish.com/")
+	if err == nil {
+		return &AccountTaskResult{Success: true, Message: firstRet(decoded.Ret), UpdatedCookies: updated}, nil
+	}
+	// 每天定时下架会对同一批商品重复调用，已下架商品必须按成功收敛，否则每日任务永远记为失败。
+	if alreadyDelistedError(err) {
+		return &AccountTaskResult{Success: true, Message: "商品已处于下架状态", UpdatedCookies: updated}, nil
+	}
+	if IsSessionExpiredErr(err) || IsRiskVerificationErr(err) {
+		return nil, err
+	}
+	return nil, err
+}
+
+// alreadyDelistedError 判断平台错误是否表示商品已下架或已不可售，用于把重复下架收敛为幂等成功。
+func alreadyDelistedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// msg 保存错误文本，平台原因通常直接出现在 ret 的业务描述中。
+	msg := err.Error()
+	return strings.Contains(msg, "已下架") || strings.Contains(msg, "已经下架") ||
+		strings.Contains(msg, "ITEM_ALREADY_OFF") || strings.Contains(msg, "ALREADY_OFFLINE")
+}
+
 // duplicatePolishError 封装duplicatePolish错误业务协调。
 func duplicatePolishError(err error) bool {
 	if err == nil {
@@ -283,7 +317,8 @@ func (c *ClientImpl) accountTaskRequestOnce(ctx context.Context, cookiesStr, end
 		query.Set("spm_pre", "a21ybx.home.sidebar.2.4c053da6MpVe1m")
 		query.Set("log_id", "4c053da6MpVe1m")
 	}
-	if api == "mtop.taobao.idle.item.polish" || api == "mtop.idle.item.polish" {
+	if api == "mtop.taobao.idle.item.polish" || api == "mtop.idle.item.polish" ||
+		api == "mtop.taobao.idle.item.downshelf" {
 		query.Set("spm_cnt", "a21ybx.item.0.0")
 		query.Set("spm_pre", "a21ybx.personal.feeds.1.42f86ac21eZ9zd")
 		query.Set("log_id", "42f86ac21eZ9zd")

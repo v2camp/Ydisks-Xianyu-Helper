@@ -95,7 +95,9 @@ type ClientImpl struct {
 	RateListURL         string
 	PolishItemURL       string
 	PolishItemBackupURL string
-	ChatUserQueryURL    string
+	// DownshelfItemURL 覆盖商品下架端点，仅供本地 HTTP 回归测试注入替身；空值使用官方端点。
+	DownshelfItemURL string
+	ChatUserQueryURL string
 	// ChatItemSearchURL 允许测试将聊天商品查询指向本地 HTTP 服务；生产空值使用官方端点。
 	ChatItemSearchURL string
 	// tokenFlight 保存按账号的 Token 刷新合并与限频状态；零值可用，惰性创建分组。

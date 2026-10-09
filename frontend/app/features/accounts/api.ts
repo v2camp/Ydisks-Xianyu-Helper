@@ -2,7 +2,7 @@ import {
 AIReplySettings,
 AIReplySettingsResponse,
 AccountBindingsResponse,
-AccountDetail,AccountSummaryResponse,
+AccountDetail,AccountItemOption,AccountSummaryResponse,
 AccountTaskRunResponseEnvelope,
 AccountTaskSettings,
 AccountTaskSettingsResponse,
@@ -98,8 +98,20 @@ export const updateAccountTaskSettings = async (id: string, settings: AccountTas
 	runContractRequest(/* signal 控制账号计划任务更新的取消和超时。 */ signal => contractClient.PUT('/api/v1/account-tasks/{cid}', { params: { path: { cid: id } }, body: settings, signal }), options);
 
 // runAccountTask 立即执行账号计划任务。
-export const runAccountTask = async (id: string, taskType: 'auto_rate' | 'auto_polish', options?: RequestControlOptions): Promise<AccountTaskRunResponseEnvelope> =>
+export const runAccountTask = async (id: string, taskType: 'auto_rate' | 'auto_polish' | 'auto_delist', options?: RequestControlOptions): Promise<AccountTaskRunResponseEnvelope> =>
 	runContractRequest(/* signal 控制账号计划任务立即执行的取消和长超时。 */ signal => contractClient.POST('/api/v1/account-tasks/{cid}/run', { params: { path: { cid: id } }, body: { task_type: taskType }, signal }), { timeoutMs: 120_000, ...options });
+
+// getAccountItemOptions 读取账号在售商品，供每日下架白名单勾选；该请求属于账号 feature 自己的 API 适配层。
+export const getAccountItemOptions = async (id: string, options?: RequestControlOptions): Promise<AccountItemOption[]> => {
+	// response 是兼容数组、data 包裹和历史 items 键的商品列表响应。
+	const response = await runContractRequest(/* signal 控制下架白名单商品读取的取消和超时。 */ signal => contractClient.GET('/api/v1/items', { params: { query: { cookie_id: id } }, signal }), options) as unknown;
+	// items 是归一后的账号在售商品列表，仅保留白名单需要的标识与标题。
+	const items = collectionFrom<Partial<AccountItemOption>>(response, ['items', 'data', 'results']);
+	return items.filter(/* 过滤没有平台商品标识的无效项。 */ item => Boolean(item.item_id)).map(/* 归一商品选项字段。 */ item => ({
+		item_id: String(item.item_id),
+		item_title: item.item_title || String(item.item_id),
+	}));
+};
 
 
 export interface AccountRuntimeStatus {

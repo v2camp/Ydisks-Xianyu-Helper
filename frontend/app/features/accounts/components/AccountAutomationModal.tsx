@@ -1,7 +1,9 @@
-import { CalendarClock,Loader2,MessageSquareQuote,Play,Save,Sparkles,X } from 'lucide-react';
-import React from 'react';
-import { AccountDetail,AccountTaskSettings } from '../api';
+import { CalendarClock,Loader2,MessageSquareQuote,PackageMinus,Play,Save,Sparkles,X } from 'lucide-react';
+import React,{ useMemo } from 'react';
+import { AccountDetail,AccountItemOption,AccountTaskSettings } from '../api';
 import { useAccountAutomation } from '../accountAutomationHooks';
+import { useAccountDelistItems } from '../accountDelistItems';
+import { toggleDelistItem } from '../accountAutomationState';
 
 interface Props {
   /** account 表示账号。 */ account: AccountDetail;
@@ -21,6 +23,24 @@ const Toggle: React.FC<{/** checked 表示开关当前是否选中。 */ checked
 const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) => {
   // automationState 是账号任务 feature Hook 提供的表单和动作状态。
   const { form, loading, saving, running, error, summary, retryAvailable, setForm, save, run, retry } = useAccountAutomation({ account, onSaved });
+  // delistItems 提供下架白名单可选的账号在售商品。
+  const delistItems = useAccountDelistItems(account.id);
+  // whitelistOptions 合并在售商品与已保存但当前不在售的白名单商品，避免历史选择静默丢失。
+  const whitelistOptions = useMemo<AccountItemOption[]>(/* 当前回调合并白名单候选项。 */ () => {
+    // known 保存已在售商品标识，用于补齐历史白名单项。
+    const known = new Set(delistItems.options.map(/* 收集在售商品标识。 */ item => item.item_id));
+    // missing 保存已勾选但当前不在售的商品，标题回退为商品标识。
+    const missing = form.delist_item_ids.filter(/* 过滤已不在售的白名单项。 */ id => !known.has(id)).map(/* 生成占位商品选项。 */ id => ({ item_id: id, item_title: `${id}（已不在售）` }));
+    return [...delistItems.options, ...missing];
+  }, [delistItems.options, form.delist_item_ids]);
+  // selectedCount 表示当前白名单勾选数量。
+  const selectedCount = form.delist_item_ids.length;
+  // runDelist 在二次确认后执行一次真实下架；该动作不可逆，只能由人工在平台侧重新上架。
+  const runDelist = (): void => {
+    if (selectedCount === 0) return;
+    if (!window.confirm(`确认立即下架已勾选的 ${selectedCount} 个商品？下架后需要你手动在闲鱼重新上架。`)) return;
+    void run('auto_delist');
+  };
 
   return (
     <div className="modal-overlay-centered">
@@ -85,6 +105,52 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
                   </button>
                 </div>
                 <div className="mt-3 text-xs text-slate-400">上次完成：{form.last_polish_at ? new Date(form.last_polish_at * 1000).toLocaleString('zh-CN') : '尚未执行'}</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><PackageMinus className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h4 className="font-black text-slate-900">每日定时下架</h4>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">每天到点只下架勾选的商品；下架后需你手动在平台重新上架，请谨慎勾选。</p>
+                  </div>
+                  <Toggle checked={form.auto_delist_enabled} onChange={/* 当前回调处理用户交互或异步状态变化。 */ () => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, auto_delist_enabled: !current.auto_delist_enabled }))} label="每日定时下架" />
+                </div>
+                <div className="mt-4 flex items-end justify-between gap-4">
+                  <label className="block">
+                    <span className="text-xs font-extrabold text-slate-600">每日执行时间</span>
+                    <input type="time" value={form.delist_time} onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, delist_time: event.target.value }))}
+                      className="mt-2 block rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-sky-400" />
+                  </label>
+                  <button type="button" disabled={running !== '' || !account.enabled || selectedCount === 0} onClick={runDelist}
+                    className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                    {running === 'auto_delist' ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageMinus className="h-4 w-4" />}立即下架
+                  </button>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-4">
+                  <span className="text-xs font-extrabold text-slate-600">下架商品白名单（已选 {selectedCount}）</span>
+                  <button type="button" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, delist_item_ids: [] }))}
+                    disabled={selectedCount === 0}
+                    className="rounded-lg px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100 disabled:opacity-40">清空</button>
+                </div>
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+                  {delistItems.loading && <div className="px-2 py-3 text-xs text-slate-500">正在读取账号商品...</div>}
+                  {!delistItems.loading && delistItems.error && <div className="px-2 py-3 text-xs text-rose-600">{delistItems.error}</div>}
+                  {!delistItems.loading && !delistItems.error && whitelistOptions.length === 0 && <div className="px-2 py-3 text-xs text-slate-500">该账号暂无可选商品，可先在商品页同步。</div>}
+                  {!delistItems.loading && whitelistOptions.map(/* 当前回调渲染单个白名单商品选项。 */ item => (
+                    <label key={item.item_id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-white">
+                      <input type="checkbox" checked={form.delist_item_ids.includes(item.item_id)}
+                        onChange={/* 当前回调处理用户交互或异步状态变化。 */ () => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, delist_item_ids: toggleDelistItem(current.delist_item_ids, item.item_id) }))}
+                        className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-200" />
+                      <span className="truncate" title={item.item_title}>{item.item_title}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-slate-400">上次完成：{form.last_delist_at ? new Date(form.last_delist_at * 1000).toLocaleString('zh-CN') : '尚未执行'}</div>
               </div>
             </div>
           </section>
