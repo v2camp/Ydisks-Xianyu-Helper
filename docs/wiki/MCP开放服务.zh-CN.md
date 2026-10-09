@@ -73,10 +73,10 @@
 | `account_restart` | 破坏性；重启账号运行实例 |
 | `account_refresh_profile` | 破坏性；向平台刷新昵称与头像 |
 | `account_delete` | 破坏性；删除账号 |
-| `account_task_get_settings` | 只读；自动评价与擦亮配置 |
-| `account_task_update_settings` | 只读（本地写入）；更新任务配置 |
+| `account_task_get_settings` | 只读；自动评价、擦亮与每日定时下架配置 |
+| `account_task_update_settings` | 只读（本地写入）；更新任务配置，可设置下架开关、下架时间与下架商品白名单 |
 | `account_task_list_runs` | 只读；任务运行记录 |
-| `account_task_run` | 破坏性；立即执行自动评价/擦亮 |
+| `account_task_run` | 破坏性；立即执行自动评价/擦亮/定时下架（`task_type=delist` 会真实下架白名单商品，且不可自动恢复） |
 
 ### 订单与履约（14）
 

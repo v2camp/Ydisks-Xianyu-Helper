@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	accountapp "xianyu-go/internal/application/account"
@@ -62,8 +63,9 @@ func TestAccountTaskRepositoryCRUDAndRunMapping(t *testing.T) {
 	if defaultErr != nil || defaultSettings.CookieID != "cid" || defaultSettings.RateContent == "" || defaultSettings.PolishTime != "03:00" {
 		t.Fatalf("default settings=%+v err=%v", defaultSettings, defaultErr)
 	}
-	// settings 是待持久化的账号任务设置。
-	settings := automationapp.AccountTaskSettings{CookieID: "cid", AutoRateEnabled: true, RateContent: "交易愉快", AutoPolishEnabled: true, PolishTime: "08:30", LastRateScanAt: 11, LastPolishDate: "2026-08-26", LastPolishAt: 22}
+	// settings 是待持久化的账号任务设置，包含定时下架字段以覆盖新增列的往返。
+	settings := automationapp.AccountTaskSettings{CookieID: "cid", AutoRateEnabled: true, RateContent: "交易愉快", AutoPolishEnabled: true, PolishTime: "08:30", LastRateScanAt: 11, LastPolishDate: "2026-08-26", LastPolishAt: 22,
+		AutoDelistEnabled: true, DelistTime: "09:00", DelistItemIDs: []string{"item-1", "item-2"}, LastDelistDate: "2026-08-27", LastDelistAt: 33}
 	// saveErr 保存账号任务设置写入错误。
 	saveErr := repository.SaveSettings(ctx, settings)
 	if saveErr != nil {
@@ -71,7 +73,7 @@ func TestAccountTaskRepositoryCRUDAndRunMapping(t *testing.T) {
 	}
 	// savedSettings、savedErr 保存读取后的最终设置。
 	savedSettings, savedErr := repository.GetSettings(ctx, "cid")
-	if savedErr != nil || savedSettings != settings {
+	if savedErr != nil || !reflect.DeepEqual(savedSettings, settings) {
 		t.Fatalf("saved settings=%+v want=%+v err=%v", savedSettings, settings, savedErr)
 	}
 	// claimOK、claimErr 保存账号任务运行记录的幂等创建结果。

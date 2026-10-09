@@ -28,6 +28,11 @@ type fakeAccountTaskClient struct {
 	fetchPageSize   int
 	fetchMaxPages   int
 	polishErr       error
+	// downshelfCalls、downshelfErr 保存下架调用次数和预置错误。
+	downshelfCalls int
+	downshelfErr   error
+	// downshelfItems 按调用顺序保存下架请求的商品标识，用于确认只处理白名单商品。
+	downshelfItems []string
 }
 
 // cancelingAccountTaskClient 在评价动作已经返回成功前取消调用方上下文，用于验证补偿收口不会依赖已取消请求。
@@ -78,6 +83,16 @@ func (f *fakeAccountTaskClient) PolishItem(context.Context, string, string) (*mt
 	f.polishCalls++
 	if f.polishErr != nil {
 		return nil, f.polishErr
+	}
+	return &mtop.AccountTaskResult{Success: true, Message: "ok"}, nil
+}
+
+// DownshelfItem 封装下架商品业务协调，并记录请求的白名单商品标识。
+func (f *fakeAccountTaskClient) DownshelfItem(_ context.Context, _, itemID string) (*mtop.AccountTaskResult, error) {
+	f.downshelfCalls++
+	f.downshelfItems = append(f.downshelfItems, itemID)
+	if f.downshelfErr != nil {
+		return nil, f.downshelfErr
 	}
 	return &mtop.AccountTaskResult{Success: true, Message: "ok"}, nil
 }

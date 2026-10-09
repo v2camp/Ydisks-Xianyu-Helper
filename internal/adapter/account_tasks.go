@@ -41,6 +41,8 @@ func (r *AccountTaskRepository) SaveSettings(ctx context.Context, settings autom
 		CookieID: settings.CookieID, AutoRateEnabled: settings.AutoRateEnabled, RateContent: settings.RateContent,
 		AutoPolishEnabled: settings.AutoPolishEnabled, PolishTime: settings.PolishTime,
 		LastRateScanAt: settings.LastRateScanAt, LastPolishDate: settings.LastPolishDate, LastPolishAt: settings.LastPolishAt,
+		AutoDelistEnabled: settings.AutoDelistEnabled, DelistTime: settings.DelistTime, DelistItemIDs: settings.DelistItemIDs,
+		LastDelistDate: settings.LastDelistDate, LastDelistAt: settings.LastDelistAt,
 	})
 }
 
@@ -82,6 +84,8 @@ func accountTaskSettingsModel(settings db.AccountTaskSettings) automationapp.Acc
 		CookieID: settings.CookieID, AutoRateEnabled: settings.AutoRateEnabled, RateContent: settings.RateContent,
 		AutoPolishEnabled: settings.AutoPolishEnabled, PolishTime: settings.PolishTime,
 		LastRateScanAt: settings.LastRateScanAt, LastPolishDate: settings.LastPolishDate, LastPolishAt: settings.LastPolishAt,
+		AutoDelistEnabled: settings.AutoDelistEnabled, DelistTime: settings.DelistTime, DelistItemIDs: settings.DelistItemIDs,
+		LastDelistDate: settings.LastDelistDate, LastDelistAt: settings.LastDelistAt,
 	}
 }
 

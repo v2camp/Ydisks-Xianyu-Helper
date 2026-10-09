@@ -91,7 +91,7 @@ func (s *Server) runAccountTask(w http.ResponseWriter, r *http.Request) {
 	}
 	// input 用于本次流程后续判断的input
 	var input accountTaskRunRequest
-	if decodeJSON(r, &input) != nil || (input.TaskType != automationapp.TaskAutoRate && input.TaskType != automationapp.TaskAutoPolish) {
+	if decodeJSON(r, &input) != nil || (input.TaskType != automationapp.TaskAutoRate && input.TaskType != automationapp.TaskAutoPolish && input.TaskType != automationapp.TaskAutoDelist) {
 		writeErr(w, http.StatusBadRequest, "不支持的任务类型")
 		return
 	}

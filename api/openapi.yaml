@@ -7672,7 +7672,7 @@ components:
         reply_once: {type: boolean}
     AccountTaskSettingsResponse:
       type: object
-      required: [account_id, auto_rate_enabled, rate_content, auto_polish_enabled, polish_time, last_rate_scan_at, last_polish_date, last_polish_at]
+      required: [account_id, auto_rate_enabled, rate_content, auto_polish_enabled, polish_time, last_rate_scan_at, last_polish_date, last_polish_at, auto_delist_enabled, delist_time, delist_item_ids, last_delist_date, last_delist_at]
       properties:
         account_id: {type: string}
         auto_rate_enabled: {type: boolean}
@@ -7682,9 +7682,16 @@ components:
         last_rate_scan_at: {type: integer}
         last_polish_date: {type: string}
         last_polish_at: {type: integer}
+        auto_delist_enabled: {type: boolean}
+        delist_time: {type: string}
+        delist_item_ids:
+          type: array
+          items: {type: string}
+        last_delist_date: {type: string}
+        last_delist_at: {type: integer}
     AccountTaskSettingsUpdateRequest:
       type: object
-      required: [auto_rate_enabled, rate_content, auto_polish_enabled, polish_time]
+      required: [auto_rate_enabled, rate_content, auto_polish_enabled, polish_time, auto_delist_enabled, delist_time, delist_item_ids]
       properties:
         account_id: {type: string}
         auto_rate_enabled: {type: boolean}
@@ -7694,13 +7701,20 @@ components:
         last_rate_scan_at: {type: integer}
         last_polish_date: {type: string}
         last_polish_at: {type: integer}
+        auto_delist_enabled: {type: boolean}
+        delist_time: {type: string}
+        delist_item_ids:
+          type: array
+          items: {type: string}
+        last_delist_date: {type: string}
+        last_delist_at: {type: integer}
     AccountTaskRunRequest:
       type: object
       required: [task_type]
       properties:
         task_type:
           type: string
-          enum: [auto_rate, auto_polish]
+          enum: [auto_rate, auto_polish, auto_delist]
     AccountTaskRunResponse:
       type: object
       required: [id, run_key, account_id, task_type, target_id, run_date, status, success_count, failed_count, error_message, next_retry_at, started_at, finished_at]
@@ -7731,7 +7745,7 @@ components:
       properties:
         task_type:
           type: string
-          enum: [auto_rate, auto_polish]
+          enum: [auto_rate, auto_polish, auto_delist]
         found: {type: integer}
         success: {type: integer}
         failed: {type: integer}

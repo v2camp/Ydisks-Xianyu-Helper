@@ -1,7 +1,7 @@
 import type { AccountDetail,AccountTaskSettings,AccountTaskSummary } from './api';
 
 /** 账号任务类型。 */
-export type AccountTaskType = 'auto_rate' | 'auto_polish';
+export type AccountTaskType = 'auto_rate' | 'auto_polish' | 'auto_delist';
 
 /** AccountAutomation Hook 的输入参数。 */
 export type AccountAutomationOptions = {

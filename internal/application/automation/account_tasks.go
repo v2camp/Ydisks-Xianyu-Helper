@@ -20,8 +20,17 @@ const TaskAutoRate = "auto_rate"
 // TaskAutoPolish 表示商品擦亮任务。
 const TaskAutoPolish = "auto_polish"
 
-// accountTaskTimePattern 校验擦亮任务每天执行的本地时间格式。
+// TaskAutoDelist 表示每日定时下架任务。
+const TaskAutoDelist = "auto_delist"
+
+// accountTaskTimePattern 校验账号任务每天执行的本地时间格式。
 var accountTaskTimePattern = regexp.MustCompile(`^(?:[01]\d|2[0-3]):[0-5]\d$`)
+
+// accountTaskDelistTimeDefault 是下架时间缺省时使用的默认本地时间，与数据库默认值保持一致。
+const accountTaskDelistTimeDefault = "09:00"
+
+// accountTaskDelistMaxItems 限制单个账号的下架白名单规模，避免一次任务对平台发起过多请求。
+const accountTaskDelistMaxItems = 200
 
 // AccountTaskSettings 是不含数据库模型的账号任务设置。
 type AccountTaskSettings struct {
@@ -41,6 +50,16 @@ type AccountTaskSettings struct {
 	LastPolishDate string `json:"last_polish_date"`
 	// LastPolishAt 是上次擦亮完成的 Unix 秒时间。
 	LastPolishAt int64 `json:"last_polish_at"`
+	// AutoDelistEnabled 表示是否启用每日定时下架。
+	AutoDelistEnabled bool `json:"auto_delist_enabled"`
+	// DelistTime 是每天执行下架的本地时间，格式为 HH:mm。
+	DelistTime string `json:"delist_time"`
+	// DelistItemIDs 是参与下架的商品白名单；空名单表示不下架任何商品。
+	DelistItemIDs []string `json:"delist_item_ids"`
+	// LastDelistDate 是上次下架日期，使用 YYYY-MM-DD 格式。
+	LastDelistDate string `json:"last_delist_date"`
+	// LastDelistAt 是上次下架完成的 Unix 秒时间。
+	LastDelistAt int64 `json:"last_delist_at"`
 }
 
 // AccountTaskRun 是面向应用层的账号任务运行记录。
@@ -145,11 +164,49 @@ func (s *Service) UpdateSettings(ctx context.Context, settings AccountTaskSettin
 	if !accountTaskTimePattern.MatchString(settings.PolishTime) {
 		return AccountTaskSettings{}, errors.New("擦亮时间格式必须为 HH:mm")
 	}
+	// 下架时间缺省时回落到默认值；只有显式填写非法时间才拒绝。
+	if strings.TrimSpace(settings.DelistTime) == "" {
+		settings.DelistTime = accountTaskDelistTimeDefault
+	} else if !accountTaskTimePattern.MatchString(settings.DelistTime) {
+		return AccountTaskSettings{}, errors.New("下架时间格式必须为 HH:mm")
+	}
+	// normalizedDelist 保存清洗后的商品白名单，去除空项和重复项并限制规模。
+	normalizedDelist, delistErr := normalizeAccountDelistItemIDs(settings.DelistItemIDs)
+	if delistErr != nil {
+		return AccountTaskSettings{}, delistErr
+	}
+	settings.DelistItemIDs = normalizedDelist
 	// err 表示账号任务设置写入失败。
 	if err := s.repository.SaveSettings(ctx, settings); err != nil {
 		return AccountTaskSettings{}, err
 	}
 	return s.repository.GetSettings(ctx, settings.CookieID)
+}
+
+// normalizeAccountDelistItemIDs 清洗下架白名单：去除空白与重复项，并限制最大条目数。
+func normalizeAccountDelistItemIDs(itemIDs []string) ([]string, error) {
+	// result 保存去重后的商品标识，保持输入顺序以保证前端展示稳定。
+	result := make([]string, 0, len(itemIDs))
+	// seen 记录已收录的商品标识，避免重复下架同一商品。
+	seen := make(map[string]struct{}, len(itemIDs))
+	// itemID 是当前待清洗的白名单项。
+	for _, itemID := range itemIDs {
+		// trimmed 保存去除首尾空白后的商品标识。
+		trimmed := strings.TrimSpace(itemID)
+		if trimmed == "" {
+			continue
+		}
+		if // exists 表示该商品标识是否已经收录。
+		_, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+		if len(result) > accountTaskDelistMaxItems {
+			return nil, errors.New("下架商品白名单不能超过 200 个")
+		}
+	}
+	return result, nil
 }
 
 // ListRuns 查询指定账号最近的任务运行记录。
@@ -168,7 +225,7 @@ func (s *Service) Run(ctx context.Context, accountID, taskType string) (TaskSumm
 	if s == nil || s.runner == nil {
 		return TaskSummary{}, ErrUnavailable
 	}
-	if taskType != TaskAutoRate && taskType != TaskAutoPolish {
+	if taskType != TaskAutoRate && taskType != TaskAutoPolish && taskType != TaskAutoDelist {
 		return TaskSummary{}, ErrInvalidTaskType
 	}
 	return s.runner.RunAccountTask(ctx, strings.TrimSpace(accountID), taskType)

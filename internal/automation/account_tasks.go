@@ -18,6 +18,7 @@ import (
 const (
 	TaskAutoRate       = "auto_rate"
 	TaskAutoPolish     = "auto_polish"
+	TaskAutoDelist     = "auto_delist"
 	polishItemPageSize = 20
 	polishItemMaxPages = 20
 )
@@ -30,6 +31,7 @@ type AccountTaskClient interface {
 	RateBuyer(ctx context.Context, cookiesStr, tradeID, feedback string) (*mtop.AccountTaskResult, error)
 	FetchAllItems(ctx context.Context, cookiesStr string, pageSize, maxPages int) (*mtop.ItemListResult, error)
 	PolishItem(ctx context.Context, cookiesStr, itemID string) (*mtop.AccountTaskResult, error)
+	DownshelfItem(ctx context.Context, cookiesStr, itemID string) (*mtop.AccountTaskResult, error)
 }
 
 // accountTaskCookieWriter 表示能够保留 Cookie 快照 metadata 的账号任务写回能力。
@@ -62,7 +64,7 @@ type AccountTaskSummary struct {
 	Message  string `json:"message,omitempty"`
 }
 
-// accountTaskCoordinator 负责账号自动评价、商品擦亮和凭证阻断状态。
+// accountTaskCoordinator 负责账号自动评价、商品擦亮、每日定时下架和凭证阻断状态。
 // 它拥有账号任务专用的 Session 指纹状态，Center 只保留兼容调用入口和依赖装配。
 // accountTaskCoordinator 用于本次流程后续判断的账号任务Coordinator
 type accountTaskCoordinator struct {
@@ -143,6 +145,8 @@ func (c *accountTaskCoordinator) runConfiguredAccountTask(ctx context.Context, s
 		summary, err = c.runAutoRate(ctx, settings)
 	case TaskAutoPolish:
 		summary, err = c.runAutoPolish(ctx, settings, beijingNow(), true)
+	case TaskAutoDelist:
+		summary, err = c.runAutoDelist(ctx, settings, beijingNow(), true)
 	default:
 		return AccountTaskSummary{TaskType: taskType}, fmt.Errorf("不支持的账号任务: %s", taskType)
 	}
@@ -219,6 +223,28 @@ func (c *accountTaskCoordinator) scanAccountTasks(ctx context.Context) {
 				c.logger.Info("每日擦亮完成", "account", setting.CookieID,
 					"found", polishSummary.Found, "success", polishSummary.Success,
 					"failed", polishSummary.Failed, "skipped", polishSummary.Skipped)
+			}
+		}
+		if setting.AutoDelistEnabled && delistDue(setting, now) {
+			if // blocked 用于本次流程后续判断的blocked
+			blocked, _ := c.accountTaskSessionBlocked(ctx, setting.CookieID); blocked {
+				continue
+			}
+			// delistSummary、delistErr 保存本轮定时下架结果及其错误；成功结果必须落一条可检索日志。
+			delistSummary, delistErr := c.runAutoDelist(ctx, setting, now, false)
+			if delistErr != nil && mtop.IsSessionExpiredErr(delistErr) {
+				delistErr = c.recoverAccountTaskCredential(ctx, setting.CookieID, delistErr)
+			}
+			if delistErr != nil {
+				if errors.Is(delistErr, errAccountTaskCredentialRenewed) {
+					c.logger.Info("每日下架因凭证续期暂停，下一轮自动重试", "account", setting.CookieID, "err", delistErr)
+				} else {
+					c.logger.Warn("每日下架失败", "account", setting.CookieID, "err", delistErr)
+				}
+			} else {
+				c.logger.Info("每日下架完成", "account", setting.CookieID,
+					"found", delistSummary.Found, "success", delistSummary.Success,
+					"failed", delistSummary.Failed, "skipped", delistSummary.Skipped)
 			}
 		}
 	}

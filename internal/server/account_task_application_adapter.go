@@ -8,6 +8,8 @@ func newApplicationAccountTaskSettingsResponse(settings automationapp.AccountTas
 		AccountID: settings.CookieID, AutoRateEnabled: settings.AutoRateEnabled, RateContent: settings.RateContent,
 		AutoPolishEnabled: settings.AutoPolishEnabled, PolishTime: settings.PolishTime,
 		LastRateScanAt: settings.LastRateScanAt, LastPolishDate: settings.LastPolishDate, LastPolishAt: settings.LastPolishAt,
+		AutoDelistEnabled: settings.AutoDelistEnabled, DelistTime: settings.DelistTime, DelistItemIDs: settings.DelistItemIDs,
+		LastDelistDate: settings.LastDelistDate, LastDelistAt: settings.LastDelistAt,
 	}
 }
 

@@ -37,6 +37,10 @@ type accountTaskFlowRepository struct {
 	// markPolishCalls、markPolishDate 保存擦亮日期成功写入的调用次数和日期。
 	markPolishCalls int
 	markPolishDate  string
+	// markDelistErr 保存下架日期写入错误；markDelistCalls、markDelistDate 保存成功写入的调用次数和日期。
+	markDelistErr   error
+	markDelistCalls int
+	markDelistDate  string
 	// runtimeData、runtimeDataErr 保存凭证指纹读取结果和错误。
 	runtimeData    db.CookieRuntimeData
 	runtimeDataErr error
@@ -97,6 +101,15 @@ func (repository *accountTaskFlowRepository) MarkPolished(_ context.Context, _ s
 	return repository.markPolishErr
 }
 
+// MarkDelisted 返回测试预置的下架日期写入错误，并记录成功写入的调用。
+func (repository *accountTaskFlowRepository) MarkDelisted(_ context.Context, _ string, date string, _ int64) error {
+	if repository.markDelistErr == nil {
+		repository.markDelistCalls++
+		repository.markDelistDate = date
+	}
+	return repository.markDelistErr
+}
+
 // accountTaskFlowClient 是账号任务平台调用的可控内存客户端。
 type accountTaskFlowClient struct {
 	// rateResult、rateErr 保存评价动作结果和错误。
@@ -108,6 +121,12 @@ type accountTaskFlowClient struct {
 	// polishResult、polishErr 保存擦亮动作结果和错误。
 	polishResult *mtop.AccountTaskResult
 	polishErr    error
+	// downshelfResult、downshelfErr 保存下架动作结果和错误。
+	downshelfResult *mtop.AccountTaskResult
+	downshelfErr    error
+	// downshelfCalls、downshelfItemIDs 记录下架调用次数与请求的商品标识。
+	downshelfCalls   int
+	downshelfItemIDs []string
 }
 
 // accountTaskRecovererBoundary 是会话恢复结果可控的测试替身。
@@ -180,6 +199,19 @@ func (client *accountTaskFlowClient) PolishItem(context.Context, string, string)
 		return &mtop.AccountTaskResult{Success: true}, nil
 	}
 	return client.polishResult, nil
+}
+
+// DownshelfItem 返回测试预置的下架结果。
+func (client *accountTaskFlowClient) DownshelfItem(_ context.Context, _, itemID string) (*mtop.AccountTaskResult, error) {
+	client.downshelfCalls++
+	client.downshelfItemIDs = append(client.downshelfItemIDs, itemID)
+	if client.downshelfErr != nil {
+		return client.downshelfResult, client.downshelfErr
+	}
+	if client.downshelfResult == nil {
+		return &mtop.AccountTaskResult{Success: true}, nil
+	}
+	return client.downshelfResult, nil
 }
 
 // newAccountTaskFlowCoordinator 构造使用固定平台客户端和日志器的账号任务协调器。

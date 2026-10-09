@@ -87,18 +87,35 @@ export interface AccountTaskSettings {
 	auto_polish_enabled: boolean;
 	/** 每日擦亮执行时间。 */
 	polish_time: string;
+	/** 是否启用每日定时下架。 */
+	auto_delist_enabled: boolean;
+	/** 每日定时下架执行时间。 */
+	delist_time: string;
+	/** 下架白名单商品标识。 */
+	delist_item_ids: string[];
 	/** 最近一次自动评价扫描时间。 */
 	last_rate_scan_at?: number;
 	/** 最近一次擦亮日期。 */
 	last_polish_date?: string;
 	/** 最近一次擦亮时间。 */
 	last_polish_at?: number;
+	/** 最近一次下架日期。 */
+	last_delist_date?: string;
+	/** 最近一次下架时间。 */
+	last_delist_at?: number;
 }
 
-/** 由当前 feature adapter 归一后的 AccountTaskSummary UI 模型；不直接暴露 HTTP DTO。 */
-export interface AccountTaskSummary {
+/** 由当前 feature adapter 归一后的下架白名单商品选项；不直接暴露 HTTP DTO。 */
+export interface AccountItemOption {
+	/** 平台商品标识。 */
+	item_id: string;
+	/** 商品标题。 */
+	item_title: string;
+}
+
+/** 由当前 feature adapter 归一后的 AccountTaskSummary UI 模型；不直接暴露 HTTP DTO。 */export interface AccountTaskSummary {
 	/** 任务类型。 */
-	task_type: 'auto_rate' | 'auto_polish';
+	task_type: 'auto_rate' | 'auto_polish' | 'auto_delist';
 	/** 发现的任务数量。 */
 	found: number;
 	/** 成功处理的任务数量。 */
@@ -345,6 +362,16 @@ export interface AccountTaskSettingsResponse {
   last_polish_date: string;
   /** 最近一次擦亮时间。 */
   last_polish_at: number;
+  /** 是否启用每日定时下架。 */
+  auto_delist_enabled: boolean;
+  /** 每日定时下架本地时间。 */
+  delist_time: string;
+  /** 下架白名单商品标识。 */
+  delist_item_ids: string[];
+  /** 最近一次下架日期。 */
+  last_delist_date: string;
+  /** 最近一次下架时间。 */
+  last_delist_at: number;
 }
 
 /** 账号任务执行记录响应。 */

@@ -195,6 +195,7 @@ test('account task APIs keep rating and polish account-scoped', async () => {
 	await updateAccountTaskSettings('a1', {
 		account_id: 'a1', auto_rate_enabled: true, rate_content: '交易愉快',
 		auto_polish_enabled: true, polish_time: '03:00',
+		auto_delist_enabled: false, delist_time: '09:00', delist_item_ids: [],
 	});
 	await runAccountTask('a1', 'auto_rate');
 	expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/account-tasks/a1');
@@ -212,7 +213,7 @@ test('账号自动任务 API 转发外部取消信号', async () => {
   stubContractFetch(fetchMock);
   // controller 是 AccountAutomation feature Hook 使用的请求控制器。
   const controller = new AbortController();
-  const settings = { account_id: 'a1', auto_rate_enabled: true, rate_content: '交易愉快', auto_polish_enabled: false, polish_time: '03:00' }; /* settings 表示settings。 */
+  const settings = { account_id: 'a1', auto_rate_enabled: true, rate_content: '交易愉快', auto_polish_enabled: false, polish_time: '03:00', auto_delist_enabled: false, delist_time: '09:00', delist_item_ids: [] }; /* settings 表示settings。 */
   await getAccountTaskSettings('a1', { signal: controller.signal });
   await updateAccountTaskSettings('a1', settings, { signal: controller.signal });
   await runAccountTask('a1', 'auto_rate', { signal: controller.signal });
@@ -1622,7 +1623,7 @@ const runVersionedChatTaskAPITest = async () => {
   await sendChatImage({ account_id: 'acc1', chat_id: 'chat-1', peer_user_id: 'buyer-1', image: new File(['image'], 'chat.png', { type: 'image/png' }) });
   await markChatRead('acc1', 'chat-1', []);
   await getAccountTaskSettings('acc1');
-  await updateAccountTaskSettings('acc1', { account_id: 'acc1', auto_rate_enabled: true, rate_content: '交易愉快', auto_polish_enabled: false, polish_time: '03:00' });
+  await updateAccountTaskSettings('acc1', { account_id: 'acc1', auto_rate_enabled: true, rate_content: '交易愉快', auto_polish_enabled: false, polish_time: '03:00', auto_delist_enabled: false, delist_time: '09:00', delist_item_ids: [] });
   await runAccountTask('acc1', 'auto_rate');
 
   expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/chat/sessions?account_id=acc1&cursor=3&refresh=1', expect.objectContaining({ method: 'GET' }));
