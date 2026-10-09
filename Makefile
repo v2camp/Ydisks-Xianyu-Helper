@@ -97,9 +97,10 @@ comments:
 	node frontend/scripts/check-comments.mjs --mode check --root frontend
 
 ## e2e-webui: 容器内真实 Chromium Web UI 冒烟（复用 browser-test 镜像与生产镜像的 Chromium）
+## 必须在 worktree 目录下执行：compose-functional.sh 会拒绝在部署根目录运行功能栈。
 e2e-webui:
-	docker compose -f docker-compose.functional.yml build webui-e2e-test
-	docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
+	sh scripts/compose-functional.sh build webui-e2e-test
+	sh scripts/compose-functional.sh run --rm webui-e2e-test
 
 ## check: 本地提交前全套检查（fmt + vet + lint + test）
 ## 真实浏览器 Web UI 冒烟不进本机 check（本机未必有 Chromium），走 scripts/docker-full-test.sh 或 make e2e-webui
