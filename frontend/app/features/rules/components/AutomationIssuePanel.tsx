@@ -12,6 +12,10 @@ export interface AutomationIssuePanelProps {
   onResolveRun: (id: number, resolution: AutomationResolution) => void;
   // onResolveDeferredTask 处理延迟任务的重试或忽略动作。
   onResolveDeferredTask: (id: number, resolution: 'retry' | 'dismiss') => void;
+  // onDismissAllPendingTasks 一次忽略当前列表中的全部延迟任务异常。
+  onDismissAllPendingTasks: () => void;
+  // dismissingAllPendingTasks 表示批量忽略请求是否正在执行，用于阻断重复提交。
+  dismissingAllPendingTasks: boolean;
 }
 
 // AutomationIssuePanel 展示规则执行失败后需要用户确认的外部动作状态。
@@ -20,14 +24,24 @@ export const AutomationIssuePanel = ({
   pendingTasks,
   onResolveRun,
   onResolveDeferredTask,
+  onDismissAllPendingTasks,
+  dismissingAllPendingTasks,
 }: AutomationIssuePanelProps) => (
   <section className="rounded-2xl border border-red-200 bg-red-50 p-5 space-y-4">
-    <div className="flex items-start gap-3">
-      <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-      <div>
-        <h3 className="font-black text-red-900">需要人工处理的自动化任务</h3>
-        <p className="text-sm text-red-700 mt-1">请先在闲鱼聊天、订单或商品列表中核对真实结果，再选择继续或重试。</p>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+        <div>
+          <h3 className="font-black text-red-900">需要人工处理的自动化任务</h3>
+          <p className="text-sm text-red-700 mt-1">请先在闲鱼聊天、订单或商品列表中核对真实结果，再选择继续或重试。</p>
+        </div>
       </div>
+      {pendingTasks.length > 0 && (
+        <button onClick={
+          // 批量忽略由父级统一执行并刷新规则状态。
+          () => onDismissAllPendingTasks()
+        } disabled={dismissingAllPendingTasks} className="shrink-0 px-3 py-2 rounded-lg border border-red-300 bg-white text-red-700 text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed">全部忽略（{pendingTasks.length} 条）</button>
+      )}
     </div>
     <div className="space-y-3">
       {runs.map(

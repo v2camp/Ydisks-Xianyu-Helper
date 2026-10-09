@@ -208,6 +208,32 @@ describe('useRuleActions', /* 当前回调验证规则页面动作协调器的�
     hook.unmount();
   });
 
+  test('批量忽略异常任务并发提交并汇总失败结果', /* 当前回调验证异常面板批量忽略的提交边界。 */ async () => {
+    // hook 是规则动作 Hook 的真实 React 状态实例。
+    const hook = renderHook(() => useRuleActionsHarness());
+    await act(/* 当前回调执行空列表的批量忽略。 */ async () => hook.result.current.handleDismissAllDeferredIssues([]));
+    expect(resolveDeferredMock).not.toHaveBeenCalled();
+    expect(hook.result.current.dismissAllState).toEqual({ submitting: false, result: 'idle' });
+
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    await act(/* 当前回调取消批量忽略。 */ async () => hook.result.current.handleDismissAllDeferredIssues([1, 2]));
+    expect(resolveDeferredMock).not.toHaveBeenCalled();
+    expect(hook.result.current.dismissAllState).toEqual({ submitting: false, result: 'idle' });
+
+    resolveDeferredMock.mockResolvedValueOnce({ success: true });
+    resolveDeferredMock.mockRejectedValueOnce(new Error('忽略失败'));
+    await act(/* 当前回调执行部分失败的批量忽略。 */ async () => hook.result.current.handleDismissAllDeferredIssues([3, 3, 4]));
+    expect(resolveDeferredMock).toHaveBeenCalledTimes(2);
+    expect(resolveDeferredMock).toHaveBeenNthCalledWith(1, 3, 'dismiss');
+    expect(resolveDeferredMock).toHaveBeenNthCalledWith(2, 4, 'dismiss');
+    expect(hook.result.current.dismissAllState.result).toBe('failure');
+
+    await act(/* 当前回调执行全部成功的批量忽略。 */ async () => hook.result.current.handleDismissAllDeferredIssues([5]));
+    expect(resolveDeferredMock).toHaveBeenNthCalledWith(3, 5, 'dismiss');
+    expect(hook.result.current.dismissAllState.result).toBe('success');
+    hook.unmount();
+  });
+
   test('关键词回复保存与删除使用轻提示而不是原生弹窗', /* 当前回调验证回复规则操作的轻提示反馈。 */ async () => {
     // hook 是规则动作 Hook 的真实 React 状态实例。
     const hook = renderHook(() => useRuleActionsHarness());
