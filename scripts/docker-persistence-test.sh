@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-compose="docker compose -f docker-compose.functional.yml"
+# script_dir 定位本目录，使脚本从任意 worktree 调用都走同一份功能栈入口。
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+# compose 统一委托给 compose-functional.sh：它强制 -p 项目名并拒绝在部署根目录执行。
+compose="sh $script_dir/compose-functional.sh"
 
 $compose exec -T postgres psql -U xianyu -d xianyu -Atc "SHOW server_version" | grep -q '^17\.'
 $compose exec -T postgres psql -U xianyu -d xianyu -Atc "SHOW timezone" | grep -Eq '^UTC$|^Etc/UTC$'

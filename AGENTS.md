@@ -20,23 +20,28 @@
 
 ### 0.1 构建环境
 
-- 编译、测试、vet 与覆盖率默认在本机执行。
-- 容器只用于镜像、多方言、浏览器与合并前门禁。
+- 编译、测试、vet 与覆盖率一律在本机执行。
+- 容器只用于镜像、浏览器与 Web UI 冒烟。
+- functional 栈只能通过 scripts/compose-functional.sh 执行。
+- 禁止在部署工作区根目录执行任何 docker compose 命令。
+- 执行 compose 前后必须核对生产容器未被改动。
+- 看到 orphan 容器告警必须立即停止并核对项目名。
 - 本机验证前先跑 scripts/guard-local-dev-env.sh。
 - 本机 Go 版本不得低于 go.mod 的 go 指令版本。
 - 严格对齐容器版本时加 GOTOOLCHAIN=go1.26.4 前缀。
 - 本机产物是 macOS 二进制，禁止进镜像或部署。
 - 部署镜像必须走 Dockerfile.debian13 的容器构建。
-- PostgreSQL 方言的回归证据只在容器内出。
-- 浏览器与 Web UI 冒烟只在容器内跑。
-- 合并到 main 前必须补跑一次容器完整门禁。
+- 需要 PostgreSQL 实测时用本机已运行实例加 TEST_POSTGRES_URL。
+- 禁止为门禁启动数据库容器。
+- 浏览器与 Web UI 冒烟只在容器内跑，且只走统一入口。
+- 合并到 main 以本机门禁为准，不再要求容器完整门禁。
 - 本机与容器的版本差异要在提交说明登记。
 - 网络受限时设置 GOPROXY=https://goproxy.cn,direct。
 - 一次性容器统一使用 golang:1.26 镜像。
 - 容器产物是 Linux 二进制，不能直接在桌面系统运行。
 - 磁盘余量低于 10Gi 时禁止启动 compose。
 - 本机禁止并发跑多个 go 命令，避免缓存竞态。
-- 下文命令均在仓库根目录执行。
+- 下文命令除 docker compose 外均在仓库根目录执行。
 
 ### 0.2 编译
 
@@ -356,25 +361,24 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 ```
 
 ```bash
-# 容器门禁：合并前、多方言、浏览器与 Web UI 四类场景必跑
-docker compose -f docker-compose.functional.yml build go-test go-lint
-docker compose -f docker-compose.functional.yml run --rm go-vet
-docker compose -f docker-compose.functional.yml run --rm go-lint
-docker compose -f docker-compose.functional.yml run --rm go-test
-docker compose -f docker-compose.functional.yml build webui-e2e-test
-docker compose -f docker-compose.functional.yml run --rm webui-e2e-test
+# 容器门禁：仅在确需 Chromium 或镜像验证时使用，且必须在 worktree 目录执行
+sh scripts/compose-functional.sh build go-test go-lint
+sh scripts/compose-functional.sh run --rm go-vet
+sh scripts/compose-functional.sh run --rm go-lint
+sh scripts/compose-functional.sh build webui-e2e-test
+sh scripts/compose-functional.sh run --rm webui-e2e-test
 ```
 
-- 纯 Go 单测与 vet 默认走本机，不进容器。
+- 纯 Go 单测与 vet 一律走本机，不进容器。
+- 容器门禁不再是合并前的默认步骤。
 - lint 走本机 golangci-lint 或 Dockerfile.test 的 go-lint 阶段。
 - 本机 golangci-lint 版本须与 ci.yml 指定值一致。
 - 禁止用更高版本替代，会报 CI 不报的告警。
-- 本机未装 golangci-lint 时，提交前补跑容器 go-lint。
+- 本机未装 golangci-lint 时，在 worktree 目录补跑容器 go-lint。
 - go fmt 会就地改写文件，提交前必须核对 git status。
 - 格式收口不在 CI 校验内，须单开任务避免夹带。
-- go-test 依赖健康的 postgres。
-- 执行 compose run 时会自动拉起该数据库。
-- 本机调试多方言可只起 postgres 容器。
+- compose run 会按 depends_on 拉起依赖服务，更必须走统一入口。
+- 禁止手工拼 docker compose 命令，一律走 scripts/compose-functional.sh。
 - 单测命令加 -run TestName -v -count=1。
 - 端到端验证用仓库脚本，不要手工拼命令。
 - scripts 目录提供 full、functional 与 persistence 三套脚本。
@@ -425,6 +429,30 @@ go test -coverprofile=/tmp/cover-core.out \
 - 涉及前端路由、页面渲染或触发类型删改时，必须跑 webui-e2e-test 门禁。
 
 ---
+
+### 2.6 Docker 项目名安全
+
+- 部署根目录的 `.env` 设置了 `COMPOSE_PROJECT_NAME=ydisks-xianyu-helper`。
+- Compose 项目名优先级是 `-p` 高于 `.env` 的环境变量。
+- 环境变量又高于 compose 文件里的顶层 `name:`。
+- 因此在部署根目录执行 functional 文件会命中生产项目名。
+- 后果是 compose 判定生产项目规格变化并重建其中的容器。
+- 2026-10-10 即因此删除生产 postgres 容器，业务下线约 31 分钟。
+- functional 栈与生产栈共用同一 Docker 主机，禁止混用项目名。
+- 只能通过 scripts/compose-functional.sh 执行 functional 栈。
+- 该脚本强制 `-p ydisks-xianyu-helper-functional` 并拒绝部署根目录。
+- 执行前先 `docker compose ls` 确认将要影响的项目名。
+- 执行后核对生产容器名称、状态与 CreatedAt 未变化。
+- 看到 `Found orphan containers (ydisks-xianyu-helper-app-1)` 立即停止。
+- 该告警等于「命令已落进生产项目」，必须排查项目名后再继续。
+- 禁止用「终止后台任务」当作 compose 的止损手段。
+- 终止外层 shell 不会停掉 compose 子进程，事故仍会继续发生。
+- 止损要用同一项目名的 `stop` 或 `down`，或等待其自行结束。
+- 禁止对 functional 项目使用 `--remove-orphans`。
+- 该参数会把生产容器当作孤儿删除。
+- 禁止在部署工作区根目录执行任何 docker compose 命令。
+- 数据库依赖优先复用本机已运行实例，不新起容器。
+- 生产容器被替换即为事故，先恢复再排查，不要继续跑门禁。
 
 ## 3. 提交与评审
 

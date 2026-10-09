@@ -3,7 +3,8 @@
 # 检查项：1) TEST_XIANYU_LIVE 未被意外开启为 "1"；
 #         2) DATABASE_URL 未误指向 data/ 目录下的真实主号 SQLite 数据文件；
 #         3) data/ 与 browser_data/ 目录未残留真实凭证特征文件（Cookie/登录数据库、含 token 的日志）。
-# 行为：全部通过返回 0；任一违反打印告警并返回非零。全程只读，不写文件、不依赖 docker。
+#         4) 部署工作区根目录的 Docker 项目名陷阱提示（只读提示，不调用 docker）。
+# 行为：全部通过返回 0；任一违反打印告警并返回非零。全程只读，不写文件、不调用 docker。
 # 约定：不打印任何 Cookie/Token 明文，凭证相关内容只报「存在/不存在」。
 # 用法：bash scripts/guard-local-dev-env.sh
 set -uo pipefail
@@ -122,6 +123,17 @@ if [ -d "$browser_dir" ]; then
     fi
 else
     printf '[OK] browser_data/ 目录不存在\n'
+fi
+
+# ---- Docker 项目名护栏（只读、不调用 docker）----
+# 背景：部署根目录的 .env 设置 COMPOSE_PROJECT_NAME=ydisks-xianyu-helper，而 Compose 的项目名
+# 优先级是 -p > .env 环境变量 > 文件里的顶层 name:。因此在仓库根目录执行
+# `docker compose -f docker-compose.functional.yml` 会把功能栈落到生产项目名下，
+# compose 随即重建生产容器（2026-10-10 事故）。此处只做提示，强制拦截在 compose-functional.sh。
+# 判定依据是「当前工作目录」而非脚本位置：危险来自 CWD 下的 .env 会被 compose 读作项目名。
+if [ -f "$PWD/.env" ] && grep -q '^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=' "$PWD/.env"; then
+    printf '[WARN] 当前目录 %s 的 .env 设置了 COMPOSE_PROJECT_NAME\n' "$PWD"
+    printf '[WARN] 禁止在此目录执行 docker compose；功能栈请改用 scripts/compose-functional.sh（须在 worktree 目录运行）\n'
 fi
 
 # ---- 汇总退出 ----
