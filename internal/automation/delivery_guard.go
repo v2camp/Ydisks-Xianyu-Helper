@@ -76,8 +76,14 @@ var newDeliveryLinkHTTPClient = func(timeout time.Duration) *http.Client {
 	return netguard.ConfiguredHTTPClient(timeout)
 }
 
-// deliveryContactPatterns 是联系方式与站外引流的命中词表（小写匹配）；文案标签直接用于命中说明。
-var deliveryContactPatterns = []string{"微信", "加微", "加v", "维信", "薇信", "vx", "qq", "二维码", "扫码", "站外", "线下交易", "加我"}
+// deliveryContactPatterns 是含中文或中拉混合的联系方式/引流词表（小写匹配）；文案标签直接用于命中说明。
+// 这些词条最短也有两个字符且常与中文相邻，按无边界子串匹配即可，无需担心误伤拉丁随机串。
+var deliveryContactPatterns = []string{"微信", "加微", "加v", "维信", "薇信", "二维码", "扫码", "站外", "线下交易", "加我"}
+
+// deliveryContactLatinPatterns 是纯拉丁联系方式短词：必须按词边界匹配。
+// 它们只有两个字符，无边界子串匹配会命中网盘分享码等随机串（例如百度网盘分享码 G4TQQ 内含 qq），
+// 从而把合规的交付链接误判为联系方式引流。
+var deliveryContactLatinPatterns = []string{"vx", "qq"}
 
 // deliveryBuiltinBlockWords 是内置违禁词短表，覆盖侵权、色情、灰产等闲鱼硬红线品类。
 var deliveryBuiltinBlockWords = []string{"侵权", "盗版", "色情", "代孕", "枪支", "毒品", "赌博", "诈骗", "办证", "发票"}
@@ -105,14 +111,20 @@ func ScanDeliveryContent(text string) []ContentHit {
 	if trimmed == "" {
 		return nil
 	}
-	// lower 是小写化后的扫描副本，让 vx/QQ 等拉丁词大小写不敏感命中。
+	// lower 是小写化后的扫描副本，让 vx/QQ 等拉丁短词与纯拉丁违禁词大小写不敏感命中。
 	lower := strings.ToLower(trimmed)
 	// hits 按规则顺序收集全部命中，供错误消息一次列出全部原因。
 	var hits []ContentHit
-	// pattern 是当前联系方式/引流词表中的小写词条。
+	// pattern 是当前联系方式/引流词表中的中文或中拉混合词条。
 	for _, pattern := range deliveryContactPatterns {
 		if strings.Contains(lower, pattern) {
 			hits = append(hits, ContentHit{Rule: "联系方式/引流", Detail: "联系方式/引流:" + pattern})
+		}
+	}
+	// latin 是当前纯拉丁联系方式短词条目；边界判定可避免命中链接内的随机分享码。
+	for _, latin := range deliveryContactLatinPatterns {
+		if containsLatinContactWord(lower, latin) {
+			hits = append(hits, ContentHit{Rule: "联系方式/引流", Detail: "联系方式/引流:" + latin})
 		}
 	}
 	hits = append(hits, scanMobileNumberRuns(trimmed)...)
@@ -137,6 +149,41 @@ func ScanDeliveryContent(text string) []ContentHit {
 		}
 	}
 	return hits
+}
+
+// containsLatinContactWord 判断小写文本中是否出现带词边界的纯拉丁联系方式短词。
+// 词边界定义为紧邻字符不是 ASCII 字母：词前为中文、数字、标点或串首，词后为中文、数字、标点或串尾，都算边界。
+// 这样既排除「随机分享码内部」的误命中（百度网盘分享码 G4TQQ 的 qq 前邻是字母 T），
+// 又保留「加qq」「qq123456」「qq.com」「wx:qq」等真实引流形态（相邻字符都不是 ASCII 字母）。
+func containsLatinContactWord(lower, word string) bool {
+	// offset 是下一轮搜索的起点；逐次右移保证同一文本内的多次出现都会被完整检查。
+	offset := 0
+	for {
+		// index 是本次命中的起始下标；-1 表示剩余文本中已无候选。
+		index := strings.Index(lower[offset:], word)
+		if index < 0 {
+			return false
+		}
+		index += offset
+		// end 是本次命中结束后的下标，等于起始下标加词长。
+		end := index + len(word)
+		// beforeOK 表示词前不是 ASCII 字母；index 为 0 时视为串首边界。
+		beforeOK := index == 0 || !isASCIILetter(lower[index-1])
+		// endOK 表示词后不是 ASCII 字母；end 到达串尾时视为串尾边界。
+		endOK := end >= len(lower) || !isASCIILetter(lower[end])
+		if beforeOK && endOK {
+			return true
+		}
+		// 本次命中不满足边界时从下一个字节继续，避免漏掉后续出现的合法引流形态。
+		offset = index + 1
+	}
+}
+
+// isASCIILetter 判断单个字节是否为 ASCII 字母，仅用于联系方式短词的词边界判定。
+// 参数 char 是待判定字节；返回 true 表示它是 a-z 或 A-Z。
+// UTF-8 的续字节均不小于 0x80，因此对中文字节调用一律返回 false，可安全用字节下标扫描小写副本。
+func isASCIILetter(char byte) bool {
+	return (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
 }
 
 // ScanDeliveryContentWithConfig 在内置规则之上追加设置里的额外违禁词；门禁关闭时直接放行。
