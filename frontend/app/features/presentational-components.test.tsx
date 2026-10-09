@@ -35,6 +35,9 @@ const noopRunResolution = (): void => undefined;
 // noopDeferredResolution 是静态渲染测试使用的延迟任务处理占位实现。
 const noopDeferredResolution = (): void => undefined;
 
+// noopDismissAll 是静态渲染测试使用的批量忽略占位实现。
+const noopDismissAll = (): void => undefined;
+
 // noopSmtpUpdate 是静态渲染测试使用的 SMTP 配置更新占位实现。
 const noopSmtpUpdate = (): void => undefined;
 
@@ -105,7 +108,7 @@ describe('前端纯展示组件', /* 当前回调处理无浏览器依赖的展�
     // deferredIssue 是达到重试上限的延迟任务异常。
     const deferredIssue: DeferredAutomationIssue = { id: 2, cookie_id: 'account-1', trigger_type: 'review_missing_timeout', error_message: '任务重试失败', attempt_count: 3, updated_at: '2026-08-15T00:00:00Z' };
     // panel 是自动化异常面板生成的静态 HTML。
-    const panel = render(<AutomationIssuePanel runs={[runIssue]} pendingTasks={[deferredIssue]} onResolveRun={noopRunResolution} onResolveDeferredTask={noopDeferredResolution} />);
+    const panel = render(<AutomationIssuePanel runs={[runIssue]} pendingTasks={[deferredIssue]} onResolveRun={noopRunResolution} onResolveDeferredTask={noopDeferredResolution} onDismissAllPendingTasks={noopDismissAll} dismissingAllPendingTasks={false} />);
     expect(panel).toContain('需要人工处理的自动化任务');
     expect(panel).toContain('外部动作结果未知');
     expect(panel).toContain('已执行，继续下一步');
@@ -113,6 +116,13 @@ describe('前端纯展示组件', /* 当前回调处理无浏览器依赖的展�
     expect(panel).toContain('终止');
     expect(panel).toContain('重新入队');
     expect(panel).toContain('忽略');
+    expect(panel).toContain('全部忽略');
+    // busyPanel 是批量忽略执行中的静态 HTML，用于验证按钮禁用状态。
+    const busyPanel = render(<AutomationIssuePanel runs={[]} pendingTasks={[deferredIssue]} onResolveRun={noopRunResolution} onResolveDeferredTask={noopDeferredResolution} onDismissAllPendingTasks={noopDismissAll} dismissingAllPendingTasks />);
+    expect(busyPanel).toContain('disabled');
+    // clearPanel 是没有延迟任务异常的静态 HTML，用于验证批量忽略按钮不展示。
+    const clearPanel = render(<AutomationIssuePanel runs={[runIssue]} pendingTasks={[]} onResolveRun={noopRunResolution} onResolveDeferredTask={noopDeferredResolution} onDismissAllPendingTasks={noopDismissAll} dismissingAllPendingTasks={false} />);
+    expect(clearPanel).not.toContain('全部忽略');
   });
 
   test('订单筛选栏渲染状态、账号和关键词输入', /* 当前回调处理订单筛选工具栏的静态结构。 */ () => {

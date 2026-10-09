@@ -112,7 +112,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
     editingReplyRule, setEditingReplyRule, defaultForm, setDefaultForm, selectedRuleItem, isMultiSpecRule, currentTrigger,
     currentMeta, reviewConfig, displayVariants, openAutomationRule, openNewAutomationRule, handleTriggerChange,
     handleAutomationItemChange, updateVariant, updateAdjustPriceTarget, updateAdjustPriceNotifyText, appendDeliveryContent, handleSaveAutomationRule, handleDeleteAutomation,
-    handleToggleAutomation, handleResolveRunIssue, handleResolveDeferredIssue, handleAddReplyRule, handleSaveReplyRule,
+    handleToggleAutomation, handleResolveRunIssue, handleResolveDeferredIssue, dismissAllState, handleDismissAllDeferredIssues, handleAddReplyRule, handleSaveReplyRule,
     handleDeleteReply, toast, openDefaultReplyModal, handleSaveDefaultReply, handleDeleteDefaultReply,
     handleClearDefaultReplyRecords,
   } = ruleActions;
@@ -282,6 +282,8 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
 	      pendingTasks={visibleAutomationIssues.pending_tasks}
 	      onResolveRun={/* 当前回调处理用户交互或异步状态变化。 */ (id, resolution) => void handleResolveRunIssue(id, resolution)}
 	      onResolveDeferredTask={/* 当前回调处理用户交互或异步状态变化。 */ (id, resolution) => void handleResolveDeferredIssue(id, resolution)}
+	      onDismissAllPendingTasks={/* 当前回调批量忽略当前筛选账号下可见的异常任务。 */ () => void handleDismissAllDeferredIssues(visibleAutomationIssues.pending_tasks.map(/* 当前回调提取待忽略任务标识。 */ task => task.id))}
+	      dismissingAllPendingTasks={dismissAllState.submitting}
 	    />
 	  ) : null}
 

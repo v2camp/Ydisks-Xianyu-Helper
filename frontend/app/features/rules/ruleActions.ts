@@ -128,6 +128,10 @@ export interface RuleActionsState {
   handleResolveRunIssue: (id: number, resolution: 'continue' | 'retry' | 'cancel') => Promise<void>;
   // handleResolveDeferredIssue 处理等待重试的自动化任务。
   handleResolveDeferredIssue: (id: number, resolution: 'retry' | 'dismiss') => Promise<void>;
+  // dismissAllState 保存批量忽略异常任务的提交状态。
+  dismissAllState: RuleSubmitState;
+  // handleDismissAllDeferredIssues 一次忽略给定的全部延迟任务异常。
+  handleDismissAllDeferredIssues: (taskIDs: number[]) => Promise<void>;
   // handleAddReplyRule 打开新增关键词回复弹窗。
   handleAddReplyRule: () => void;
   // handleSaveReplyRule 保存当前关键词回复规则。
@@ -178,6 +182,8 @@ export const useRuleActions = ({
   const [replySubmitState, setReplySubmitState] = useState<RuleSubmitState>(idleRuleSubmitState);
   // defaultReplySubmitState 保存默认回复提交状态。
   const [defaultReplySubmitState, setDefaultReplySubmitState] = useState<RuleSubmitState>(idleRuleSubmitState);
+  // dismissAllState 保存批量忽略异常任务的提交状态。
+  const [dismissAllState, setDismissAllState] = useState<RuleSubmitState>(idleRuleSubmitState);
   // editingAutomationRule 保存当前自动化规则草稿。
   const [editingAutomationRule, setEditingAutomationRule] = useState<Partial<ShippingRule> | null>(null);
   // editingReplyRule 保存当前关键词回复草稿。
@@ -467,6 +473,26 @@ export const useRuleActions = ({
     try { await resolveDeferredAutomationTask(id, resolution); await loadAutomationRules(); } catch (/* error 表示延迟任务恢复异常。 */ error) { alert('处理失败：' + (error as Error).message); }
   }, [loadAutomationRules]);
 
+  // handleDismissAllDeferredIssues 批量忽略当前列表中的延迟任务异常。
+  const handleDismissAllDeferredIssues = useCallback(/* dismissAllDeferredAction 批量忽略延迟任务异常。 */ async (taskIDs: number[]) => {
+    // uniqueIDs 保存去重后的有效任务标识，避免同一任务被重复提交。
+    const uniqueIDs = Array.from(new Set(taskIDs.filter(/* 当前回调过滤无效任务标识。 */ id => id > 0)));
+    if (uniqueIDs.length === 0 || dismissAllState.submitting) return;
+    if (!confirm(`确认忽略并删除当前列表中的 ${uniqueIDs.length} 条异常任务吗？忽略后无法恢复。`)) return;
+    setDismissAllState(startRuleSubmission(dismissAllState));
+    // failedCount 记录批量忽略过程中提交失败的任务条数。
+    let failedCount = uniqueIDs.length;
+    try {
+      // results 并行汇总每条任务的忽略结果，单条失败不影响其余任务继续提交。
+      const results = await Promise.allSettled(uniqueIDs.map(/* 当前回调提交单条任务的忽略动作。 */ id => resolveDeferredAutomationTask(id, 'dismiss')));
+      failedCount = results.filter(/* 当前回调统计被拒绝的提交结果。 */ result => result.status === 'rejected').length;
+    } finally {
+      setDismissAllState(/* current 保存批量忽略提交状态。 */ current => finishRuleSubmission(current, failedCount === 0));
+    }
+    if (failedCount > 0) alert(`已忽略 ${uniqueIDs.length - failedCount} 条，${failedCount} 条处理失败，请稍后重试。`);
+    try { await loadAutomationRules(); } catch (/* error 表示批量忽略异常任务后刷新列表的失败原因。 */ error) { console.warn('批量忽略异常任务后刷新列表失败', error); }
+  }, [dismissAllState, loadAutomationRules]);
+
   // handleAddReplyRule 打开一个空的关键词回复草稿。
   const handleAddReplyRule = useCallback(/* addReplyAction 创建关键词回复草稿。 */ () => {
     if (!selectedAccountId) return showReplyToast('error', '请先选择账号');
@@ -530,11 +556,11 @@ export const useRuleActions = ({
 
   return {
     showAutomationModal, setShowAutomationModal, showReplyModal, setShowReplyModal, showDefaultModal, setShowDefaultModal,
-    automationSubmitState, replySubmitState, defaultReplySubmitState, editingAutomationRule, setEditingAutomationRule,
+    automationSubmitState, replySubmitState, defaultReplySubmitState, dismissAllState, editingAutomationRule, setEditingAutomationRule,
     editingReplyRule, setEditingReplyRule, defaultForm, setDefaultForm, selectedRuleItem, isMultiSpecRule, currentTrigger,
     currentMeta, reviewConfig, displayVariants, buildAutomationDraft, openAutomationRule, openNewAutomationRule,
     handleTriggerChange, handleAutomationItemChange, updateVariant, updateAdjustPriceTarget, updateAdjustPriceNotifyText, appendDeliveryContent, handleSaveAutomationRule,
-    handleDeleteAutomation, handleToggleAutomation, handleResolveRunIssue, handleResolveDeferredIssue, handleAddReplyRule,
+    handleDeleteAutomation, handleToggleAutomation, handleResolveRunIssue, handleResolveDeferredIssue, handleDismissAllDeferredIssues, handleAddReplyRule,
     handleSaveReplyRule, handleDeleteReply, toast, showReplyToast,
     openDefaultReplyModal, handleSaveDefaultReply, handleDeleteDefaultReply,
     handleClearDefaultReplyRecords,
