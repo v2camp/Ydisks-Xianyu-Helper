@@ -17,6 +17,7 @@ import { useAccountsData } from '../hooks';
 import { useAccountQRCodeLogin } from '../qrLogin';
 import { useAccountSubmodules,type AccountModalType } from '../submoduleHooks';
 import type { AccountEditForm } from '../types';
+import { appDialog } from '../../../../shared/ui/dialog';
 
 // AccountList 渲染账号列表组件。
 const AccountList: React.FC = () => {
@@ -153,12 +154,12 @@ const AccountList: React.FC = () => {
       // res 保存资料刷新接口返回值。
       const res = await refreshAccountProfile(account.id);
       if (res?.profile_error) {
-        alert('资料刷新失败：' + res.profile_error);
+        await appDialog.alert('资料刷新失败：' + res.profile_error, { variant: 'error' });
       }
       await loadAccounts();
     } catch (/* error 保存资料刷新请求的失败原因，仅转换为界面提示。 */ error: any) {
       console.error('刷新账号资料失败:', error);
-      alert(error?.message || '刷新账号资料失败，请先重新授权该账号');
+      await appDialog.alert(error?.message || '刷新账号资料失败，请先重新授权该账号', { variant: 'error' });
     } finally {
       setRefreshingProfileId('');
     }

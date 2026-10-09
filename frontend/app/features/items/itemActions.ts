@@ -4,6 +4,7 @@ import type { PublishLocation } from './api';
 import { createItem,deleteItem,getPublishLocations,itemErrorMessage,publishItem,recommendPublishCategory as recommendItemPublishCategory,syncItemsFromAccount,updateItem } from './api';
 import type { PublishSkuRow, PublishSpec } from './publishSpecs';
 import type { PublishCategory } from './types';
+import { appDialog } from '../../../shared/ui/dialog';
 
 // AddItemForm 描述手动添加商品弹窗的表单字段。
 export interface AddItemForm {
@@ -253,16 +254,16 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
 
   // handleSync 同步当前账号商品并刷新列表。
   const handleSync = useCallback(/* syncAction 执行当前账号商品同步。 */ async () => {
-    if (!selectedAccount) return alert('请先选择账号');
+    if (!selectedAccount) return appDialog.alert('请先选择账号', { variant: 'warning' });
     setLoading(true);
     try {
       // result 保存商品同步接口返回的提示。
       const result = await syncItemsFromAccount(selectedAccount);
       await loadItems();
-      alert(result?.message || '商品同步完成');
+      await appDialog.alert(result?.message || '商品同步完成', { variant: 'success' });
     } catch (/* error 表示商品同步请求异常。 */ error: unknown) {
       console.error('同步商品失败:', error);
-      alert(itemErrorMessage(error, '同步失败，请重试'));
+      await appDialog.alert(itemErrorMessage(error, '同步失败，请重试'), { variant: 'error' });
     } finally {
       setLoading(false);
     }
@@ -289,19 +290,19 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
       setSelectedItem(null);
     } catch (/* error 表示商品编辑请求异常。 */ error: unknown) {
       console.error('更新商品失败:', error);
-      alert('更新失败，请重试');
+      await appDialog.alert('更新失败，请重试', { variant: 'error' });
     }
   }, [editForm, loadItems, loadShippingRules, selectedItem]);
 
   // handleDelete 删除指定商品并从当前列表移除。
   const handleDelete = useCallback(/* deleteAction 删除商品并更新列表。 */ async (item: Item) => {
-    if (!confirm(`确认删除商品"${item.item_title}"吗？`)) return;
+    if (!(await appDialog.confirm(`确认删除商品"${item.item_title}"吗？`, { variant: 'danger', confirmText: '删除' }))) return;
     try {
       await deleteItem(item.cookie_id, item.item_id);
       setItems(/* currentItems 更新删除商品后的列表。 */ previous => previous.filter(/* currentItem 保留未删除的商品。 */ currentItem => !(currentItem.cookie_id === item.cookie_id && currentItem.item_id === item.item_id)));
     } catch (/* error 表示商品删除请求异常。 */ error: unknown) {
       console.error('删除商品失败:', error);
-      alert('删除失败，请重试');
+      await appDialog.alert('删除失败，请重试', { variant: 'error' });
     }
   }, [setItems]);
 
@@ -309,7 +310,7 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
   const handleAddItem = useCallback(/* addAction 创建手动添加商品。 */ async () => {
     try {
       if (!addForm.cookie_id || !addForm.item_id) {
-        alert('请选择账号并填写商品ID');
+        await appDialog.alert('请选择账号并填写商品ID', { variant: 'warning' });
         return;
       }
       await createItem(addForm.cookie_id, { item_id: addForm.item_id, item_title: addForm.item_title, item_price: addForm.item_price, item_detail: addForm.item_image ? JSON.stringify({ item_image: addForm.item_image }) : '' });
@@ -318,21 +319,21 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
       setAddForm(emptyAddItemForm());
     } catch (/* error 表示商品创建请求异常。 */ error: unknown) {
       console.error('添加商品失败:', error);
-      alert('添加失败，请重试');
+      await appDialog.alert('添加失败，请重试', { variant: 'error' });
     }
   }, [addForm, loadItems]);
 
   // handlePublishItem 校验并发布普通商品。
   const handlePublishItem = useCallback(/* publishAction 执行普通商品发布。 */ async () => {
-    if (!publishForm.cookie_id) return alert('请选择发布账号');
-    if (!publishForm.title.trim()) return alert('请填写商品标题');
-    if (publishForm.specs.length > 0 && publishForm.skuRows.length === 0) return alert('请先填写每种规格的规格值');
-    if (publishForm.skuRows.some(/* row 检查每个 SKU 是否有有效售价。 */ row => !row.price.trim() || Number(row.price) <= 0)) return alert('请填写每个 SKU 的售价');
-    if (publishForm.skuRows.some(/* row 检查每个 SKU 是否有正整数库存。 */ row => !/^\d+$/.test(row.quantity.trim()) || Number(row.quantity) <= 0)) return alert('请填写每个 SKU 的库存');
-    if (publishForm.specs.length === 0 && !publishForm.price.trim()) return alert('请填写商品价格');
-    if (publishForm.specs.length === 0 && (!publishForm.quantity || Number(publishForm.quantity) <= 0)) return alert('库存数量必须大于 0');
-    if (publishForm.images.length === 0) return alert('至少上传 1 张商品图片');
-    if (publishForm.postage_mode === 'fixed' && !publishForm.postage.trim()) return alert('请填写一口价邮费');
+    if (!publishForm.cookie_id) return appDialog.alert('请选择发布账号', { variant: 'warning' });
+    if (!publishForm.title.trim()) return appDialog.alert('请填写商品标题', { variant: 'warning' });
+    if (publishForm.specs.length > 0 && publishForm.skuRows.length === 0) return appDialog.alert('请先填写每种规格的规格值', { variant: 'warning' });
+    if (publishForm.skuRows.some(/* row 检查每个 SKU 是否有有效售价。 */ row => !row.price.trim() || Number(row.price) <= 0)) return appDialog.alert('请填写每个 SKU 的售价', { variant: 'warning' });
+    if (publishForm.skuRows.some(/* row 检查每个 SKU 是否有正整数库存。 */ row => !/^\d+$/.test(row.quantity.trim()) || Number(row.quantity) <= 0)) return appDialog.alert('请填写每个 SKU 的库存', { variant: 'warning' });
+    if (publishForm.specs.length === 0 && !publishForm.price.trim()) return appDialog.alert('请填写商品价格', { variant: 'warning' });
+    if (publishForm.specs.length === 0 && (!publishForm.quantity || Number(publishForm.quantity) <= 0)) return appDialog.alert('库存数量必须大于 0', { variant: 'warning' });
+    if (publishForm.images.length === 0) return appDialog.alert('至少上传 1 张商品图片', { variant: 'warning' });
+    if (publishForm.postage_mode === 'fixed' && !publishForm.postage.trim()) return appDialog.alert('请填写一口价邮费', { variant: 'warning' });
     setPublishing(true);
     try {
       // result 保存平台发布接口返回的商品信息。
@@ -350,13 +351,13 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
         // publishedItem 保存发布成功后用于打开规则配置的商品摘要。
         const publishedItem: Item = { id: result.item_id, cookie_id: publishForm.cookie_id, item_id: result.item_id, item_title: result.item_title || publishForm.title, item_price: result.item_price || publishForm.price, item_image: result.item_image };
         onConfigureDelivery(publishedItem);
-        alert('商品发布成功，ID: ' + result.item_id + '，已为你打开发货规则配置');
+        await appDialog.alert('商品发布成功，ID: ' + result.item_id + '，已为你打开发货规则配置', { variant: 'success' });
       } else {
-        alert('商品发布成功');
+        await appDialog.alert('商品发布成功', { variant: 'success' });
       }
     } catch (/* error 表示商品发布请求异常。 */ error: unknown) {
       console.error('发布商品失败:', error);
-      alert(itemErrorMessage(error, '发布失败，请重试'));
+      await appDialog.alert(itemErrorMessage(error, '发布失败，请重试'), { variant: 'error' });
     } finally {
       setPublishing(false);
     }
@@ -368,8 +369,8 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
     const keyword = publishCategoryKeyword.trim();
     // cookieID 是本次推荐使用的发布账号。
     const cookieID = publishForm.cookie_id.trim();
-    if (!cookieID) return alert('请先选择发布账号');
-    if (!keyword) return alert('请输入类目关键词');
+    if (!cookieID) return appDialog.alert('请先选择发布账号', { variant: 'warning' });
+    if (!keyword) return appDialog.alert('请输入类目关键词', { variant: 'warning' });
     cancelPublishCategoryLookup();
     // controller 是当前类目推荐请求独占的取消器。
     const controller = new AbortController();
@@ -385,7 +386,7 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
     } catch (/* error 表示类目推荐请求异常。 */ error: unknown) {
       if (controller.signal.aborted || generation !== publishCategoryGeneration.current) return;
       console.error('获取普通发布类目失败:', error);
-      alert(itemErrorMessage(error, '获取类目失败，请检查关键词后重试'));
+      await appDialog.alert(itemErrorMessage(error, '获取类目失败，请检查关键词后重试'), { variant: 'error' });
     } finally {
       if (generation === publishCategoryGeneration.current) {
         publishCategoryController.current = null;
@@ -435,8 +436,8 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
   const locateForPublish = useCallback(/* locateAction 获取发布发货地。 */ async (batch: boolean) => {
     // cookieId 保存当前定位请求使用的账号。
     const cookieId = batch ? selectedAccount : publishForm.cookie_id;
-    if (!cookieId) return alert('请先选择发布账号');
-    if (!navigator.geolocation) return alert('当前浏览器不支持定位');
+    if (!cookieId) return appDialog.alert('请先选择发布账号', { variant: 'warning' });
+    if (!navigator.geolocation) return appDialog.alert('当前浏览器不支持定位', { variant: 'warning' });
     cancelLocationLookup();
     // controller 是本次定位及地点搜索共同使用的取消器。
     const controller = new AbortController();
@@ -470,9 +471,9 @@ export const useItemActions = ({ selectedAccount, setSelectedAccount, setItems, 
       if (typeof error === 'object' && error !== null && 'code' in error) {
         // positionError 是浏览器 Geolocation API 的失败对象，用于区分权限拒绝与其他定位错误。
         const positionError = error as GeolocationPositionError;
-        alert(positionError.code === positionError.PERMISSION_DENIED ? '定位权限被拒绝，请在浏览器设置中允许定位' : '无法获取当前位置，请稍后重试');
+        await appDialog.alert(positionError.code === positionError.PERMISSION_DENIED ? '定位权限被拒绝，请在浏览器设置中允许定位' : '无法获取当前位置，请稍后重试', { variant: 'warning' });
       } else {
-        alert(itemErrorMessage(error, '获取发货地失败'));
+        await appDialog.alert(itemErrorMessage(error, '获取发货地失败'), { variant: 'error' });
       }
     } finally {
       if (generation === locationGeneration.current) {

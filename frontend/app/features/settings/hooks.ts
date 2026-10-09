@@ -5,6 +5,7 @@ import { fetchAIModels,getSystemSettings,testAIConnection,updateLoginCredentials
 import { DEFAULT_AI_API_URL } from './constants';
 import { buildPersistableSettings,createCredentials,createCredentialsMessage,isCurrentAIConnectionTest,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage,validateCredentials } from './state';
 import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
+import { appDialog } from '../../../shared/ui/dialog';
 
 /** Settings feature 的 Hook 返回值。 */
 export type UseSettingsResult = SettingsFeatureState & {
@@ -286,8 +287,8 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
       // payload 只包含当前 scope 白名单内的字段，保证系统页与 AI 页保存互不覆盖。
       await updateSystemSettings(buildPersistableSettings(settings, scope), { signal: controller.signal });
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return;
-      // savedAlertText 按保存范围给出对应的中文成功提示。
-      window.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存');
+      // 保存成功后按当前范围给出对应的中文成功提示。
+      await appDialog.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存', { variant: 'success' });
     } catch (/* error 保存系统设置提交请求的失败原因；过期响应不会覆盖当前表单。 */ error) {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return;
       setSaveError(settingsErrorMessage(error, '保存配置失败'));

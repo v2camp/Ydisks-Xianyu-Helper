@@ -4,6 +4,7 @@ import { AccountDetail,AccountItemOption,AccountTaskSettings } from '../api';
 import { useAccountAutomation } from '../accountAutomationHooks';
 import { useAccountDelistItems } from '../accountDelistItems';
 import { toggleDelistItem } from '../accountAutomationState';
+import { appDialog } from '../../../../shared/ui/dialog';
 
 interface Props {
   /** account 表示账号。 */ account: AccountDetail;
@@ -36,9 +37,9 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
   // selectedCount 表示当前白名单勾选数量。
   const selectedCount = form.delist_item_ids.length;
   // runDelist 在二次确认后执行一次真实下架；该动作不可逆，只能由人工在平台侧重新上架。
-  const runDelist = (): void => {
+  const runDelist = async (): Promise<void> => {
     if (selectedCount === 0) return;
-    if (!window.confirm(`确认立即下架已勾选的 ${selectedCount} 个商品？下架后需要你手动在闲鱼重新上架。`)) return;
+    if (!(await appDialog.confirm(`确认立即下架已勾选的 ${selectedCount} 个商品？下架后需要你手动在闲鱼重新上架。`, { variant: 'danger', confirmText: '立即下架' }))) return;
     void run('auto_delist');
   };
 

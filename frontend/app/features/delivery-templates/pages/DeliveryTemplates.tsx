@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { COPY_RISK_BANNER_TEXT, DUPLICATE_COPY_WARNING, collectOtherTemplateMessages, isDuplicateAcrossTemplates } from '../copyRisk';
 import { useDeliveryTemplates } from '../hooks';
 import type { DeliveryTemplate, DeliveryTemplateDraft } from '../types';
+import { appDialog } from '../../../../shared/ui/dialog';
 
 // emptyDraft 创建一份可直接编辑的模板草稿。
 const emptyDraft = (): DeliveryTemplateDraft => ({ name: '', enabled: true, messages: [{ content: '' }] });
@@ -80,7 +81,7 @@ const DeliveryTemplates: React.FC = () => {
     // messages 保存去除空白消息后的提交内容。
     const messages = draft.messages.map(/* message 是待清理的模板消息草稿。 */ message => ({ content: message.content.trim() })).filter(/* message 是清理后的非空消息。 */ message => message.content.length > 0);
     if (!draft.name.trim() || messages.length === 0) {
-      alert('请填写模板名称和至少一条消息');
+      await appDialog.alert('请填写模板名称和至少一条消息', { variant: 'warning' });
       return;
     }
     try {
@@ -91,17 +92,17 @@ const DeliveryTemplates: React.FC = () => {
       setDraft(emptyDraft());
       setEditorOpen(false);
     } catch (/* error 是模板保存失败原因。 */ error) {
-      alert(`保存发货模板失败：${(error as Error).message}`);
+      await appDialog.alert(`保存发货模板失败：${(error as Error).message}`, { variant: 'error' });
     }
   };
 
   // removeTemplate 删除用户确认的模板。
   const removeTemplate = async (id: number): Promise<void> => {
-    if (!confirm('确定删除这个发货模板吗？被自动化规则引用的模板无法删除。')) return;
+    if (!(await appDialog.confirm('确定删除这个发货模板吗？被自动化规则引用的模板无法删除。', { variant: 'danger', confirmText: '删除' }))) return;
     try {
       await deleteTemplate(id);
     } catch (/* error 是模板删除失败原因。 */ error) {
-      alert(`删除发货模板失败：${(error as Error).message}`);
+      await appDialog.alert(`删除发货模板失败：${(error as Error).message}`, { variant: 'error' });
     }
   };
 

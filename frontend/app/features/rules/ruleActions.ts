@@ -18,6 +18,7 @@ import { finishRuleSubmission,idleRuleSubmitState,startRuleSubmission,type RuleS
 import type { AutomationTriggerType,Card,DefaultReplyForm,DeliveryTemplate,Item,ReplyRule,RulesProps,RulesTab,ShippingRule,ShippingVariant } from './types';
 import { adjustPriceTarget,boolFlag,buildAdjustPriceConfig,buildReviewConfig,cardActionsForTrigger,defaultRuleName,emptyVariant,hasCompleteTemplateBindings,isValidAdjustPrice,parseJSONObject,shouldReplaceGeneratedName,triggerMeta,withAllItemsConfirmation } from './utils';
 import type { ToastValue } from './components/Toast';
+import { appDialog } from '../../../shared/ui/dialog';
 
 // RULE_TOAST_DURATION_MS 是关键词回复操作轻提示的展示时长（毫秒）。
 const RULE_TOAST_DURATION_MS = 3000;
@@ -293,7 +294,7 @@ export const useRuleActions = ({
         }
       } catch (/* error 表示外部联动加载异常。 */ error) {
         console.error('打开商品自动化规则失败', error);
-        alert('无法加载该商品的自动化规则');
+        await appDialog.alert('无法加载该商品的自动化规则', { variant: 'error' });
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -308,7 +309,7 @@ export const useRuleActions = ({
   // openNewAutomationRule 创建指定类型的规则草稿并打开弹窗。
   const openNewAutomationRule = useCallback(/* openNewAction 创建新规则草稿。 */ (trigger: AutomationTriggerType = 'order_paid') => {
     if (!selectedAccountId) {
-      alert('请先选择账号');
+      void appDialog.alert('请先选择账号', { variant: 'warning' });
       return;
     }
     setEditingAutomationRule(buildAutomationDraft(trigger));
@@ -398,35 +399,35 @@ export const useRuleActions = ({
     if (!editingAutomationRule || automationSubmitState.submitting) return;
     // trigger 保存当前规则触发类型。
     const trigger = (editingAutomationRule.trigger_type || 'order_paid') as AutomationTriggerType;
-    if (!editingAutomationRule.cookie_id) return alert('请选择账号');
+    if (!editingAutomationRule.cookie_id) return appDialog.alert('请选择账号', { variant: 'warning' });
     // variants 保存当前规格列表。
     const variants = editingAutomationRule.variants?.length ? editingAutomationRule.variants : [];
     if (trigger !== 'review_missing_timeout' && trigger !== 'order_created') {
-      if (!variants.length || variants.some(/* 当前回调校验卡密组或模板是否已选择。 */ variant => variant.delivery_mode === 'template' ? !variant.delivery_template_id : !variant.card_id)) return alert('请选择发货卡密库存或发货模板');
+      if (!variants.length || variants.some(/* 当前回调校验卡密组或模板是否已选择。 */ variant => variant.delivery_mode === 'template' ? !variant.delivery_template_id : !variant.card_id)) return appDialog.alert('请选择发货卡密库存或发货模板', { variant: 'warning' });
       if (variants.some(/* 当前回调校验模板变量是否绑定完整。 */ variant => {
         if (variant.delivery_mode !== 'template') return false;
         // template 保存当前变体选择的模板摘要。
         const template = deliveryTemplates.find(/* 模板候选项查找器定位当前变体模板。 */ candidate => candidate.id === variant.delivery_template_id);
         return !template || !hasCompleteTemplateBindings(template.keys, variant.template_bindings);
-      })) return alert('请为发货模板的每个变量绑定卡密库存');
+      })) return appDialog.alert('请为发货模板的每个变量绑定卡密库存', { variant: 'warning' });
       if (variants.some(/* 当前回调校验模板自定义变量键值是否完整。 */ variant => {
         // template 保存当前变体选择的发货模板摘要。
         const template = deliveryTemplates.find(/* templateCandidate 定位当前模板。 */ templateCandidate => templateCandidate.id === variant.delivery_template_id);
         // customKeys 保存模板引用的自定义变量键。
         const customKeys = template?.custom_keys || [];
         return variant.delivery_mode === 'template' && customKeys.some(/* key 检查规则是否填写了对应的自定义字符串。 */ key => !variant.custom_variables?.[key]?.trim());
-      })) return alert('请填写发货模板要求的全部自定义变量');
-      if (isMultiSpecRule && variants.some(/* 当前回调校验多规格字段。 */ variant => !variant.spec_name.trim() || !variant.spec_value.trim())) return alert('多规格商品必须填写每一行的规格名称和规格值');
+      })) return appDialog.alert('请填写发货模板要求的全部自定义变量', { variant: 'warning' });
+      if (isMultiSpecRule && variants.some(/* 当前回调校验多规格字段。 */ variant => !variant.spec_name.trim() || !variant.spec_value.trim())) return appDialog.alert('多规格商品必须填写每一行的规格名称和规格值', { variant: 'warning' });
     }
     if (trigger === 'review_missing_timeout') {
       // text 保存求评价动作的文案。
       const text = editingAutomationRule.actions?.find(/* 当前回调查找求评价文案动作。 */ action => action.action_type === 'send_text')?.message_template || '';
-      if (!text.trim()) return alert('请填写求评价文案');
+      if (!text.trim()) return appDialog.alert('请填写求评价文案', { variant: 'warning' });
     }
     // saveActions 保存实际提交的动作列表；拍下改价规则会剔除未填写文案的可选提醒动作。
     let saveActions = editingAutomationRule.actions?.length ? editingAutomationRule.actions : cardActionsForTrigger(trigger, editingAutomationRule.card_group_id || 0);
     if (trigger === 'order_created') {
-      if (!isValidAdjustPrice(adjustPriceTarget(saveActions))) return alert('请填写 0.01 到 1000000 元、最多两位小数的目标价格');
+      if (!isValidAdjustPrice(adjustPriceTarget(saveActions))) return appDialog.alert('请填写 0.01 到 1000000 元、最多两位小数的目标价格', { variant: 'warning' });
       saveActions = saveActions.filter(/* 当前回调剔除空文案的可选提醒动作。 */ action => action.action_type !== 'send_text' || Boolean(action.message_template?.trim()));
     }
     // saveVariants 保存归一化后的发货规格。
@@ -438,11 +439,11 @@ export const useRuleActions = ({
       await updateShippingRule({ ...editingAutomationRule, trigger_type: trigger, name: (editingAutomationRule.name || '').trim() || defaultRuleName(trigger, selectedRuleItem?.item_title || editingAutomationRule.item_id || ''), config_json: trigger === 'review_missing_timeout' ? buildReviewConfig(editingAutomationRule.config_json) : (editingAutomationRule.config_json || '{}'), actions: trigger === 'order_created' ? saveActions : (editingAutomationRule.actions?.length ? editingAutomationRule.actions : cardActionsForTrigger(trigger, saveVariants[0]?.card_id || editingAutomationRule.card_group_id || 0)), variants: saveVariants });
       setShowAutomationModal(false);
       await Promise.all([loadAutomationRules(), loadReferenceData()]);
-      alert('保存成功');
+      await appDialog.alert('保存成功', { variant: 'success' });
       succeeded = true;
     } catch (/* error 表示自动化规则保存异常。 */ error) {
       console.error('保存自动化规则失败:', error);
-      alert('保存失败：' + (error as Error).message);
+      await appDialog.alert('保存失败：' + (error as Error).message, { variant: 'error' });
     } finally {
       setAutomationSubmitState(/* current 保存自动化提交状态。 */ current => finishRuleSubmission(current, succeeded));
     }
@@ -450,27 +451,31 @@ export const useRuleActions = ({
 
   // handleDeleteAutomation 删除自动化规则并刷新列表。
   const handleDeleteAutomation = useCallback(/* deleteRuleAction 删除自动化规则。 */ async (id: string) => {
-    if (!confirm('确定删除该自动化规则吗？')) return;
-    try { await deleteShippingRule(id); await loadAutomationRules(); alert('删除成功'); } catch (/* error 表示自动化规则删除异常。 */ error) { alert('删除失败：' + (error as Error).message); }
+    if (!(await appDialog.confirm('确定删除该自动化规则吗？', { variant: 'danger', confirmText: '删除' }))) return;
+    try { await deleteShippingRule(id); await loadAutomationRules(); await appDialog.alert('删除成功', { variant: 'success' }); } catch (/* error 表示自动化规则删除异常。 */ error) { await appDialog.alert('删除失败：' + (error as Error).message, { variant: 'error' }); }
   }, [loadAutomationRules]);
 
   // handleToggleAutomation 切换规则启用状态并刷新列表。
   const handleToggleAutomation = useCallback(/* toggleRuleAction 切换自动化规则状态。 */ async (rule: ShippingRule) => {
-    try { await updateShippingRule({ ...rule, enabled: !rule.enabled }); await loadAutomationRules(); } catch (/* error 表示自动化规则状态更新异常。 */ error) { alert('操作失败：' + (error as Error).message); }
+    try { await updateShippingRule({ ...rule, enabled: !rule.enabled }); await loadAutomationRules(); } catch (/* error 表示自动化规则状态更新异常。 */ error) { await appDialog.alert('操作失败：' + (error as Error).message, { variant: 'error' }); }
   }, [loadAutomationRules]);
 
   // handleResolveRunIssue 处理自动化运行的人工恢复决策。
   const handleResolveRunIssue = useCallback(/* resolveRunAction 处理自动化运行异常。 */ async (id: number, resolution: 'continue' | 'retry' | 'cancel') => {
     // prompt 保存当前恢复操作的确认文案。
     const prompt = resolution === 'continue' ? '确认外部动作已经执行成功，并跳到下一步吗？' : resolution === 'retry' ? '确认外部动作没有执行，可以安全重试吗？错误判断可能造成重复发送。' : '确认终止该自动化运行吗？';
-    if (!confirm(prompt)) return;
-    try { await resolveAutomationRun(id, resolution); await loadAutomationRules(); } catch (/* error 表示自动化运行恢复异常。 */ error) { alert('处理失败：' + (error as Error).message); }
+    // resolveConfirmText 按恢复决策给出与文案一致的主按钮标签。
+    const resolveConfirmText = resolution === 'continue' ? '已执行，继续' : resolution === 'retry' ? '未执行，安全重试' : '终止运行';
+    if (!(await appDialog.confirm(prompt, { variant: 'danger', confirmText: resolveConfirmText }))) return;
+    try { await resolveAutomationRun(id, resolution); await loadAutomationRules(); } catch (/* error 表示自动化运行恢复异常。 */ error) { await appDialog.alert('处理失败：' + (error as Error).message, { variant: 'error' }); }
   }, [loadAutomationRules]);
 
   // handleResolveDeferredIssue 处理延迟自动化任务的重试或忽略。
   const handleResolveDeferredIssue = useCallback(/* resolveDeferredAction 处理延迟任务异常。 */ async (id: number, resolution: 'retry' | 'dismiss') => {
-    if (!confirm(resolution === 'retry' ? '确认重新执行该任务吗？' : '确认忽略并删除该异常任务吗？')) return;
-    try { await resolveDeferredAutomationTask(id, resolution); await loadAutomationRules(); } catch (/* error 表示延迟任务恢复异常。 */ error) { alert('处理失败：' + (error as Error).message); }
+    // deferredConfirmText 按延迟任务决策给出与文案一致的主按钮标签。
+    const deferredConfirmText = resolution === 'retry' ? '重新执行' : '忽略并删除';
+    if (!(await appDialog.confirm(resolution === 'retry' ? '确认重新执行该任务吗？' : '确认忽略并删除该异常任务吗？', { variant: 'danger', confirmText: deferredConfirmText }))) return;
+    try { await resolveDeferredAutomationTask(id, resolution); await loadAutomationRules(); } catch (/* error 表示延迟任务恢复异常。 */ error) { await appDialog.alert('处理失败：' + (error as Error).message, { variant: 'error' }); }
   }, [loadAutomationRules]);
 
   // handleDismissAllDeferredIssues 批量忽略当前列表中的延迟任务异常。
@@ -478,7 +483,7 @@ export const useRuleActions = ({
     // uniqueIDs 保存去重后的有效任务标识，避免同一任务被重复提交。
     const uniqueIDs = Array.from(new Set(taskIDs.filter(/* 当前回调过滤无效任务标识。 */ id => id > 0)));
     if (uniqueIDs.length === 0 || dismissAllState.submitting) return;
-    if (!confirm(`确认忽略并删除当前列表中的 ${uniqueIDs.length} 条异常任务吗？忽略后无法恢复。`)) return;
+    if (!(await appDialog.confirm(`确认忽略并删除当前列表中的 ${uniqueIDs.length} 条异常任务吗？忽略后无法恢复。`, { variant: 'danger', confirmText: '全部忽略' }))) return;
     setDismissAllState(startRuleSubmission(dismissAllState));
     // failedCount 记录批量忽略过程中提交失败的任务条数。
     let failedCount = uniqueIDs.length;
@@ -489,7 +494,7 @@ export const useRuleActions = ({
     } finally {
       setDismissAllState(/* current 保存批量忽略提交状态。 */ current => finishRuleSubmission(current, failedCount === 0));
     }
-    if (failedCount > 0) alert(`已忽略 ${uniqueIDs.length - failedCount} 条，${failedCount} 条处理失败，请稍后重试。`);
+    if (failedCount > 0) await appDialog.alert(`已忽略 ${uniqueIDs.length - failedCount} 条，${failedCount} 条处理失败，请稍后重试。`, { variant: 'warning' });
     try { await loadAutomationRules(); } catch (/* error 表示批量忽略异常任务后刷新列表的失败原因。 */ error) { console.warn('批量忽略异常任务后刷新列表失败', error); }
   }, [dismissAllState, loadAutomationRules]);
 
@@ -514,13 +519,13 @@ export const useRuleActions = ({
 
   // handleDeleteReply 删除指定关键词回复并刷新列表。
   const handleDeleteReply = useCallback(/* deleteReplyAction 删除关键词回复。 */ async (id: string) => {
-    if (!selectedAccountId || !confirm('确定删除该回复规则吗？')) return;
+    if (!selectedAccountId || !(await appDialog.confirm('确定删除该回复规则吗？', { variant: 'danger', confirmText: '删除' }))) return;
     try { await deleteReplyRule(id, selectedAccountId); await loadReplyRules(); showReplyToast('success', '删除成功'); } catch (/* error 表示关键词回复删除异常。 */ error) { showReplyToast('error', '删除失败：' + (error as Error).message); }
   }, [loadReplyRules, selectedAccountId, showReplyToast]);
 
   // openDefaultReplyModal 加载指定账号的默认回复配置并打开弹窗。
   const openDefaultReplyModal = useCallback(/* openDefaultAction 加载默认回复草稿。 */ async (cookieID = selectedAccountId) => {
-    if (!cookieID) return alert('请先选择账号');
+    if (!cookieID) return appDialog.alert('请先选择账号', { variant: 'warning' });
     try {
       // data 保存服务端返回的默认回复配置。
       const data = await getDefaultReply(cookieID);
@@ -534,24 +539,24 @@ export const useRuleActions = ({
   // handleSaveDefaultReply 校验并保存账号默认回复。
   const handleSaveDefaultReply = useCallback(/* saveDefaultAction 保存默认回复。 */ async () => {
     if (defaultReplySubmitState.submitting) return;
-    if (!defaultForm.cookie_id) return alert('请先选择账号');
-    if (defaultForm.enabled && !defaultForm.reply_content.trim() && !defaultForm.reply_image_url.trim()) return alert('启用默认回复时，请填写回复内容或图片 URL');
+    if (!defaultForm.cookie_id) return appDialog.alert('请先选择账号', { variant: 'warning' });
+    if (defaultForm.enabled && !defaultForm.reply_content.trim() && !defaultForm.reply_image_url.trim()) return appDialog.alert('启用默认回复时，请填写回复内容或图片 URL', { variant: 'warning' });
     setDefaultReplySubmitState(startRuleSubmission(defaultReplySubmitState));
     // succeeded 记录保存是否成功。
     let succeeded = false;
-    try { await updateDefaultReply(defaultForm.cookie_id, { enabled: defaultForm.enabled, reply_content: defaultForm.reply_content, reply_once: defaultForm.reply_once, reply_image_url: defaultForm.reply_image_url }); setShowDefaultModal(false); await loadDefaultReplies(); alert('保存成功'); succeeded = true; } catch (/* error 表示默认回复保存异常。 */ error) { alert('保存失败：' + (error as Error).message); } finally { setDefaultReplySubmitState(/* current 保存默认回复提交状态。 */ current => finishRuleSubmission(current, succeeded)); }
+    try { await updateDefaultReply(defaultForm.cookie_id, { enabled: defaultForm.enabled, reply_content: defaultForm.reply_content, reply_once: defaultForm.reply_once, reply_image_url: defaultForm.reply_image_url }); setShowDefaultModal(false); await loadDefaultReplies(); await appDialog.alert('保存成功', { variant: 'success' }); succeeded = true; } catch (/* error 表示默认回复保存异常。 */ error) { await appDialog.alert('保存失败：' + (error as Error).message, { variant: 'error' }); } finally { setDefaultReplySubmitState(/* current 保存默认回复提交状态。 */ current => finishRuleSubmission(current, succeeded)); }
   }, [defaultForm, defaultReplySubmitState, loadDefaultReplies]);
 
   // handleDeleteDefaultReply 删除账号默认回复配置。
   const handleDeleteDefaultReply = useCallback(/* deleteDefaultAction 删除默认回复。 */ async (cookieID: string) => {
-    if (!confirm('确定删除该账号默认回复吗？')) return;
-    try { await deleteDefaultReply(cookieID); await loadDefaultReplies(); alert('删除成功'); } catch (/* error 表示默认回复删除异常。 */ error) { alert('删除失败：' + (error as Error).message); }
+    if (!(await appDialog.confirm('确定删除该账号默认回复吗？', { variant: 'danger', confirmText: '删除' }))) return;
+    try { await deleteDefaultReply(cookieID); await loadDefaultReplies(); await appDialog.alert('删除成功', { variant: 'success' }); } catch (/* error 表示默认回复删除异常。 */ error) { await appDialog.alert('删除失败：' + (error as Error).message, { variant: 'error' }); }
   }, [loadDefaultReplies]);
 
   // handleClearDefaultReplyRecords 清空账号默认回复的会话记录。
   const handleClearDefaultReplyRecords = useCallback(/* clearDefaultRecordsAction 清空默认回复记录。 */ async (cookieID: string) => {
-    if (!confirm('确定清空该账号的默认回复记录吗？清空后可重新对所有会话使用“只回复一次”。')) return;
-    try { await clearDefaultReplyRecords(cookieID); alert('清空成功'); } catch (/* error 表示默认回复记录清理异常。 */ error) { alert('清空失败：' + (error as Error).message); }
+    if (!(await appDialog.confirm('确定清空该账号的默认回复记录吗？清空后可重新对所有会话使用“只回复一次”。', { variant: 'danger', confirmText: '清空' }))) return;
+    try { await clearDefaultReplyRecords(cookieID); await appDialog.alert('清空成功', { variant: 'success' }); } catch (/* error 表示默认回复记录清理异常。 */ error) { await appDialog.alert('清空失败：' + (error as Error).message, { variant: 'error' }); }
   }, []);
 
   return {

@@ -3,6 +3,7 @@ import type { NotificationChannel,SystemSettings } from './api';
 import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
 import { buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
 import type { NotificationForm,NotificationState } from './types';
+import { appDialog } from '../../../shared/ui/dialog';
 
 // useNotifications 统一管理通知渠道、事件订阅和系统 SMTP 的异步状态。
 export const useNotifications = (isAdmin: boolean): NotificationState => {
@@ -263,7 +264,7 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
   const handleDelete = useCallback(
     // 删除回调执行渠道删除请求并刷新列表。
     async (channel: NotificationChannel) => {
-    if (!confirm(`确认删除渠道「${channel.name}」吗？已绑定该渠道的账号会自动解绑。`)) return;
+    if (!(await appDialog.confirm(`确认删除渠道「${channel.name}」吗？已绑定该渠道的账号会自动解绑。`, { variant: 'danger', confirmText: '删除' }))) return;
     // generation 标记当前删除动作的代次。
     const generation = ++actionGeneration.current;
     // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
