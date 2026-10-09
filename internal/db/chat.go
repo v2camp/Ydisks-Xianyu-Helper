@@ -178,7 +178,7 @@ func (s *ChatStore) FindChatIDsByBuyerAndItem(ctx context.Context, cookieID, buy
 // SetSessionVisible 更新平台会话是否出现在本地列表中。
 // ctx 控制数据库更新生命周期；cookieID 和 chatID 定位非敏感会话；visible=false 只软隐藏会话并保留全部消息。
 func (s *ChatStore) SetSessionVisible(ctx context.Context, cookieID, chatID string, visible bool) error {
-	// visibleValue 使用跨 SQLite、MySQL 和 PostgreSQL 驱动均可绑定的布尔值。
+	// visibleValue 使用跨 SQLite 和 PostgreSQL 驱动均可绑定的布尔值。
 	visibleValue := visible
 	// err 保存可见状态更新失败；会话不存在时保持幂等成功。
 	_, err := s.DB.ExecContext(ctx, `UPDATE chat_sessions SET is_visible=?,updated_at=? WHERE cookie_id=? AND chat_id=?`,

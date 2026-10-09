@@ -738,7 +738,7 @@ func parseDBTime(s string) time.Time {
 		"2006-01-02 15:04:05.999999999Z07",
 		"2006-01-02 15:04:05Z07:00",
 		"2006-01-02 15:04:05Z07",
-		"2006-01-02 15:04:05", // SQLite/MySQL 历史值；按既有 UTC 约定解释
+		"2006-01-02 15:04:05", // SQLite/PostgreSQL 历史值；按既有 UTC 约定解释
 	} {
 		if // t、err 用于本次流程后续判断的t、err
 		t, err := time.ParseInLocation(layout, strings.TrimSpace(s), time.UTC); err == nil {

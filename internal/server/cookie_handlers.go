@@ -319,6 +319,11 @@ func (s *Server) listCookieDetails(w http.ResponseWriter, r *http.Request) {
 			LastRateScanAt:        tasks.LastRateScanAt,
 			LastPolishDate:        tasks.LastPolishDate,
 			LastPolishAt:          tasks.LastPolishAt,
+			AutoDelistEnabled:     tasks.AutoDelistEnabled,
+			DelistTime:            tasks.DelistTime,
+			DelistItemIDs:         tasks.DelistItemIDs,
+			LastDelistDate:        tasks.LastDelistDate,
+			LastDelistAt:          tasks.LastDelistAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -356,6 +361,8 @@ func (s *Server) getCookieDetails(w http.ResponseWriter, r *http.Request) {
 		AutoRateEnabled: tasks.AutoRateEnabled, RateContent: tasks.RateContent,
 		AutoPolishEnabled: tasks.AutoPolishEnabled, PolishTime: tasks.PolishTime,
 		LastRateScanAt: tasks.LastRateScanAt, LastPolishDate: tasks.LastPolishDate, LastPolishAt: tasks.LastPolishAt,
+		AutoDelistEnabled: tasks.AutoDelistEnabled, DelistTime: tasks.DelistTime, DelistItemIDs: tasks.DelistItemIDs,
+		LastDelistDate: tasks.LastDelistDate, LastDelistAt: tasks.LastDelistAt,
 	})
 }
 

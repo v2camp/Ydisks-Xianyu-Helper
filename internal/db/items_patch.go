@@ -34,7 +34,7 @@ func (i *Items) Patch(ctx context.Context, cookieID, itemID string, patch ItemPa
 	if err != nil {
 		return err
 	}
-	// affected、err 区分实际匹配与未变化的 MySQL 更新结果。
+	// affected、err 区分实际匹配与未变化的更新结果。
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return err

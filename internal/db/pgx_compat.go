@@ -72,7 +72,7 @@ func (c *qPgConnector) Driver() driver.Driver {
 }
 
 // qPgDriver 包裹 pgx stdlib driver，仅为了把 ? 占位符改写成 $N。
-// 全仓库业务 SQL 都用 ? 写（SQLite/MySQL 原生支持），Postgres 的 pgx
+// 全仓库业务 SQL 都用 ? 写（SQLite 原生支持），Postgres 的 pgx
 // 只认 $1/$2/...，不重写会报 "syntax error at or near \",\""。
 // qPgDriver 用于本次流程后续判断的qPgDriver
 type qPgDriver struct{ base driver.Driver }

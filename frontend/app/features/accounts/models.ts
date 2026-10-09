@@ -73,6 +73,16 @@ export interface AccountDetail {
 	last_polish_date?: string;
 	/** 最近一次擦亮时间。 */
 	last_polish_at?: number;
+	/** 是否启用每日定时下架。 */
+	auto_delist_enabled?: boolean;
+	/** 每日定时下架执行时间。 */
+	delist_time?: string;
+	/** 下架白名单商品标识。 */
+	delist_item_ids?: string[];
+	/** 最近一次下架日期。 */
+	last_delist_date?: string;
+	/** 最近一次下架时间。 */
+	last_delist_at?: number;
 }
 
 /** 由当前 feature adapter 归一后的 AccountTaskSettings UI 模型；不直接暴露 HTTP DTO。 */
@@ -241,6 +251,16 @@ export interface AccountSummaryResponse {
   last_polish_date: string;
   /** 最近一次自动擦亮时间。 */
   last_polish_at: number;
+  /** 是否启用每日定时下架；旧服务端可能不返回。 */
+  auto_delist_enabled?: boolean;
+  /** 每日定时下架本地时间；旧服务端可能不返回。 */
+  delist_time?: string;
+  /** 下架白名单商品标识；旧服务端可能不返回。 */
+  delist_item_ids?: string[];
+  /** 最近一次下架日期；旧服务端可能不返回。 */
+  last_delist_date?: string;
+  /** 最近一次下架时间；旧服务端可能不返回。 */
+  last_delist_at?: number;
 }
 
 /** 账号设置变更接口的具名成功响应。 */

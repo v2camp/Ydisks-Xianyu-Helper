@@ -20,6 +20,8 @@ var sensitiveValuePattern = regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie|x5se
 var quotedSecretPairPattern = regexp.MustCompile(`(?i)("[^"]{0,64}(?:cookie|x5sec|token|password|passwd|secret|api[_-]?key|authorization|credential)[^"]{0,64}"\s*:\s*)"(?:\\.|[^"\\])*"`)
 
 // embeddedURLPattern 匹配错误文本中可能包含查询参数的 URL。
+// 取值列表保留 mysql：该 scheme 已不再被支持，但用户旧配置或历史日志中仍可能出现，
+// 脱敏必须覆盖它，避免凭证明文经错误文本外泄。
 var embeddedURLPattern = regexp.MustCompile(`(?i)\b(?:https?|wss?|mysql|postgres(?:ql)?):\/\/[^\s"'<>]+`)
 
 // quotedRequestTargetPattern 匹配 URL 解析器和 HTTP 客户端错误中可能不具备合法协议的原始请求地址。

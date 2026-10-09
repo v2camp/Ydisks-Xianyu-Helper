@@ -26,7 +26,7 @@ func TestConfirmedDeliveryRules(t *testing.T) {
 
 // TestMultiDB_Issue39RelistingAndDeliveryScope 在可用方言中验证下架、重上架、旧规则隔离及账号通用授权；t 管理目标生命周期。
 func TestMultiDB_Issue39RelistingAndDeliveryScope(t *testing.T) {
-	// target 是当前可用的 SQLite、MySQL 或 PostgreSQL 测试库。
+	// target 是当前可用的 SQLite 或 PostgreSQL 测试库。
 	for _, target := range allTestTargets(t) {
 		t.Run(target.name, func(t *testing.T) {
 			defer target.cleanup()

@@ -26,7 +26,7 @@ func main() {
 	// dbPath 用于本次流程后续判断的db路径
 	dbPath := flag.String("db", "data/xianyu_data.db", "SQLite 数据库路径（兼容旧用法）")
 	// dbURL 用于本次流程后续判断的dbURL
-	dbURL := flag.String("db-url", "", "数据库连接 URL（sqlite:// mysql:// postgres://），优先级高于 -db；也可用 DATABASE_URL 环境变量")
+	dbURL := flag.String("db-url", "", "数据库连接 URL（sqlite:// postgres://），优先级高于 -db；也可用 DATABASE_URL 环境变量")
 	flag.Parse()
 
 	// 解析数据库连接：DATABASE_URL > -db-url > -db。

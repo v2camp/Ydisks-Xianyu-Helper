@@ -1,4 +1,4 @@
-// dbseed 从本地 SQLite 抽取少量业务数据，脱敏后写入目标 MySQL/Postgres。
+// dbseed 从本地 SQLite 抽取少量业务数据，脱敏后写入目标 Postgres。
 // 它只用于 Docker 功能测试：不会复制真实 Cookie、买家 ID 或卡密内容。
 package main
 

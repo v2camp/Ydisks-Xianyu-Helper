@@ -98,7 +98,7 @@ func deliveryTemplateIDsFromActions(actions []AutomationActionInput) []int64 {
 }
 
 // lockLiveDeliveryTemplatesTx 在规则写事务内按固定顺序锁定并校验当前用户的有效模板。
-// MySQL/PostgreSQL 使用行锁；SQLite 先执行同值更新取得写锁，再复用同一事务校验模板状态。
+// PostgreSQL 使用行锁；SQLite 先执行同值更新取得写锁，再复用同一事务校验模板状态。
 func lockLiveDeliveryTemplatesTx(ctx context.Context, tx *sql.Tx, dialect Dialect, userID int64, templateIDs []int64) error {
 	// sortedIDs 保存去重后的升序模板 ID，保证调用方传入顺序不会影响锁顺序。
 	sortedIDs := append([]int64(nil), templateIDs...)
@@ -135,7 +135,7 @@ func lockLiveDeliveryTemplatesTx(ctx context.Context, tx *sql.Tx, dialect Dialec
 	}
 	// selectQuery 在行锁数据库中追加 FOR UPDATE；SQLite 已在同一事务中取得写锁，不能使用该语法。
 	selectQuery := "SELECT id FROM delivery_templates WHERE user_id=? AND deleted_at IS NULL AND id IN (" + whereIDs + ") ORDER BY id ASC"
-	if dialect == DialectMySQL || dialect == DialectPostgres {
+	if dialect == DialectPostgres {
 		selectQuery += " FOR UPDATE"
 	}
 	// rows 保存当前事务锁定并验证后的模板行。

@@ -501,7 +501,7 @@ var mcpAuditAllowedKeys = map[string]struct{}{
 	"trigger_type": {}, "index": {}, "status": {}, "state": {}, "kind": {}, "category": {},
 	"type": {}, "page": {}, "page_size": {}, "limit": {}, "offset": {}, "confirm": {},
 	"enabled": {}, "disabled": {}, "auto_rate_enabled": {}, "auto_polish_enabled": {},
-	"polish_time": {}, "multi_spec": {}, "multi_quantity_delivery": {}, "model": {},
+	"polish_time": {}, "auto_delist_enabled": {}, "delist_time": {}, "multi_spec": {}, "multi_quantity_delivery": {}, "model": {},
 	"start_time": {}, "end_time": {}, "date": {}, "resource": {}, "uri": {}, "prompt": {},
 }
 

@@ -33,9 +33,8 @@ test-server:
 test-server-race:
 	$(GO) test -race ./internal/server -run 'TestRun_|TestPublishWorkerTrackingWaitsForCompletion|TestPublishRecoveryLifecycleStopsBeforeWorkerWait|TestUpdateRunningCookieWakesCredentialBlockedAutomationWithoutManager|TestSetCookieStatusWaitsForCredentialTransition|TestDeleteCookieRechecksOwnershipInsideCredentialLock'
 
-## test-multidb: 严格执行 SQLite、MySQL、PostgreSQL 三方言回归；缺少任一外部 URL 时明确失败
+## test-multidb: 严格执行 SQLite、PostgreSQL 双方言回归；缺少外部 URL 时明确失败
 test-multidb:
-	@test -n "$${TEST_MYSQL_URL:-}" || (echo '缺少 TEST_MYSQL_URL，无法执行 MySQL 实测' >&2; exit 2)
 	@test -n "$${TEST_POSTGRES_URL:-}" || (echo '缺少 TEST_POSTGRES_URL，无法执行 PostgreSQL 实测' >&2; exit 2)
 	REQUIRE_MULTIDB=1 $(GO) test ./internal/db -run '^TestMultiDB_' -v -count=1
 

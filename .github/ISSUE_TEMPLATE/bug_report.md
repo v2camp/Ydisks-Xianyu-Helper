@@ -11,7 +11,7 @@ assignees: ""
 - 项目版本或提交号：
 - 安装方式：源码 / Docker / Windows / macOS / Linux
 - 操作系统与架构：
-- 数据库：SQLite / MySQL / PostgreSQL
+- 数据库：SQLite / PostgreSQL
 - 是否使用 Chromium：是 / 否
 
 ## 复现步骤

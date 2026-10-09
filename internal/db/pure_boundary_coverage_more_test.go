@@ -12,15 +12,13 @@ import (
 func TestCookieSQLAndOrderCursorBoundaries(t *testing.T) {
 	// cookies 保存不同数据库方言下的凭证仓储。
 	cookies := &Cookies{}
-	// sqliteQuery、mysqlQuery 和 postgresQuery 保存各方言生成的锁定查询。
+	// sqliteQuery 和 postgresQuery 保存各方言生成的锁定查询。
 	sqliteQuery := (&Cookies{Dialect: DialectSQLite}).cookieSelectForUpdate("id")
-	// mysqlQuery 保存 MySQL 方言追加行锁的查询。
-	mysqlQuery := (&Cookies{Dialect: DialectMySQL}).cookieSelectForUpdate("id")
 	// postgresQuery 保存 PostgreSQL 方言追加行锁的查询。
 	postgresQuery := (&Cookies{Dialect: DialectPostgres}).cookieSelectForUpdate("id")
 	_ = cookies
-	if strings.Contains(sqliteQuery, "FOR UPDATE") || !strings.Contains(mysqlQuery, "FOR UPDATE") || !strings.Contains(postgresQuery, "FOR UPDATE") {
-		t.Fatalf("凭证锁查询方言错误 sqlite=%q mysql=%q postgres=%q", sqliteQuery, mysqlQuery, postgresQuery)
+	if strings.Contains(sqliteQuery, "FOR UPDATE") || !strings.Contains(postgresQuery, "FOR UPDATE") {
+		t.Fatalf("凭证锁查询方言错误 sqlite=%q postgres=%q", sqliteQuery, postgresQuery)
 	}
 	// cursorCases 保存标准时间、非标准时间和空游标的归一化预期。
 	cursorCases := []struct {

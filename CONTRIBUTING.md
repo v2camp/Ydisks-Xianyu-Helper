@@ -60,7 +60,7 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-数据库访问或迁移改动应运行 SQLite 定向测试；有可用的 MySQL 和 PostgreSQL 环境时，再运行：
+数据库访问或迁移改动应运行 SQLite 定向测试；有可用的 PostgreSQL 环境时，再运行：
 
 ```bash
 make test-multidb
@@ -75,7 +75,7 @@ make test-multidb
 - 保持 `app -> features -> shared` 的前端依赖方向；
 - 新 API 先更新 `api/openapi.yaml`，再生成类型并补充真实契约测试；
 - 敏感数据只能在必要的边界内使用，不能进入日志、错误响应或前端状态；
-- 保持 SQLite、MySQL 和 PostgreSQL 的迁移与行为一致；
+- 保持 SQLite 和 PostgreSQL 的迁移与行为一致；
 - 代码格式、测试、架构、API 契约和注释门禁必须通过。
 
 ## 评审和合并

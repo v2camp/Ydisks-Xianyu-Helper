@@ -192,7 +192,7 @@ func parseOptions() serverOptions {
 	// opts 收集所有命令行标志的目标字段，并在 flag.Parse 后返回。
 	var opts serverOptions
 	flag.StringVar(&opts.dbPath, "db", defaultDBPath, "SQLite 数据库路径（兼容旧用法）")
-	flag.StringVar(&opts.dbURL, "db-url", "", "数据库连接 URL（sqlite:// mysql:// postgres://），优先级高于 -db；也可用 DATABASE_URL 环境变量")
+	flag.StringVar(&opts.dbURL, "db-url", "", "数据库连接 URL（sqlite:// postgres://），优先级高于 -db；也可用 DATABASE_URL 环境变量")
 	flag.StringVar(&opts.addr, "addr", ":59188", "HTTP 监听地址")
 	flag.StringVar(&opts.webDir, "web", "", "前端静态资源目录（含 index.html）")
 	flag.StringVar(&opts.workDir, "workdir", "", "服务工作目录；用于桌面服务固定数据和浏览器目录")
@@ -311,7 +311,7 @@ func prepareServerStartup(opts *serverOptions) (serverStartupConfig, error) {
 	}
 	if strings.TrimSpace(os.Getenv("XIANYU_DATA_KEY")) == "" && opts.dataKeyFile == "" {
 		if isRemoteDatabaseURL(resolvedDBURL) {
-			return serverStartupConfig{}, errors.New("MySQL/PostgreSQL 必须配置 XIANYU_DATA_KEY 或 -data-key-file")
+			return serverStartupConfig{}, errors.New("PostgreSQL 必须配置 XIANYU_DATA_KEY 或 -data-key-file")
 		}
 		// keyPath 是无显式数据目录时与 SQLite 数据库绑定的稳定密钥文件路径。
 		keyPath := filepath.Join(filepath.Dir(strings.TrimPrefix(strings.TrimPrefix(resolvedDBURL, "sqlite://"), "sqlite3://")), defaultDataKeyName)
@@ -359,7 +359,7 @@ func prepareServerStartup(opts *serverOptions) (serverStartupConfig, error) {
 // isRemoteDatabaseURL 判断数据库地址是否需要跨进程共享持久化密钥。
 func isRemoteDatabaseURL(raw string) bool {
 	raw = strings.ToLower(strings.TrimSpace(raw))
-	return strings.HasPrefix(raw, "mysql://") || strings.HasPrefix(raw, "postgres://") || strings.HasPrefix(raw, "postgresql://") || strings.HasPrefix(raw, "pgx://")
+	return strings.HasPrefix(raw, "postgres://") || strings.HasPrefix(raw, "postgresql://") || strings.HasPrefix(raw, "pgx://")
 }
 
 // openServerInfrastructure 打开日志和数据库、升级敏感字段、应用数据库日志设置并处理管理员初始化选项。

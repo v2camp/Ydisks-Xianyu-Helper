@@ -10,7 +10,7 @@ import (
 
 // TestMultiDB_CookieCredentialScope 验证所有数据库方言都能使用敏感数据边界内的窄查询。
 func TestMultiDB_CookieCredentialScope(t *testing.T) {
-	// targets 是本次回归可用的 SQLite、MySQL 和 Postgres 测试目标集合。
+	// targets 是本次回归可用的 SQLite 和 Postgres 测试目标集合。
 	targets := allTestTargets(t)
 	// target 是当前循环选中的独立数据库测试目标。
 	for _, target := range targets {

@@ -29,7 +29,7 @@ func (a *AutomationRules) beginOwnershipWrite(ctx context.Context, cookieID, ord
 // 不改业务值或版本；账号锁也覆盖订单尚未入库或延期载荷无法提取订单号的兼容情况，防止与修复的账号锁交错。
 // 本函数只返回非敏感仓储错误；调用方必须持锁到运行或延期记录写入提交后，禁止持锁执行网络 I/O。
 func lockAutomationOwnership(ctx context.Context, transaction *sql.Tx, cookieID, orderID string) error {
-	// result、lockErr 保存账号无值变更写锁结果；三方言均按匹配行计数，MySQL 连接已启用 clientFoundRows。
+	// result、lockErr 保存账号无值变更写锁结果；SQLite 与 PostgreSQL 均按匹配行计数。
 	result, lockErr := transaction.ExecContext(ctx, `UPDATE cookies SET id=id WHERE id=?`, cookieID)
 	if lockErr != nil {
 		return lockErr

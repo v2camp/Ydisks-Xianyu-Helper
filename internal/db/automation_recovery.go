@@ -436,7 +436,7 @@ func (a *AutomationRules) MarkOrderEventTime(ctx context.Context, orderID, field
 		return fmt.Errorf("不允许更新的订单时间字段: %s", field)
 	}
 	// 事件时间列是跨方言 TEXT。不能直接写 CURRENT_TIMESTAMP：Postgres 会产生
-	// "2006-01-02 15:04:05.999999+00"，而 MySQL 的无时区文本又取决于会话时区，
+	// "2006-01-02 15:04:05.999999+00"，而其它方言的无时区文本又取决于会话时区，
 	// 调度器无法可靠解释。统一由应用写 RFC3339 UTC，已有值仍保留（幂等）。
 	// now 用于本次流程后续判断的now
 	now := time.Now().UTC().Format(time.RFC3339Nano)

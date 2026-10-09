@@ -47,7 +47,7 @@ func TestMultiDB_AutomationExecutionLease(t *testing.T) {
 			if err := store.Automation.RenewExecutingRunLease(ctx, runID, 1, time.Now().Add(time.Hour).Unix()); err != nil {
 				t.Fatal(err)
 			}
-			// err 验证 MySQL 返回匹配行数且租约不会缩短。
+			// err 验证关系型数据库返回匹配行数且租约不会缩短。
 			if err := store.Automation.RenewExecutingRunLease(ctx, runID, 1, time.Now().Add(time.Minute).Unix()); err != nil {
 				t.Fatal("同秒重复续租必须成功", err)
 			}

@@ -1,13 +1,13 @@
-// dbverify 在 MySQL/Postgres（或 SQLite）上跑迁移 + 核心 CRUD，
+// dbverify 在 Postgres（或 SQLite）上跑迁移 + 核心 CRUD，
 // 确认方言适配器在真实实例上工作。
 //
 // 用法：
 //
-//	go run ./cmd/dbverify "mysql://user:pass@tcp(host:3306)/db?parseTime=true&loc=Local&multiStatements=true"
+//	go run ./cmd/dbverify "postgres://user:pass@host:5432/db?sslmode=disable"
 //	go run ./cmd/dbverify "postgres://user:pass@host:5432/db?sslmode=disable"
 //	go run ./cmd/dbverify "sqlite://data/verify.db"
 //
-// MySQL DSN 必须带 multiStatements=true（goose 多语句迁移需要）。
+// 连接串中的凭证不会出现在输出：日志统一用 maskURL 脱敏。
 // 全部 9 步通过即说明三库的 upsert/布尔/自增主键路径均正常。
 package main
 
@@ -251,7 +251,7 @@ func safeDiagnosticArgs(args []any) []any {
 // maskURL 封装maskURL业务协调。
 func maskURL(url string) string {
 	// 只显示 scheme 和 host，把 scheme 后到首个 '@' 之间的凭证替换为 ***。
-	for _, p := range []string{"mysql://", "postgres://", "postgresql://"} {
+	for _, p := range []string{"postgres://", "postgresql://", "pgx://"} {
 		if len(url) > len(p) && url[:len(p)] == p {
 			// rest 用于本次流程后续判断的rest
 			rest := url[len(p):]

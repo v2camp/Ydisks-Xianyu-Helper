@@ -285,8 +285,6 @@ func amountExpression(dialect db.Dialect, column string) string {
 	switch dialect {
 	case db.DialectPostgres:
 		return `CASE WHEN ` + clean + ` ~ '^[0-9]+([.][0-9]+)?$' THEN CAST(` + clean + ` AS DOUBLE PRECISION) END`
-	case db.DialectMySQL:
-		return `CASE WHEN ` + clean + ` REGEXP '^[0-9]+([.][0-9]+)?$' THEN CAST(` + clean + ` AS DOUBLE) END`
 	default:
 		return `CASE WHEN ` + clean + ` GLOB '[0-9]*' AND ` + clean + ` NOT GLOB '*[^0-9.]*' AND ` + clean + ` NOT GLOB '*.*.*' AND ` + clean + ` NOT LIKE '%.' THEN CAST(` + clean + ` AS REAL) END`
 	}

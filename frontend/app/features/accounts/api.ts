@@ -86,6 +86,11 @@ export const getAccountDetails = async (options?: RequestControlOptions): Promis
 		last_rate_scan_at: Number(item.last_rate_scan_at || 0),
 		last_polish_date: item.last_polish_date || '',
 		last_polish_at: Number(item.last_polish_at || 0),
+		auto_delist_enabled: item.auto_delist_enabled === true,
+		delist_time: item.delist_time || '09:00',
+		delist_item_ids: Array.isArray(item.delist_item_ids) ? item.delist_item_ids : [],
+		last_delist_date: item.last_delist_date || '',
+		last_delist_at: Number(item.last_delist_at || 0),
   }));
 };
 

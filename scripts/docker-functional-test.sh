@@ -34,7 +34,7 @@ test_instance() {
   curl -fsS -b "$cookie_file" -H 'Content-Type: application/json' -X PUT \
     -d '{"keyword":"docker-keyword-'"$name"'","reply":"after","item_id":"","type":"text","image_url":""}' \
     "${base_url}/keywords-with-type/docker-fixture-account/${keyword_id}" | grep -q '"success":true'
-  # 完全相同的更新在 MySQL 也必须成功；用于覆盖 clientFoundRows 的匹配行语义。
+  # 完全相同的重复更新在各数据库也必须成功；用于覆盖各方言匹配行语义的回归。
   curl -fsS -b "$cookie_file" -H 'Content-Type: application/json' -X PUT \
     -d '{"keyword":"docker-keyword-'"$name"'","reply":"after","item_id":"","type":"text","image_url":""}' \
     "${base_url}/keywords-with-type/docker-fixture-account/${keyword_id}" | grep -q '"success":true'
@@ -62,5 +62,4 @@ test_instance() {
 }
 
 test_instance sqlite http://app-sqlite:59188
-test_instance mysql http://app-mysql:59188
 test_instance postgres http://app-postgres:59188

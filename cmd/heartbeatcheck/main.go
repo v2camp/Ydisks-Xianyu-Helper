@@ -30,7 +30,7 @@ func main() {
 	var timeoutSec int
 	// instanceKey 是进程实例键，需与服务器配置一致。
 	var instanceKey string
-	flag.StringVar(&dbURL, "db-url", "", "数据库连接 URL（sqlite:// mysql:// postgres://）；缺省读 DATABASE_URL，再缺省用 data/xianyu_data.db")
+	flag.StringVar(&dbURL, "db-url", "", "数据库连接 URL（sqlite:// postgres://）；缺省读 DATABASE_URL，再缺省用 data/xianyu_data.db")
 	flag.IntVar(&timeoutSec, "timeout", 90, "心跳容忍窗口（秒）：超过该时长无新心跳即判过期")
 	flag.StringVar(&instanceKey, "instance", "default", "进程实例键，需与服务器 XIANYU_HEARTBEAT_INSTANCE_KEY 一致")
 	flag.Parse()

@@ -30,9 +30,6 @@ func assertOwnershipLookupIndexes(t *testing.T, database *sql.DB, dialect Dialec
 		// query、args 指向对应方言的索引元数据，仅读 schema，不读取业务载荷。
 		query, args := `SELECT name FROM pragma_index_info(?) ORDER BY seqno`, []any{expected.name}
 		switch dialect {
-		case DialectMySQL:
-			query = `SELECT COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=? ORDER BY SEQ_IN_INDEX`
-			args = []any{expected.table, expected.name}
 		case DialectPostgres:
 			query = `SELECT pg_get_indexdef(i.indexrelid, positions.n, true)
 				FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid

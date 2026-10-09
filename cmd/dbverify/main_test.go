@@ -13,11 +13,11 @@ import (
 func TestMaskURL(t *testing.T) {
 	// cases 用于本次流程后续判断的cases
 	cases := map[string]string{
-		"mysql://user:secret@tcp(host:3306)/db?x=1": "mysql://***@tcp(host:3306)/db?x=1",
-		"postgres://user:pass@host:5432/db":         "postgres://***@host:5432/db",
-		"postgresql://u:p@h:5432/d":                 "postgresql://***@h:5432/d",
-		"sqlite://data/x.db":                        "sqlite://data/x.db", // 无密码，原样
-		"/local/path.db":                            "/local/path.db",     // 非 URL，原样
+		"postgres://user:secret@host:5432/db?x=1": "postgres://***@host:5432/db?x=1",
+		"postgres://user:pass@host:5432/db":       "postgres://***@host:5432/db",
+		"postgresql://u:p@h:5432/d":               "postgresql://***@h:5432/d",
+		"sqlite://data/x.db":                      "sqlite://data/x.db", // 无密码，原样
+		"/local/path.db":                          "/local/path.db",     // 非 URL，原样
 	}
 	// in、want 表示当前遍历过程中的in、want
 	for in, want := range cases {

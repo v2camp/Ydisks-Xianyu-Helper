@@ -99,24 +99,10 @@ jobs:
           git diff --exit-code -- internal/webui/static
 
   multidb:
-    name: MySQL/PostgreSQL 多数据库回归
+    name: PostgreSQL 多数据库回归
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: test-root-password
-          MYSQL_ROOT_HOST: "%"
-          MYSQL_DATABASE: xianyu
-          TZ: UTC
-        ports:
-          - "3306:3306"
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest-root-password --silent"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=30
       postgres:
         image: postgres:17
         env:
@@ -132,7 +118,6 @@ jobs:
           --health-timeout=5s
           --health-retries=30
     env:
-      TEST_MYSQL_URL: "mysql://root:test-root-password@tcp(127.0.0.1:3306)/xianyu?parseTime=true&loc=UTC"
       TEST_POSTGRES_URL: "postgres://postgres:test-postgres-password@127.0.0.1:5432/xianyu?sslmode=disable&timezone=UTC"
     steps:
       - name: 检出代码
@@ -144,7 +129,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: 执行三方言实测回归
+      - name: 执行双方言实测回归
         run: make test-multidb
 
   webui-e2e:
