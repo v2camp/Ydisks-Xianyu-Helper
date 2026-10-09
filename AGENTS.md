@@ -153,6 +153,10 @@ cd ".worktree/<任务名>"
 - 两者禁止直接写业务数据或决定自动化规则。
 - 两者禁止依赖 HTTP 层与应用层。
 - internal/engine 与 internal/automation 必须独立于 Server。
+- internal/capability 是能力目录与访问策略的唯一实现点。
+- internal/capability 只依赖标准库与应用层模型。
+- 消费方必须先取 capability 放行决策，再执行用例。
+- 禁止在传输层或 Agent 层复制权限判断。
 - internal/mcp 是与 internal/server 并列的第二传输层。
 - internal/mcp 只依赖标准库、mcp-go 与应用层模型。
 - internal/mcp 禁止依赖 db、server、平台、浏览器、自动化与引擎。

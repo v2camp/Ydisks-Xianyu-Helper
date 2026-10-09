@@ -139,6 +139,30 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 `XIANYU_MCP_TOKEN` 是部署者通过进程环境注入的引导令牌，应用只从环境读取，不落库、不写日志。
 00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，三方言结构一致。
 
+### 3.8 `internal/capability`（能力目录与访问策略）
+
+`internal/capability` 定义平台能力的统一目录与访问策略：能力清单、危险等级、作用域与各调用方
+所需的确认方式。它是权限判断的唯一实现点，三个消费方（`internal/mcp` 承载的外部 Harness、
+`internal/qqbot` 承载的运营 Agent、`internal/agent` 承载的客服 Agent）都必须经它求值。
+
+允许：
+
+- 依赖标准库；
+- 依赖 `internal/application/*` 的应用模型。
+
+禁止：
+
+- 导入 `internal/mcp`、`internal/server` 等传输层；
+- 导入 `internal/db`、`internal/xianyu`、`internal/browser`、`internal/automation`、`internal/engine`；
+- 导入 `internal/adapter`、`internal/composition`；
+- 在本包内执行能力或直接触达业务数据。
+
+边界说明：本包只回答「这次调用是否允许、需要何种确认」，不执行能力。
+执行由消费方在取得放行决策后调用应用层用例完成；消费方不得自行推导权限结论，
+也不得因本包返回拒绝而降级为「直接调用用例」。
+
+MCP 工具声明中的危险标记必须来自本包登记的危险等级，不得在传输层另行标注。
+
 ## 4. 数据与秘密边界
 
 - AccountSummary 不包含 Cookie、Token、密码或加密 metadata；
