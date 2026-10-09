@@ -247,6 +247,40 @@ func (o *Orders) findLatestByChat(ctx context.Context, cookieID, chatID, buyerID
 	return o.Get(ctx, orderID)
 }
 
+// ExistsDeliverableOwnerOrderByChat 判断会话内是否仍存在归属指定账号且需要发货的订单。
+// 「需要发货」取未软删、未本地标记发货、未写入发货时间且状态仍在未终结集合内的订单：
+// 待付款订单付款后仍有发货义务，必须计入；已发货与已完结的订单不再产生任何发货义务。
+// 状态集合沿用按会话回填的未终结集合，避免把已完结订单误判成仍有待办动作。
+func (o *Orders) ExistsDeliverableOwnerOrderByChat(ctx context.Context, chatID, cookieID string) (bool, error) {
+	// sessionID、accountID 分别是去除协议后缀的会话标识与账号标识。
+	sessionID, accountID := strings.TrimSuffix(strings.TrimSpace(chatID), "@goofish"), strings.TrimSpace(cookieID)
+	if o == nil || o.DB == nil || sessionID == "" || accountID == "" {
+		return false, nil
+	}
+	// placeholders 保存未终结状态集合对应的 IN 占位符。
+	placeholders := make([]string, len(orderStatusesOpen))
+	// args 保存 where 条件绑定参数，顺序为会话裸值、会话带后缀值、账号，随后是状态集合。
+	args := []any{sessionID, sessionID + "@goofish", accountID}
+	// i、status 分别表示占位符序号与当前状态别名。
+	for i, status := range orderStatusesOpen {
+		placeholders[i] = "?"
+		args = append(args, status)
+	}
+	// exists 保存是否存在仍需发货的归属订单。
+	var exists int
+	// err 保存发货义务查询错误；没有命中表示会话里已没有待发货的归属订单。
+	if err := o.DB.QueryRowContext(ctx, `SELECT 1 FROM orders
+		 WHERE chat_id IN (?,?) AND cookie_id=? AND deleted_at IS NULL
+		   AND COALESCE(system_shipped,0)=0 AND COALESCE(shipped_at,'')=''
+		   AND order_status IN (`+strings.Join(placeholders, ",")+`) LIMIT 1`, args...).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return exists == 1, nil
+}
+
 // ByCookiePage 分页读取账号订单，供需要完整扫描的后台任务使用。
 func (o *Orders) ByCookiePage(ctx context.Context, cookieID string, limit, offset int) ([]OrderRow, error) {
 	if limit <= 0 {
