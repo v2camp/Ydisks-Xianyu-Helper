@@ -22,7 +22,7 @@ func insertChatRoleOrder(t *testing.T, center *Center, orderID, cookieID, buyerI
 	}
 }
 
-// TestResolveBuyerRoleByForeignChatOrderEndsBuyerSideEvents 验证买家侧事件会被立刻判定为买家身份。
+// TestBuyerRoleReasonsAreNotRetryable 验证这两个拒绝原因都不在可重试集合内。
 // 这类事件在会话里永远等不到属于本账号的卖家订单事实；若继续延期，退避队列会反复重放并最终按重试上限
 // 发出「需要人工处理」告警，而买家侧根本没有发货义务。
 func TestResolveBuyerRoleByForeignChatOrderEndsBuyerSideEvents(t *testing.T) {
@@ -62,11 +62,54 @@ func TestResolveBuyerRoleByForeignChatOrderEndsBuyerSideEvents(t *testing.T) {
 	}
 }
 
-// TestBuyerRoleReasonsAreNotRetryable 验证这两个拒绝原因都不在可重试集合内。
-// 一旦它们被误加进白名单，买家侧事件会重新变成退避队列里的死任务，修复 B 的目的随之失效。
+// TestResolveTerminalOwnerOrderByChatEndsFinishedEvents 验证卖家侧「订单已完结」事件会被直接收口。
+// 回填只接受未终结状态，已完结订单回填不到事实，门禁会判成缺事实而反复重放；这类事件再等也拿不到发货依据，
+// 必须在会话内确认没有待发货订单后立刻停止，避免空转到重试上限并发出误导性的人工处理告警。
+func TestResolveTerminalOwnerOrderByChatEndsFinishedEvents(t *testing.T) {
+	// store、cleanup 保存测试数据库及关闭责任。
+	store, cleanup := newAutomationTestStore(t)
+	defer cleanup()
+	// center 是带真实存储的自动化中心。
+	center := New(store, testSenderProvider{sender: &testSender{}}, nil)
+	// ctx 保存本测试共用的数据库上下文。
+	ctx := context.Background()
+	// sellerID 是会话内真正的卖家账号标识。
+	sellerID := "seller-acc"
+	// buyerID 是同一会话里的买家账号标识。
+	buyerID := "buyer-acc"
+	// 已完成订单代表卖家侧事件在此会话里已没有发货义务。
+	insertChatRoleOrder(t, center, "o-finished", sellerID, buyerID, "chat-finished", "completed")
+	// 待发货订单代表卖家仍有发货义务，不得收口。
+	insertChatRoleOrder(t, center, "o-open", sellerID, buyerID, "chat-open", "pending_ship")
+	// cases 覆盖已完结会话、待发货会话、买家视角会话与空会话四类输入。
+	cases := []struct {
+		name   string
+		task   Task
+		reason string
+	}{
+		{name: "会话内归属订单已完结", task: Task{AccountID: sellerID, ChatID: "chat-finished"}, reason: "order_not_pending_ship"},
+		{name: "会话内仍有待发货订单", task: Task{AccountID: sellerID, ChatID: "chat-open"}, reason: ""},
+		{name: "买家视角不越权判定", task: Task{AccountID: buyerID, ChatID: "chat-finished"}, reason: "explicit_buyer_role"},
+		{name: "会话没有任何订单", task: Task{AccountID: sellerID, ChatID: "chat-empty"}, reason: ""},
+		{name: "缺少会话标识", task: Task{AccountID: sellerID, ChatID: ""}, reason: ""},
+	}
+	// tc 是当前待验证的用例。
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// got 保存本次会话收口判定的结论。
+			got := center.resolveChatRoleClosure(ctx, tc.task)
+			if got != tc.reason {
+				t.Fatalf("resolveChatRoleClosure = %q, want %q", got, tc.reason)
+			}
+		})
+	}
+}
+
+// TestBuyerRoleReasonsAreNotRetryable 验证这三个拒绝原因都不在可重试集合内。
+// 一旦它们被误加进白名单，买家侧与已完结订单事件会重新变成退避队列里的死任务，本次收口的目的随之失效。
 func TestBuyerRoleReasonsAreNotRetryable(t *testing.T) {
 	// reasons 是本次需要锁死的收口原因。
-	reasons := []string{"explicit_buyer_role", "order_account_mismatch"}
+	reasons := []string{"explicit_buyer_role", "order_account_mismatch", "order_not_pending_ship"}
 	// reason 表示当前遍历过程中的拒绝原因。
 	for _, reason := range reasons {
 		if roleVerificationRetryable(reason) {

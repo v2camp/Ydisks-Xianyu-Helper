@@ -51,9 +51,9 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 	}
 	if task.TriggerType == TriggerOrderCreated {
 		if strings.TrimSpace(task.ItemID) == "" {
-			// foreignReason 保存用会话内其它归属订单否定本机卖家身份的结论；非空时不再延期等待。
-			if foreignReason := c.resolveBuyerRoleByForeignChatOrder(ctx, task); foreignReason != "" {
-				return task, false, foreignReason, nil
+			// terminalReason 保存会话内归属订单已全部发货或终结的结论；非空时事件停止重放。
+			if terminalReason := c.resolveChatRoleClosure(ctx, task); terminalReason != "" {
+				return task, false, terminalReason, nil
 			}
 			return task, false, "missing_local_item", nil
 		}
@@ -75,9 +75,9 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 		return task, false, "order_store_unavailable", nil
 	}
 	if strings.TrimSpace(task.OrderID) == "" {
-		// foreignReason 保存用会话内其它归属订单否定本机卖家身份的结论；非空时不再延期等待。
-		if foreignReason := c.resolveBuyerRoleByForeignChatOrder(ctx, task); foreignReason != "" {
-			return task, false, foreignReason, nil
+		// terminalReason 保存会话内归属订单已全部发货或终结的结论；非空时事件停止重放。
+		if terminalReason := c.resolveChatRoleClosure(ctx, task); terminalReason != "" {
+			return task, false, terminalReason, nil
 		}
 		return task, false, "missing_order_id", nil
 	}
@@ -90,6 +90,42 @@ func (c *Center) authorizeWebSocketSellerTask(ctx context.Context, task Task) (T
 		return task, false, "", fmt.Errorf("核对未知角色订单事实: %w", orderErr)
 	}
 	return c.authorizeWebSocketSellerTaskWithOrder(ctx, task, order)
+}
+
+// resolveChatRoleClosure 在缺少订单或商品事实时判定本事件是否还有继续等待的必要。
+// 先排除买家与无关账号，再排除「会话内归属订单已全部发货或终结」：这两类事件再等也拿不到发货依据，
+// 继续留在退避队列只会空转并在重试上限后发出误导性的人工处理告警。
+func (c *Center) resolveChatRoleClosure(ctx context.Context, task Task) string {
+	// foreignReason 保存用会话内其它归属订单否定本机卖家身份的结论。
+	if foreignReason := c.resolveBuyerRoleByForeignChatOrder(ctx, task); foreignReason != "" {
+		return foreignReason
+	}
+	return c.resolveTerminalOwnerOrderByChat(ctx, task)
+}
+
+// resolveTerminalOwnerOrderByChat 判断会话内归属本账号的订单是否已全部发货或终结。
+// 只有「会话内确实有归属订单，且其中没有任何待发货或待付款订单」时才返回
+// order_not_pending_ship，复用订单不在待发货状态时已有的拒绝原因，不新增原因语义。
+// 会话内没有任何归属订单属于买家或无关账号视角，由 resolveBuyerRoleByForeignChatOrder 负责，此处不越权。
+func (c *Center) resolveTerminalOwnerOrderByChat(ctx context.Context, task Task) string {
+	if c == nil || c.store == nil || c.store.Orders == nil || strings.TrimSpace(task.ChatID) == "" {
+		return ""
+	}
+	// deliverable 表示会话内是否仍存在需要发货的归属订单；存在时必须继续等待订单同步。
+	deliverable, deliverableErr := c.store.Orders.ExistsDeliverableOwnerOrderByChat(ctx, task.ChatID, task.AccountID)
+	if deliverableErr != nil {
+		// 读取失败时不得臆断订单已完结，保留延期以免漏发。
+		return ""
+	}
+	if deliverable {
+		return ""
+	}
+	// ownerExists 表示该会话内是否存在归属本账号的订单；没有归属订单时本判定无权收口。
+	ownerExists, ownerErr := c.store.Orders.ExistsOpenSellerOrderByChat(ctx, task.ChatID, task.AccountID)
+	if ownerErr != nil || !ownerExists {
+		return ""
+	}
+	return "order_not_pending_ship"
 }
 
 // resolveBuyerRoleByForeignChatOrder 在缺少订单或商品事实时，用会话内的订单归属判断本机是否为买家或无关账号。

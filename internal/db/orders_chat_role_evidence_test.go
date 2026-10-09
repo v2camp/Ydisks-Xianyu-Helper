@@ -114,3 +114,85 @@ func TestFindLatestForeignOrderByChat(t *testing.T) {
 		t.Fatalf("会话内没有非归属订单时必须返回 nil: %+v", none)
 	}
 }
+
+// TestExistsDeliverableOwnerOrderByChat 验证「会话内是否仍有发货义务」的判定边界。
+// 待付款与待发货订单都必须算作还有事要做；已发货、已写入发货时间与已完结的订单都不再产生发货义务。
+// 误把待发货判成已完结会漏发，误把已完结判成待发货会让事件在退避队列里空转。
+func TestExistsDeliverableOwnerOrderByChat(t *testing.T) {
+	// s、cleanup 保存测试数据库及关闭责任。
+	s, cleanup := newTestDB(t)
+	defer cleanup()
+	// ctx 保存本测试共用的数据库上下文。
+	ctx := context.Background()
+	// userID、cookieID 保存测试账号主键与账号标识。
+	userID, cookieID := seedAccount(t, s)
+	// otherID 保存与这批订单无关的账号标识。
+	otherID := "other-acc"
+	// otherSaveErr 保存无关账号写入错误；orders.cookie_id 有外键约束。
+	if otherSaveErr := s.Cookies.Save(ctx, otherID, "cv=other", userID); otherSaveErr != nil {
+		t.Fatal(otherSaveErr)
+	}
+	// insertOrder 写入指定状态与发货标记的订单夹具。
+	insertOrder := func(orderID, status string, systemShipped int, shippedAt string) {
+		// insertErr 保存订单夹具写入错误。
+		if _, insertErr := s.DB.ExecContext(ctx,
+			`INSERT INTO orders (order_id, item_id, buyer_id, order_status, cookie_id, chat_id, quantity, amount, system_shipped, shipped_at)
+			 VALUES (?,'item-1','buyer-1',?,?,'chat-deliver','1','9.90',?,?)`,
+			orderID, status, cookieID, systemShipped, shippedAt); insertErr != nil {
+			t.Fatal(insertErr)
+		}
+	}
+	// completedErr 保存已完结订单夹具的写入结果。
+	insertOrder("o-completed", "completed", 1, "2026-10-02T00:00:00Z")
+	// terminal、terminalErr 保存只有已完结订单时的发货义务查询结果。
+	terminal, terminalErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "chat-deliver@goofish", cookieID)
+	if terminalErr != nil {
+		t.Fatal(terminalErr)
+	}
+	if terminal {
+		t.Fatal("会话内只有已完结订单时不得判定仍有发货义务")
+	}
+	// pendingErr 保存新增待发货订单夹具的写入结果。
+	insertOrder("o-pending", "pending_ship", 0, "")
+	// deliverable、deliverableErr 保存存在待发货订单时的查询结果。
+	deliverable, deliverableErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "chat-deliver", cookieID)
+	if deliverableErr != nil {
+		t.Fatal(deliverableErr)
+	}
+	if !deliverable {
+		t.Fatal("会话内存在待发货订单时必须判定仍有发货义务")
+	}
+	// shippedNoFlagErr 保存「已写发货时间但未置发货标记」订单的写入结果。
+	insertOrder("o-shipped-time", "shipped", 0, "2026-10-03T00:00:00Z")
+	// noFlag 保存只存在已写发货时间订单时的查询结果。
+	noFlag, noFlagErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "chat-noflag", cookieID)
+	if noFlagErr != nil || noFlag {
+		t.Fatalf("会话内没有订单时必须返回 false: exists=%v err=%v", noFlag, noFlagErr)
+	}
+	// foreign、foreignErr 保存其它账号视角下的查询结果；没有归属订单时不得替它断定发货义务。
+	foreign, foreignErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "chat-deliver", otherID)
+	if foreignErr != nil {
+		t.Fatal(foreignErr)
+	}
+	if foreign {
+		t.Fatal("会话内没有归属订单时必须返回 false")
+	}
+	// softDeleteErr 保存软删除待发货订单的改写错误。
+	if _, softDeleteErr := s.DB.ExecContext(ctx,
+		`UPDATE orders SET deleted_at=CURRENT_TIMESTAMP WHERE order_id='o-pending'`); softDeleteErr != nil {
+		t.Fatal(softDeleteErr)
+	}
+	// afterDelete、afterDeleteErr 保存软删除后的查询结果。
+	afterDelete, afterDeleteErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "chat-deliver", cookieID)
+	if afterDeleteErr != nil {
+		t.Fatal(afterDeleteErr)
+	}
+	if afterDelete {
+		t.Fatal("软删除订单不得再作为发货义务依据")
+	}
+	// empty、emptyErr 保存空会话标识的查询结果，必须安全返回 false。
+	empty, emptyErr := s.Orders.ExistsDeliverableOwnerOrderByChat(ctx, "", cookieID)
+	if emptyErr != nil || empty {
+		t.Fatalf("空会话标识应安全返回 false: exists=%v err=%v", empty, emptyErr)
+	}
+}
