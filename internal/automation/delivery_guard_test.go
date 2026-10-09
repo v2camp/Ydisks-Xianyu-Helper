@@ -75,6 +75,38 @@ func TestScanDeliveryContentContactPatterns(t *testing.T) {
 	}
 }
 
+// TestScanDeliveryContentLatinContactWordBoundary 验证纯拉丁联系方式短词按词边界命中。
+// 回归来源：生产卡密里的百度网盘分享码 G4TQQ 含 qq，曾被无边界子串匹配误判为「联系方式/引流」并转人工。
+func TestScanDeliveryContentLatinContactWordBoundary(t *testing.T) {
+	// netdiskText 是生产卡密原文形态的百度网盘分享内容，分享码内嵌 qq 属随机串而非联系方式。
+	netdiskText := "通过网盘分享的文件：ai 写量化策略教程\n链接: https://pan.baidu.com/s/15pGOXRnr8ziFw_IIaG4TQQ?pwd=rs7a 提取码: rs7a\n--来自百度网盘超级会员v3的分享"
+	// netdiskHits 是网盘分享内容的扫描命中结果；分享码内嵌 qq 属随机串，不应命中任何门禁规则。
+	netdiskHits := ScanDeliveryContent(netdiskText)
+	if len(netdiskHits) != 0 {
+		t.Fatalf("网盘分享码内嵌 qq 不应命中任何门禁规则: hits=%+v", netdiskHits)
+	}
+	// adjacentHits 是词前紧邻字母形态的扫描命中结果，属同一类误杀，必须放行。
+	adjacentHits := ScanDeliveryContent("下载地址 abcqq.zip")
+	if hasContentHit(adjacentHits, "联系方式/引流", "qq") {
+		t.Fatalf("字母紧邻的 qq 不应命中联系方式引流: hits=%+v", adjacentHits)
+	}
+	// positives 是真实引流形态；词边界判定不得把它们一起放过。
+	positives := []string{"加qq", "qq123456", "wx:qq", "QQ群", "请加vx", "请加VX"}
+	// text 是当前待验证的真实引流文案。
+	for _, text := range positives {
+		// positiveHits 是当前真实引流文案的扫描命中结果。
+		positiveHits := ScanDeliveryContent(text)
+		if !hasContentHit(positiveHits, "联系方式/引流", "") {
+			t.Fatalf("%q 应仍命中联系方式引流: hits=%+v", text, positiveHits)
+		}
+	}
+	// residualHits 是已知残余误杀形态的扫描命中结果；分享码恰以 qq 起止且相邻字符非字母时仍会命中。
+	residualHits := ScanDeliveryContent("链接: https://pan.baidu.com/s/1abcd?pwd=qq88")
+	if !hasContentHit(residualHits, "联系方式/引流", "qq") {
+		t.Fatalf("已知残余误杀形态发生变化，需重新评估词边界策略: hits=%+v", residualHits)
+	}
+}
+
 // TestScanDeliveryContentMobileNumber 验证恰好 11 位连续数字命中手机号，更长数字串不误杀。
 func TestScanDeliveryContentMobileNumber(t *testing.T) {
 	// hits 是11 位手机号文本的命中结果。
