@@ -3,6 +3,7 @@ import type { Card,CardMutation } from './api';
 import { createCard,deleteCard,updateCard } from './api';
 import { filterCards } from './batchState';
 import type { AddCardForm,EditCardForm } from './types';
+import { appDialog } from '../../../shared/ui/dialog';
 
 // emptyAddForm 创建新增卡密组表单的初始值。
 export const emptyAddForm = (): AddCardForm => ({
@@ -137,11 +138,11 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
   const handleSaveEdit = useCallback(/* saveEditAction 保存卡密编辑草稿。 */ async () => {
     if (!selectedCard) return;
     if (!editForm.name?.trim()) {
-      alert('请输入卡密名称');
+      await appDialog.alert('请输入卡密名称', { variant: 'warning' });
       return;
     }
     if (!editForm.type) {
-      alert('请选择卡密类型');
+      await appDialog.alert('请选择卡密类型', { variant: 'warning' });
       return;
     }
     try {
@@ -180,30 +181,30 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
       await loadCards();
     } catch (/* error 表示卡密编辑请求异常。 */ error: unknown) {
       console.error('更新卡密失败:', error);
-      alert(cardErrorMessage(error, '更新失败，请重试'));
+      await appDialog.alert(cardErrorMessage(error, '更新失败，请重试'), { variant: 'error' });
     }
   }, [editForm, loadCards, selectedCard]);
 
   // handleDelete 删除指定卡密组并刷新库存。
   const handleDelete = useCallback(/* deleteAction 删除卡密组。 */ async (id: string | number) => {
-    if (!confirm('确认删除该卡密吗？')) return;
+    if (!(await appDialog.confirm('确认删除该卡密吗？', { variant: 'danger', confirmText: '删除' }))) return;
     try {
       await deleteCard(id);
       await loadCards();
     } catch (/* error 表示卡密删除请求异常。 */ error: unknown) {
       console.error('删除卡密失败:', error);
-      alert(cardErrorMessage(error, '删除失败，请重试'));
+      await appDialog.alert(cardErrorMessage(error, '删除失败，请重试'), { variant: 'error' });
     }
   }, [loadCards]);
 
   // handleAddCard 校验新增表单、创建卡密组并刷新库存。
   const handleAddCard = useCallback(/* addAction 创建新的卡密组。 */ async () => {
     if (!addForm.name.trim()) {
-      alert('请输入卡密名称');
+      await appDialog.alert('请输入卡密名称', { variant: 'warning' });
       return;
     }
     if (!addForm.content.trim()) {
-      alert(addForm.type === 'api' ? '请输入 API 地址' : '请输入卡密内容');
+      await appDialog.alert(addForm.type === 'api' ? '请输入 API 地址' : '请输入卡密内容', { variant: 'warning' });
       return;
     }
     try {
@@ -237,7 +238,7 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
       await loadCards();
     } catch (/* error 表示卡密创建请求异常。 */ error: unknown) {
       console.error('添加卡密失败:', error);
-      alert(cardErrorMessage(error, '添加失败，请重试'));
+      await appDialog.alert(cardErrorMessage(error, '添加失败，请重试'), { variant: 'error' });
     }
   }, [addForm, loadCards]);
 
@@ -248,7 +249,7 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
       await updateCard(card.id, { ...card, enabled: !card.enabled, data_content: undefined });
       await loadCards();
     } catch (/* error 表示卡密状态切换请求异常。 */ error: unknown) {
-      alert(cardErrorMessage(error));
+      await appDialog.alert(cardErrorMessage(error), { variant: 'error' });
     }
   }, [loadCards]);
 
@@ -256,9 +257,9 @@ export const useCardActions = ({ cards, loadCards }: CardActionsOptions): CardAc
   const copyCardID = useCallback(/* copyAction 复制卡密组标识。 */ async (id: string | number) => {
     try {
       await navigator.clipboard.writeText(String(id));
-      alert(`已复制卡密组ID：${id}`);
+      await appDialog.alert(`已复制卡密组ID：${id}`, { variant: 'success' });
     } catch {
-      prompt('复制卡密组ID', String(id));
+      await appDialog.prompt('复制卡密组ID', String(id), { variant: 'warning', title: '复制卡密组ID' });
     }
   }, []);
 

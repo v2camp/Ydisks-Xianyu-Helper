@@ -2,6 +2,7 @@ import { useCallback,useEffect,useRef,useState,type Dispatch,type SetStateAction
 import type { Order } from './api';
 import { deleteOrder,manualShipOrder,syncOrders,syncSingleOrder,updateOrder } from './api';
 import { formatOrderSyncResult } from './syncResult';
+import { appDialog } from '../../../shared/ui/dialog';
 
 // OrderShipMode 表示订单发货操作的两种业务模式。
 export type OrderShipMode = 'status_only' | 'full_delivery';
@@ -147,11 +148,11 @@ export const useOrderActions = ({ orders, page, accountFilter, filter, searchTex
 			if (generation !== syncGeneration.current) return;
       // message 依据结构化失败和恢复统计生成，避免旧后端成功文案掩盖未完成项。
       const message = formatOrderSyncResult(result);
-      if (message) alert(message);
+      if (message) await appDialog.alert(message, { variant: 'info' });
     } catch (/* error 表示订单同步请求异常。 */ error: unknown) {
 			if (generation !== syncGeneration.current) return;
       console.error('同步订单失败:', error);
-      alert(orderErrorMessage(error, '同步失败，请重试'));
+      await appDialog.alert(orderErrorMessage(error, '同步失败，请重试'), { variant: 'error' });
     }
   }, [accountFilter, filter, loadOrders]);
 
@@ -231,7 +232,7 @@ export const useOrderActions = ({ orders, page, accountFilter, filter, searchTex
       await loadOrders();
     } catch (/* error 表示订单编辑请求异常。 */ error: unknown) {
       console.error('更新订单失败:', error);
-      alert('更新失败，请重试');
+      await appDialog.alert('更新失败，请重试', { variant: 'error' });
     }
   }, [editingOrder, loadOrders]);
 
@@ -244,11 +245,11 @@ export const useOrderActions = ({ orders, page, accountFilter, filter, searchTex
       if (result.success) {
         await loadOrders();
       } else {
-        alert(result.message || '同步失败');
+        await appDialog.alert(result.message || '同步失败', { variant: 'error' });
       }
     } catch (/* error 表示单笔订单同步请求异常。 */ error: unknown) {
       console.error('同步订单失败:', error);
-      alert(orderErrorMessage(error, '同步失败，请重试'));
+      await appDialog.alert(orderErrorMessage(error, '同步失败，请重试'), { variant: 'error' });
     } finally {
       setSyncingOrderId(null);
     }
@@ -256,7 +257,7 @@ export const useOrderActions = ({ orders, page, accountFilter, filter, searchTex
 
   // handleDelete 删除指定订单并在当前页为空时回退页码。
   const handleDelete = useCallback(/* deleteAction 删除订单并处理分页回退。 */ async (orderId: string) => {
-    if (!confirm('确认删除该订单吗？删除后无法恢复。')) return;
+    if (!(await appDialog.confirm('确认删除该订单吗？删除后无法恢复。', { variant: 'danger', confirmText: '删除' }))) return;
     // generation 是当前页面本次删除的唯一代次，旧结果不能作用于新页面。
     const generation = ++deleteGeneration.current;
     setDeletingOrderId(orderId);
@@ -271,7 +272,7 @@ export const useOrderActions = ({ orders, page, accountFilter, filter, searchTex
     } catch (/* error 表示订单删除请求异常。 */ error: unknown) {
       if (generation !== deleteGeneration.current) return;
       console.error('删除订单失败:', error);
-      alert(orderErrorMessage(error, '删除失败，请重试'));
+      await appDialog.alert(orderErrorMessage(error, '删除失败，请重试'), { variant: 'error' });
       await loadOrders();
     } finally {
       if (generation === deleteGeneration.current) setDeletingOrderId(null);
