@@ -2,6 +2,9 @@ package runtime
 
 // mcp_order_adapter.go 把订单服务集合、刷新任务服务、分析服务与异常服务投影为
 // internal/capability 的 OrderPorts/AnalyticsPorts/IssuePorts。
+//
+// 订单端口被两个消费方共用——/mcp 传输层与客服 Agent 运行时，因此它的类型名不带传输层前缀；
+// 分析端口与异常端口目前只有 MCP 一个消费方，保留 mcp 前缀以示区分。
 
 import (
 	"context"
@@ -13,8 +16,8 @@ import (
 	composition "xianyu-go/internal/composition"
 )
 
-// mcpOrderPorts 聚合订单查询/履约端口与后台刷新任务端口。
-type mcpOrderPorts struct {
+// orderPorts 聚合订单查询/履约端口与后台刷新任务端口。
+type orderPorts struct {
 	// set 是订单应用服务集合。
 	set *orderapp.ServiceSet
 	// jobs 是订单刷新任务应用服务。
@@ -24,45 +27,45 @@ type mcpOrderPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 订单端口。
-var _ capability.OrderPorts = (*mcpOrderPorts)(nil)
+var _ capability.OrderPorts = (*orderPorts)(nil)
 
 // List 透传订单分页查询用例。
-func (a *mcpOrderPorts) List(ctx context.Context, query orderapp.ListQuery) (orderapp.ListResult, error) {
+func (a *orderPorts) List(ctx context.Context, query orderapp.ListQuery) (orderapp.ListResult, error) {
 	return a.set.List.List(ctx, query)
 }
 
 // Get 透传单订单详情用例。
-func (a *mcpOrderPorts) Get(ctx context.Context, userID int64, orderID string) (*orderapp.Order, error) {
+func (a *orderPorts) Get(ctx context.Context, userID int64, orderID string) (*orderapp.Order, error) {
 	return a.set.Detail.Get(ctx, userID, orderID)
 }
 
 // RefreshSingle 透传单订单平台刷新用例。
-func (a *mcpOrderPorts) RefreshSingle(ctx context.Context, userID int64, orderID string) (orderapp.SingleRefreshResult, error) {
+func (a *orderPorts) RefreshSingle(ctx context.Context, userID int64, orderID string) (orderapp.SingleRefreshResult, error) {
 	return a.set.Refresh.RefreshSingle(ctx, userID, orderID)
 }
 
 // Refresh 透传批量订单平台刷新用例。
-func (a *mcpOrderPorts) Refresh(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshResult, error) {
+func (a *orderPorts) Refresh(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshResult, error) {
 	return a.set.Refresh.Refresh(ctx, userID, cookieID, status)
 }
 
 // ManualShip 透传手动发货用例。
-func (a *mcpOrderPorts) ManualShip(ctx context.Context, request orderapp.ManualShipRequest) (orderapp.ManualShipResult, error) {
+func (a *orderPorts) ManualShip(ctx context.Context, request orderapp.ManualShipRequest) (orderapp.ManualShipResult, error) {
 	return a.set.ManualShip.ManualShip(ctx, request)
 }
 
 // CreateRefreshJob 透传刷新任务创建启动用例；worker 绑定应用生命周期 Context，请求 Context 只用于归属与落库。
-func (a *mcpOrderPorts) CreateRefreshJob(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshJobStartResult, error) {
+func (a *orderPorts) CreateRefreshJob(ctx context.Context, userID int64, cookieID, status string) (orderapp.RefreshJobStartResult, error) {
 	return a.jobs.CreateAndStart(ctx, a.lifecycleContext(), userID, cookieID, status)
 }
 
 // GetRefreshJob 透传刷新任务查询用例。
-func (a *mcpOrderPorts) GetRefreshJob(ctx context.Context, userID int64, jobID string) (*orderapp.RefreshJob, error) {
+func (a *orderPorts) GetRefreshJob(ctx context.Context, userID int64, jobID string) (*orderapp.RefreshJob, error) {
 	return a.jobs.GetJob(ctx, userID, jobID)
 }
 
 // CancelRefreshJob 透传刷新任务取消用例。
-func (a *mcpOrderPorts) CancelRefreshJob(ctx context.Context, userID int64, jobID string) (orderapp.RefreshJobCancelResult, error) {
+func (a *orderPorts) CancelRefreshJob(ctx context.Context, userID int64, jobID string) (orderapp.RefreshJobCancelResult, error) {
 	return a.jobs.CancelForUser(ctx, userID, jobID)
 }
 
@@ -114,10 +117,12 @@ func (a *mcpIssuePorts) ResolveDeferredIssue(ctx context.Context, userID, taskID
 	return a.service.ResolveDeferredIssue(ctx, userID, taskID, resolution)
 }
 
-// newMCPOrderPorts 构造 MCP 订单端口；lifecycleContext 为刷新任务 worker 提供进程级 Context。
-func newMCPOrderPorts(ports composition.TransportPorts, lifecycleContext func() context.Context) *mcpOrderPorts {
+// newOrderPorts 构造订单域端口；任一必需服务或生命周期 Context 缺失时返回未包装的 nil。
+// 返回接口类型而不是具体指针：具体指针为 nil 时装入接口会得到一个「非空接口、空实现」的替身，
+// 消费方的 `== nil` 判空会失效，进而在调用时崩溃而不是跳过该域。
+func newOrderPorts(ports composition.TransportPorts, lifecycleContext func() context.Context) capability.OrderPorts {
 	if ports.Orders == nil || ports.OrderRefreshJobs == nil || lifecycleContext == nil {
 		return nil
 	}
-	return &mcpOrderPorts{set: ports.Orders, jobs: ports.OrderRefreshJobs, lifecycleContext: lifecycleContext}
+	return &orderPorts{set: ports.Orders, jobs: ports.OrderRefreshJobs, lifecycleContext: lifecycleContext}
 }
