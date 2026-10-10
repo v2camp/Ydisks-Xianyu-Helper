@@ -14,7 +14,20 @@ import (
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	mcpproto "github.com/mark3labs/mcp-go/mcp"
+
+	"xianyu-go/internal/capability"
 )
+
+// mustToolRisks 构造平台工具危险等级标注表，构造失败时终止用例。
+func mustToolRisks(t *testing.T) *capability.ToolRiskTable {
+	t.Helper()
+	// table、err 是平台标注表及其构造错误。
+	table, err := capability.PlatformToolRisks()
+	if err != nil {
+		t.Fatalf("构造平台工具危险等级表失败: %v", err)
+	}
+	return table
+}
 
 // fakeAudit 是记录审计写入的假端口。
 type fakeAudit struct {
@@ -38,6 +51,7 @@ func newProtocolEndpoint(t *testing.T) (*Endpoint, *fakeAudit) {
 		Config:           &fakeConfig{enabled: true, hasToken: true, validToken: "persisted-or-env-secret"},
 		Identity:         fakeIdentity{userID: 1},
 		Audit:            audit,
+		ToolRisks:        mustToolRisks(t),
 		EnvironmentToken: "persisted-or-env-secret",
 		Now:              func() time.Time { return time.Unix(3000, 0) },
 	})

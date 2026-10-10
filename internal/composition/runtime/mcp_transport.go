@@ -134,12 +134,18 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 	}
 	// audit 是同时支持写入与分页查询的审计适配器。
 	audit := mcpAuditAdapter{store: store.MCP}
+	// toolRisks、risksErr 是平台工具危险等级标注表及其构造错误；表本身是代码常量。
+	toolRisks, risksErr := capability.PlatformToolRisks()
+	if risksErr != nil {
+		return nil, server.ExtraRoute{}, fmt.Errorf("构造平台工具危险等级表失败: %w", risksErr)
+	}
 	// endpoint、err 是协议端点及其构造错误。
 	endpoint, err := mcp.NewEndpoint(mcp.EndpointConfig{
 		Config:           mcpConfigAdapter{store: store.MCP},
 		Identity:         &mcpIdentityAdapter{users: store.Users},
 		Audit:            audit,
 		AuditLister:      audit,
+		ToolRisks:        toolRisks,
 		SystemVersion:    appversion.Version,
 		EnvironmentToken: environmentToken,
 	})

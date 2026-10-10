@@ -6,11 +6,14 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
+
+	"xianyu-go/internal/capability"
 )
 
 const (
@@ -19,6 +22,9 @@ const (
 	// defaultServerVersion 是 MCP 服务实现版本；与应用版本独立演进。
 	defaultServerVersion = "1.0.0"
 )
+
+// errToolRisksMissing 表示端点未注入平台工具危险等级标注表。
+var errToolRisksMissing = errors.New("MCP 端点缺少工具危险等级标注表")
 
 // EndpointConfig 是构造 MCP 协议端点的配置集合。
 type EndpointConfig struct {
@@ -30,6 +36,9 @@ type EndpointConfig struct {
 	Audit AuditPort
 	// AuditLister 是审计分页查询端口；nil 时 mcp_audit_list 工具返回未配置错误。
 	AuditLister AuditListPort
+	// ToolRisks 是平台工具危险等级标注表，必填。
+	// 工具声明中的危险等级由它投影，未登记等级的工具一律不注册。
+	ToolRisks *capability.ToolRiskTable
 	// SystemVersion 是 system_version 工具返回的应用版本字符串。
 	SystemVersion string
 	// EnvironmentToken 是 XIANYU_MCP_TOKEN 引导令牌；空白表示未配置。
@@ -52,6 +61,8 @@ type Endpoint struct {
 	audit AuditPort
 	// auditLister 是审计分页查询端口，供 mcp_audit_list 使用。
 	auditLister AuditListPort
+	// toolRisks 是工具危险等级标注表，注册每个工具时按名查表投影。
+	toolRisks *capability.ToolRiskTable
 	// systemVersion 是 system_version 工具返回的应用版本。
 	systemVersion string
 	// mcpServer 是 mcp-go 协议服务器，工具/资源/提示注册到该实例。
@@ -66,6 +77,11 @@ type Endpoint struct {
 
 // NewEndpoint 校验必需依赖并构造协议端点；此时未注册任何业务工具。
 func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
+	// 危险等级标注表缺失时不能回落到「无等级」：那会让全部域工具静默消失，
+	// 部署方只看到 Harness 报「工具不存在」，排查方向完全错位。
+	if cfg.ToolRisks == nil {
+		return nil, errToolRisksMissing
+	}
 	// guard、guardErr 是安全守卫及其构造错误。
 	guard, guardErr := NewGuard(GuardConfig{
 		Config:           cfg.Config,
@@ -102,6 +118,7 @@ func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 		config:        cfg.Config,
 		audit:         cfg.Audit,
 		auditLister:   cfg.AuditLister,
+		toolRisks:     cfg.ToolRisks,
 		systemVersion: cfg.SystemVersion,
 		mcpServer:     mcpInstance,
 		streamable:    streamable,
