@@ -96,9 +96,11 @@ comments:
 	$(GO) run ./tools/commentlint -mode check -root .
 	node frontend/scripts/check-comments.mjs --mode check --root frontend
 
-## e2e-webui: 容器内真实 Chromium Web UI 冒烟（复用 browser-test 镜像与生产镜像的 Chromium）
+## e2e-webui: 容器内真实 Chromium Web UI 冒烟（先重建基镜像，再复用 browser-test 镜像的 Chromium）
+## 基镜像 ydisks-xianyu-helper:functional 提供被测服务端与界面，不重建就会拿旧快照跑。
 ## 必须在 worktree 目录下执行：compose-functional.sh 会拒绝在部署根目录运行功能栈。
 e2e-webui:
+	sh scripts/compose-functional.sh build seed-sqlite
 	sh scripts/compose-functional.sh build webui-e2e-test
 	sh scripts/compose-functional.sh run --rm webui-e2e-test
 
