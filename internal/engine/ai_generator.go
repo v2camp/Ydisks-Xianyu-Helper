@@ -8,6 +8,11 @@ package engine
 
 import "context"
 
+// AIGeneratorFactory 按账号构造模型生成接缝。
+// 返回 nil 表示该账号不使用自定义生成器（例如客服 Agent 未启用），沿用默认单次问答实现。
+// 工厂由组合层提供：engine 不反向依赖任何生成器实现，避免形成依赖环。
+type AIGeneratorFactory func(cookieID string) AIGenerator
+
 // AIGenerator 抽象一次模型补全调用。
 //
 // 实现只负责产出候选文本：不得改写调用方传入的请求，也不得自行裁剪或改写回复正文。
