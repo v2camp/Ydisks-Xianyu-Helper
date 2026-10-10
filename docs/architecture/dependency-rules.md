@@ -163,6 +163,28 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 
 MCP 工具声明中的危险标记必须来自本包登记的危险等级，不得在传输层另行标注。
 
+### 3.9 `internal/agent`（客服 Agent 运行时）
+
+`internal/agent` 承载面向单账号的客服 Agent 运行时：回合预算、步骤上限与转人工逃生阀。
+它是能力内核的消费方，不是传输层。
+
+允许：
+
+- 依赖标准库；
+- 依赖 `internal/application/*` 的应用模型；
+- 依赖 `internal/capability` 取得放行决策。
+
+禁止：
+
+- 导入 `internal/mcp`、`internal/qqbot`、`internal/server` 等传输层；
+- 导入 `internal/db`、`internal/xianyu`、`internal/browser`、`internal/automation`、`internal/engine`；
+- 导入 `internal/adapter`、`internal/composition`；
+- 自行推导权限结论，或在本包返回拒绝后降级为直接调用用例。
+
+边界说明：客服侧 Agent 的作用域被强制锁定为当前账号，无法跨账号。
+`internal/agent/mcpclient` 承载对外第三方 MCP 客户端（如找书 MCP），与主循环同属本边界，
+但必须独立故障域与超时；第三方 MCP 的返回不得绕过业务护栏直接落到账号动作。
+
 ## 4. 数据与秘密边界
 
 - AccountSummary 不包含 Cookie、Token、密码或加密 metadata；

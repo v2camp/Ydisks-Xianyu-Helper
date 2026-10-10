@@ -18,7 +18,8 @@
 **决策一（分层）**：共享 L0 能力内核，L1 执行/传输编排与 L2 运行时策略各自独立。
 判断标准——**共享「能力是什么」，不共享「谁决定调用它」**。
 
-**决策二（执行入口）**：能力内核是**唯一执行入口**，MCP 只是它的一个传输出口，不是内部 Agent 的调用方式。
+**决策二（策略入口）**：能力内核是**唯一策略求值入口**，MCP 只是它的一个传输出口，不是内部 Agent 的调用方式。
+内核只回答「是否允许、需要何种确认」，**不执行能力**；执行由消费方在取得决策后调用应用层用例完成。
 
 **决策三（配置）**：配置按「谁的答案唯一」分三层，不按 Agent 类型分。
 
@@ -44,14 +45,14 @@
 
 ---
 
-## 3. 执行入口：为什么 MCP 不是内部 Agent 的调用方式
+## 3. 调用路径：为什么 MCP 不是内部 Agent 的调用方式
 
 ### 3.1 三个候选路径
 
 | 路径 | 做法 | 评价 |
 |---|---|---|
 | A. 内部 Agent 走 MCP 协议 | 用 `mcp-go` v1.1.1 的 `client.NewInProcessClient(server)` 进程内直连 | 可行，但代价大（见 3.2） |
-| B. 共享能力内核，MCP 仅为传输出口 | 三方都调 `capability.Execute`；MCP 端点负责把内核投影成 MCP tools | **采纳** |
+| B. 共享能力内核，MCP 仅为传输出口 | 三方都先向 `capability` 求值；MCP 端点负责把内核投影成 MCP tools，执行由消费方完成 | **采纳** |
 | C. 各自独立实现 | 三套工具目录 | 已否决：能力漂移 + 15k 行资产复制 |
 
 ### 3.2 为什么否决路径 A
@@ -67,20 +68,22 @@
 ### 3.3 采纳路径 B 的形态
 
 ```text
-capability.Execute(ctx, Principal, capabilityName, args) → 策略求值 → 审计 → 调用例端口
+capability.Evaluate(catalog, Request{Principal, Capability, Confirmed}) → Decision
+消费方取得 Decision 后，再调用应用层用例端口执行
 
   外部 Harness ──→ /mcp (Guard 鉴权) ──┐
-                                       ├──→ capability.Execute ──→ 应用层用例端口
+                                       ├──→ capability.Evaluate ──→ 消费方执行用例端口
   运营 Agent (QQ)  ────────────────────┤
                                        │
   客服 Agent       ────────────────────┘
 ```
 
-- 策略求值、审计写入、错误归一**只有一份实现**（在 `capability`）；
-- MCP 端点退化为「鉴权 + 内核投影」，不再持有业务语义；
+- 策略求值**只有一份实现**（在 `capability`）；MCP 端点退化为「鉴权 + 内核投影」，不再持有业务语义；
+- 审计写入与错误归一沿用既有 `internal/mcp/registry.go` / `errors.go`，三方共享同一套 `ErrorClass` 语义（含 `needs_review`）；
 - 三方能力面严格同构——**外部能做而内部不能做（或反之）即为安全缺陷**，路径 B 从结构上排除这种可能。
 
-**为跨进程保留缝**：`capability` 的入口签名刻意设计为与 MCP `tools/call` 同构（能力名 + args 映射）。若将来某个内部 Agent 需要拆成独立进程，改用 `NewInProcessClient` 或真实 MCP 客户端的切换成本极低。
+**为跨进程保留缝**：`Request` / `Decision` 的形状刻意与 MCP `tools/call` 同构（能力名 + 参数映射）。
+若将来某个内部 Agent 需要拆成独立进程，改用 `client.NewInProcessClient` 或真实 MCP 客户端的切换成本极低。
 
 ---
 
@@ -90,12 +93,16 @@ capability.Execute(ctx, Principal, capabilityName, args) → 策略求值 → �
 
 | 组成 | 说明 |
 |---|---|
-| 能力目录 | `CapabilitySpec{Name, Args, Risk, ScopeKind}`，**危险等级是一等属性** |
-| 执行入口 | `Execute(ctx, Principal, name, args)` —— 唯一入口 |
-| 用例契约 | 现有 `domain_ports.go` 的 15 个领域契约上卷后复用 |
-| 策略求值 | 给定 `Principal` + 能力 → `Allow` / `RequireConfirm` / `RequireAsyncConfirm` / `Deny` |
+| 能力目录 | `Spec{Name, Risk, Scope, MinPreset}`，**危险等级是一等属性** |
+| 策略求值 | `Evaluate(catalog, Request{Principal, Capability, Confirmed})` —— 唯一求值入口 |
+| 作用域断言 | `ResolveAccountScope(Principal, Spec, requestedCookieID)` —— 跨账号与否由 Principal 决定 |
+| 用例契约 | 现有 `domain_ports.go` 的 15 个领域契约上卷后复用（由消费方注入并调用） |
 | 统一审计 | 三方写入同一张审计表，以 `principal_type` 区分 |
 | 错误归一 | 复用既有 7 个 `ErrorClass`（含 `needs_review`） |
+
+**边界**：L0 不执行能力、不持有传输层对象、不触达业务数据。「是否允许」与「如何执行」分离，
+消费方在拿到 `allow` / `require_confirm` / `require_async_confirm` 之后自行调用用例；
+拿到 `deny` 时不得降级为直接调用用例。
 
 ### L1 编排（各自独立）
 
@@ -233,11 +240,15 @@ capability.Execute(ctx, Principal, capabilityName, args) → 策略求值 → �
 ## 9. 包结构变更
 
 ```text
-internal/capability/              新增（L0）
-  catalog.go                      CapabilitySpec 定义与注册
-  preset.go                       档位定义与展开
-  policy.go                       Principal 求值 → Allow/RequireConfirm/RequireAsyncConfirm/Deny
-  execute.go                      唯一执行入口
+internal/capability/              新增（L0，纯策略）
+  doc.go                          包边界说明：只回答是否允许、需要何种确认
+  risk.go                         五级危险等级（read/quote/write/account/destructive）
+  preset.go                       三档能力档位与比较
+  principal.go                    三个调用方类型与身份合法性
+  spec.go                         能力声明与自洽性校验
+  catalog.go                      只读注册表（重复名与非法声明拒绝登记）
+  catalog_platform.go             平台能力声明源 PlatformCatalog()
+  policy.go                       唯一求值入口 Evaluate()
   scope.go                        账号作用域断言
 
 internal/mcp/                     瘦身为传输 adapter（Guard + 内核投影）
@@ -274,7 +285,7 @@ cd ".worktree/agent-capability-kernel"
 顺序：
 
 1. 修订 AGENTS.md §1.1 与 `dependency-rules.md`；
-2. 新建 `internal/capability`（catalog / preset / policy / execute / scope）+ 聚焦测试；
+2. 新建 `internal/capability`（risk / preset / principal / spec / catalog / policy / scope）+ 聚焦测试；
 3. `internal/mcp` 瘦身为传输 adapter，现有 tools 测试**不减项**；
 4. 迁移 `00059` / `00060`（SQLite + PostgreSQL 两份）+ `agentadmin` 应用服务 + 仓储端口；
 5. `/api/v1` 接口登记 + 生成类型 + 契约测试；
