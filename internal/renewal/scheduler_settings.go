@@ -133,13 +133,16 @@ func (s *Scheduler) addAPILog(ctx context.Context, log db.RenewalLog) {
 	s.notifier.NotifyAccountEvent(log.CookieID, "token_renewal", "warn", "闲鱼 Cookie 自动续期连续失败", fmt.Sprintf("账号 %s 的 API 自动续期已连续失败 3 次，最近错误：%s", log.CookieID, reason))
 }
 
-// cleanupExpiredLogs 封装cleanupExpiredLogs业务协调。
+// cleanupExpiredLogs 按统一保留天数清理续期日志；未配置统一项时回落旧键与默认值。
 func (s *Scheduler) cleanupExpiredLogs(ctx context.Context) {
 	if s.store == nil || s.store.Renewal == nil {
 		return
 	}
-	// days 用于本次流程后续判断的days
-	days := s.settingInt(ctx, "renewal_log_retention_days", 10)
+	// days 优先取统一的日志保留天数，未配置时回落续期日志专用键，最后回落 10 天。
+	days := s.settingInt(ctx, db.RetentionPolicyDaysKey, 0)
+	if days <= 0 {
+		days = s.settingInt(ctx, "renewal_log_retention_days", 10)
+	}
 	if // err 用于本次流程后续判断的err
 	err := s.store.Renewal.CleanupLogs(ctx, days); err != nil {
 		s.logger.Warn("清理续期日志失败", "err", err)

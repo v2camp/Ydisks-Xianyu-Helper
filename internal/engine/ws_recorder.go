@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,8 +84,10 @@ func (r *wsRecorder) start(ctx context.Context) {
 			defer close(r.done)
 			// cleanupCtx 是清理历史报文时的有限时长上下文。
 			cleanupCtx, cleanupCancel := context.WithTimeout(ctx, WSRecordWriteTimeout)
+			// retention 是本次启动采用的诊断帧保留期：优先读统一日志保留设置，避免与全局策略不一致。
+			retention := r.recordRetention(ctx)
 			// deleted 是本次清理删除的历史报文数量。
-			deleted, cleanupErr := r.store.WSMessages.DeleteBefore(cleanupCtx, r.cookieID, time.Now().Add(-WSRecordRetention))
+			deleted, cleanupErr := r.store.WSMessages.DeleteBefore(cleanupCtx, r.cookieID, time.Now().Add(-retention))
 			cleanupCancel()
 			if cleanupErr != nil && ctx.Err() == nil {
 				r.logger.Warn("清理过期 WS 报文失败", "cookie_id", r.cookieID, "err", cleanupErr)
@@ -127,6 +131,25 @@ func (r *wsRecorder) start(ctx context.Context) {
 			}
 		}()
 	})
+}
+
+// recordRetention 读取统一日志保留天数并转换为诊断帧保留期。
+// 设置缺失、不可读或非法时使用 WSRecordRetention 兜底，保证清理始终有一个有限上界。
+func (r *wsRecorder) recordRetention(ctx context.Context) time.Duration {
+	if r == nil || r.store == nil || r.store.Settings == nil {
+		return WSRecordRetention
+	}
+	// value、err 是保留天数设置的原始值与读取错误。
+	value, err := r.store.Settings.Get(ctx, db.RetentionPolicyDaysKey)
+	if err != nil {
+		return WSRecordRetention
+	}
+	// days、convErr 是解析后的保留天数与解析错误；非正数视为未配置。
+	days, convErr := strconv.Atoi(strings.TrimSpace(value))
+	if convErr != nil || days <= 0 {
+		return WSRecordRetention
+	}
+	return time.Duration(days) * 24 * time.Hour
 }
 
 // waitContext 在 ctx 约束内等待 recorder worker 退出；数据库写入异常阻塞时及时把停止超时交给调用方。

@@ -102,6 +102,11 @@ func TestMigrate_AppliesCleanSchema(t *testing.T) {
 	if err != nil || val != "10" {
 		t.Errorf("renewal_log_retention_days 默认设置异常: val=%q err=%v", val, err)
 	}
+	// 00062 引入统一保留天数，默认 30 天，覆盖消息与全部日志表。
+	err = db.QueryRow(`SELECT value FROM system_settings WHERE key='log_retention_days'`).Scan(&val)
+	if err != nil || val != "30" {
+		t.Errorf("log_retention_days 默认设置异常: val=%q err=%v", val, err)
+	}
 
 	// 二次 Open 应幂等（迁移不重复执行、不报错）。
 	if err := db.Close(); err != nil {
@@ -194,9 +199,9 @@ func TestMigrate_ExistingAutomationRunsReceiveEmptyDeliveryProof(t *testing.T) {
 	if enabledAutoConsign != 1 || disabledAutoConsign != 0 {
 		t.Fatalf("迁移回填 auto_consign 错误: enabled=%d disabled=%d", enabledAutoConsign, disabledAutoConsign)
 	}
-	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务、账号每日定时下架与聊天时间单位统一（00060）迁移，不能仅证明旧 delivery_proof 列存在。
+	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务、账号每日定时下架、聊天时间单位统一（00060）、卡券发货渠道（00061）与消息与日志保留设置（00062）迁移，不能仅证明旧 delivery_proof 列存在。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
-	if versionErr != nil || finalVersion != 61 {
+	if versionErr != nil || finalVersion != 62 {
 		t.Fatalf("final migration version=%d err=%v", finalVersion, versionErr)
 	}
 	// credential_cooldowns 表由 00050 创建，账号任务重试计数列由 00048 创建，发送日计数表由 00051 创建，进程心跳表由 00052 创建，免拼名单表由 00053 建立并已被 00056 移除，都必须在最终版本中符合预期。
@@ -302,13 +307,13 @@ func TestMigrate_UpgradesDatabaseWithMainChatVersions(t *testing.T) {
 	if !columnExists(t, rawDB, "automation_rule_actions", "delivery_template_id") {
 		t.Fatal("automation_rule_actions should reference delivery templates")
 	}
-	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）、上游自动免拼（00054）、砍价免拼阶段（00055）、账号级免拼安抚模板（00056）、MCP 开放服务（00057）、账号每日定时下架（00058）、聊天时间单位统一（00060）与卡券发货渠道（00061），或记录读取失败。
+	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）、上游自动免拼（00054）、砍价免拼阶段（00055）、账号级免拼安抚模板（00056）、MCP 开放服务（00057）、账号每日定时下架（00058）、聊天时间单位统一（00060）、卡券发货渠道（00061）与消息与日志保留设置（00062），或记录读取失败。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
 	if versionErr != nil {
 		t.Fatalf("read final migration version: %v", versionErr)
 	}
-	if finalVersion != 61 {
-		t.Fatalf("final migration version=%d, want 61", finalVersion)
+	if finalVersion != 62 {
+		t.Fatalf("final migration version=%d, want 62", finalVersion)
 	}
 	if !tableExists(t, rawDB, "process_heartbeats") {
 		t.Fatal("升级后必须创建进程心跳持久化表")

@@ -72,6 +72,10 @@ type Scheduler struct {
 	pendingShipScanBudget time.Duration
 	// pendingShipScanMaxTasks 限制每条待发货扫描单轮实际触发的任务数；零值使用生产默认值。
 	pendingShipScanMaxTasks int
+	// retentionMu 保护 lastRetentionRun，避免分钟级扫描并发触发同一次保留清理。
+	retentionMu sync.Mutex
+	// lastRetentionRun 记录最近一次保留清理的完成时间，用于按天节流。
+	lastRetentionRun time.Time
 }
 
 // NewScheduler 构造计划任务调度器。
@@ -239,6 +243,8 @@ func (s *Scheduler) scan(ctx context.Context) {
 	for accountID, count := range waitingForWS {
 		s.center.logger.Info("账号 WebSocket 尚未就绪，求评价任务等待下次扫描", "account", accountID, "orders", count)
 	}
+	// 保留清理按天节流，挂在分钟级扫描末尾；失败只记日志，不影响其他计划任务。
+	s.runRetentionCleanup(ctx)
 }
 
 // scanPendingShipResumes 兜底续跑「有运行但剩余动作全部为幂等状态动作」的待发货订单。
