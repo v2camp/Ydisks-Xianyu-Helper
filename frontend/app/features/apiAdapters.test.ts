@@ -7,6 +7,7 @@ checkQRLoginStatus,completeQRVerification,
 deleteAccount,
 generateQRLogin,
 getAccountAISettings,
+getAccountAgentSupport,
 getAccountDetails,getAccountRuntimeStatuses,
 getAccountTaskSettings,
 getAllAISettings,
@@ -16,6 +17,7 @@ refreshAccountProfile,
 runAccountTask,
 setLongLoginSettings,
 updateAccountAISettings,
+updateAccountAgentSupport,
 updateAccountAutoConfirm,
 updateAccountCookie,
 updateAccountLoginInfo,
@@ -33,8 +35,7 @@ import { createNotificationChannel,deleteAccountNotifications,deleteMessageNotif
 import { cancelOrderRefreshJob,deleteOrder,getAdminStats,getOrderDetail,getOrders,manualShipOrder,syncOrders,syncSingleOrder,updateOrder } from './orders/api';
 import { clearDefaultReplyRecords,deleteDefaultReply,deleteReplyRule,deleteShippingRule,getAutomationIssues,getDefaultReplies,getDefaultReply,getReplyRules,getShippingRules,getShippingRulesPage,resolveAutomationRun,resolveDeferredAutomationTask,updateDefaultReply,updateReplyRule,updateShippingRule } from './rules/api';
 import { initializeAdmin,login,logout,verifySession } from './session/api';
-import { changePassword,fetchAIModels,generateMCPToken,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
-import { getAgentSupportSettings,updateAgentSupportSettings } from './settings/agentSupportApi';
+import { changePassword,fetchAIModels,generateMCPToken,getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateAgentSupportSettings,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
 import { getHealth } from './system/api';
 import { normalizeSystemSettingsUpdate } from '../../shared/api-contract/settings';
 
@@ -1894,4 +1895,38 @@ test('客服 Agent 租户配置保存提交全量开关与档位', /* agentSuppo
 	// payload 是实际发送的租户配置请求体。
 	const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
 	expect(payload).toEqual({ enabled: true, preset: 'advanced' });
+});
+
+// 账号级客服 Agent 授权读取必须区分「账号未覆盖」与「已覆盖」，两者共用可空字段表达。
+test('账号级客服 Agent 授权读取区分继承与覆盖', /* accountAgentSupportAdapterTest 检查可空覆盖值归一。 */ async () => {
+	// fetchMock 是账号级客服 Agent 授权读取的 HTTP 替身。
+	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+		cookie_id: 'account-1',
+		enabled: true,
+		preset: 'standard',
+		account_enabled: null,
+		account_preset: 'advanced',
+		presets: [{ value: 'standard', label: '标准', description: '允许生成报价' }],
+	}));
+	stubContractFetch(fetchMock);
+	// support 是归一后的账号级客服 Agent 授权 UI 模型。
+	const support = await getAccountAgentSupport('account-1');
+	expect(support.enabled).toBeNull();
+	expect(support.preset).toBe('advanced');
+	expect(support.effectiveEnabled).toBe(true);
+	expect(support.effectivePreset).toBe('standard');
+	expect(support.presets).toEqual([{ value: 'standard', label: '标准', description: '允许生成报价' }]);
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/accounts/account-1', expect.objectContaining({ method: 'GET', credentials: 'include' }));
+});
+
+// 账号级客服 Agent 授权保存用 null 表达恢复继承，不能退化成 false 或空串。
+test('账号级客服 Agent 授权保存用 null 表达恢复继承', /* accountAgentSupportUpdateAdapterTest 检查继承载荷。 */ async () => {
+	// fetchMock 是账号级客服 Agent 授权保存的 HTTP 替身。
+	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+	stubContractFetch(fetchMock);
+	await updateAccountAgentSupport('account-1', { enabled: null, preset: 'advanced' });
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/accounts/account-1', expect.objectContaining({ method: 'PUT', credentials: 'include' }));
+	// payload 是实际发送的授权覆盖请求体。
+	const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+	expect(payload).toEqual({ enabled: null, preset: 'advanced' });
 });

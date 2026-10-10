@@ -2,16 +2,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AgentCenter from './AgentCenter';
-import { getAgentSupportSettings,updateAgentSupportSettings } from '../agentSupportApi';
-import { getMCPServiceStatus } from '../api';
+import { getAgentSupportSettings,getMCPServiceStatus,updateAgentSupportSettings } from '../api';
 import type { MCPServiceStatus } from '../models';
 
-vi.mock('../agentSupportApi', /* mockAgentSupportApi 用可断言的替身替换客服 Agent 适配层，避免测试触网。 */ () => ({
+vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网。 */ () => ({
   getAgentSupportSettings: vi.fn(),
   updateAgentSupportSettings: vi.fn(),
-}));
-
-vi.mock('../api', /* mockSettingsApi 用替身替换页面读取的 MCP 状态接口，避免连带加载整份设置适配层。 */ () => ({
   getMCPServiceStatus: vi.fn(),
 }));
 

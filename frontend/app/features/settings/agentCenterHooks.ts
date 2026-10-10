@@ -1,6 +1,5 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
-import { getMCPServiceStatus } from './api';
-import { getAgentSupportSettings,updateAgentSupportSettings } from './agentSupportApi';
+import { getAgentSupportSettings,getMCPServiceStatus,updateAgentSupportSettings } from './api';
 import { createMCPServiceMessage,isSettingsAbortError,settingsErrorMessage } from './state';
 import type { AgentSupportSettings,AgentSupportSettingsUpdate,MCPServiceMessage } from './models';
 
