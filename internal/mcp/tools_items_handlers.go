@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	itemapp "xianyu-go/internal/application/items"
+
+	"xianyu-go/internal/capability"
 )
 
 // makePublishHandler 构造单商品发布处理器。
-func (e *Endpoint) makePublishHandler(items ItemPorts,
+func (e *Endpoint) makePublishHandler(items capability.ItemPorts,
 	requireAccount func(context.Context, *CallIdentity, string) error) HandlerFunc {
 	return func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
 		// cookieID 是发布账号标识。
@@ -44,7 +46,7 @@ func (e *Endpoint) makePublishHandler(items ItemPorts,
 			return nil, InvalidArgument("postage_mode 只能是 free 或 fixed")
 		}
 		// input 是组合层单发布端口入参。
-		input := SinglePublishInput{
+		input := capability.SinglePublishInput{
 			UserID:             identity.UserID,
 			CookieID:           cookieID,
 			Title:              title,
@@ -80,7 +82,7 @@ func (e *Endpoint) makePublishHandler(items ItemPorts,
 }
 
 // makePreviewHandler 构造批量发布预检处理器：JSON 行 → 应用层归一化字段行 → 预检结果。
-func (e *Endpoint) makePreviewHandler(items ItemPorts) HandlerFunc {
+func (e *Endpoint) makePreviewHandler(items capability.ItemPorts) HandlerFunc {
 	return func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
 		// rows、rowErr 是批量行数组及其校验错误。
 		rows, rowErr := batchRowsArg(args)
@@ -106,7 +108,7 @@ func (e *Endpoint) makePreviewHandler(items ItemPorts) HandlerFunc {
 }
 
 // makeBatchCreateHandler 构造预检后持久化批次的处理器。
-func (e *Endpoint) makeBatchCreateHandler(items ItemPorts) HandlerFunc {
+func (e *Endpoint) makeBatchCreateHandler(items capability.ItemPorts) HandlerFunc {
 	return func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
 		// rows、rowErr 是批量行数组。
 		rows, rowErr := batchRowsArg(args)

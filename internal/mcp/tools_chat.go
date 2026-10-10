@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	chatapp "xianyu-go/internal/application/chat"
+
+	"xianyu-go/internal/capability"
 )
 
 const (
@@ -185,7 +187,7 @@ func clampLimit(value, fallback, maxValue int) int {
 }
 
 // RegisterChatTools 注册聊天域全部工具。
-func (e *Endpoint) RegisterChatTools(p ChatPorts) {
+func (e *Endpoint) RegisterChatTools(p capability.ChatPorts) {
 	if p == nil {
 		return
 	}
@@ -195,7 +197,7 @@ func (e *Endpoint) RegisterChatTools(p ChatPorts) {
 }
 
 // registerChatViewTools 注册会话、消息与聊天商品查询工具。
-func (e *Endpoint) registerChatViewTools(p ChatPorts) {
+func (e *Endpoint) registerChatViewTools(p capability.ChatPorts) {
 	// accountArg 是聊天查询通用的账号入参定义。
 	accountArg := ArgSpec{Name: "account_id", Type: ArgString, Required: true, Description: "闲鱼账号标识。"}
 	e.RegisterTools(
@@ -367,7 +369,7 @@ func (e *Endpoint) registerChatViewTools(p ChatPorts) {
 }
 
 // registerChatSendTools 注册发送、标记已读与删除会话工具。
-func (e *Endpoint) registerChatSendTools(p ChatPorts) {
+func (e *Endpoint) registerChatSendTools(p capability.ChatPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "chat_send_text",
@@ -492,7 +494,7 @@ func chatIDs(args Arguments) (accountID, chatID string, err error) {
 }
 
 // chatSendInput 解析发送类工具的归属会话与文本内容；发送前必须确认会话存在且已知对端。
-func chatSendInput(ctx context.Context, p ChatPorts, userID int64, args Arguments) (chatapp.Session, string, error) {
+func chatSendInput(ctx context.Context, p capability.ChatPorts, userID int64, args Arguments) (chatapp.Session, string, error) {
 	// accountID、chatID 是账号与会话标识。
 	accountID, chatID, idErr := chatIDs(args)
 	if idErr != nil {
@@ -515,7 +517,7 @@ func chatSendInput(ctx context.Context, p ChatPorts, userID int64, args Argument
 }
 
 // chatImageInput 取得待发送图片的字节与媒体类型：公网 URL 走组合层受控下载，base64 受大小上限约束。
-func chatImageInput(ctx context.Context, p ChatPorts, args Arguments) ([]byte, string, error) {
+func chatImageInput(ctx context.Context, p capability.ChatPorts, args Arguments) ([]byte, string, error) {
 	// rawURL 是公网图片地址。
 	rawURL := strings.TrimSpace(args.OptionalString("image_url", ""))
 	// encoded 是 base64 图片内容。

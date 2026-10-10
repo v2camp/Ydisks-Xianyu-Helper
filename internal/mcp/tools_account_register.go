@@ -10,11 +10,13 @@ import (
 	"context"
 
 	accountapp "xianyu-go/internal/application/account"
+
+	"xianyu-go/internal/capability"
 )
 
 // RegisterAccountTools 注册账号域全部工具。
 // p 是账号应用用例端口，nil 时跳过注册以支持部分能力装配。
-func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
+func (e *Endpoint) RegisterAccountTools(p capability.AccountPorts) {
 	if p == nil {
 		return
 	}
@@ -30,7 +32,7 @@ func (e *Endpoint) RegisterAccountTools(p AccountPorts) {
 
 // registerAccountListTools 注册账号只读查询工具：全局列表、归属列表与单账号详情。
 // p 是账号应用用例端口；accountID 是共用的必填账号参数定义。
-func (e *Endpoint) registerAccountListTools(p AccountPorts, accountID ArgSpec) {
+func (e *Endpoint) registerAccountListTools(p capability.AccountPorts, accountID ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "account_list_all",
@@ -96,7 +98,7 @@ func (e *Endpoint) registerAccountListTools(p AccountPorts, accountID ArgSpec) {
 
 // registerAccountSettingTools 注册账号基础本地设置工具：备注、启停与暂停。
 // p 是账号应用用例端口；accountID 是共用的必填账号参数定义。
-func (e *Endpoint) registerAccountSettingTools(p AccountPorts, accountID ArgSpec) {
+func (e *Endpoint) registerAccountSettingTools(p capability.AccountPorts, accountID ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "account_set_remark",
@@ -209,21 +211,21 @@ func (e *Endpoint) registerAccountSettingTools(p AccountPorts, accountID ArgSpec
 
 // registerAccountComprehensiveTools 注册账号综合设置工具：三路布尔开关与一次性批量更新。
 // p 是账号应用用例端口；accountID 是共用的必填账号参数定义。
-func (e *Endpoint) registerAccountComprehensiveTools(p AccountPorts, accountID ArgSpec) {
+func (e *Endpoint) registerAccountComprehensiveTools(p capability.AccountPorts, accountID ArgSpec) {
 	e.RegisterTools(
 		accountBoolSettingTool("account_set_auto_confirm",
 			"更新账号自动确认收货开关（付款自动化链路总开关之一，仅本地配置）。", p,
-			func(ctx context.Context, p AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
+			func(ctx context.Context, p capability.AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
 				return p.SetAutoConfirm(ctx, userID, id, enabled)
 			}),
 		accountBoolSettingTool("account_set_auto_consign",
 			"更新账号发货后自动转已发货开关（仅本地配置，不改变砍价阶段免拼顺序）。", p,
-			func(ctx context.Context, p AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
+			func(ctx context.Context, p capability.AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
 				return p.SetAutoConsign(ctx, userID, id, enabled)
 			}),
 		accountBoolSettingTool("account_set_auto_bargain",
 			"更新账号砍价“待刀成”阶段自动免拼开关（仅本地配置；实际免拼仍严格按 WS 阶段触发）。", p,
-			func(ctx context.Context, p AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
+			func(ctx context.Context, p capability.AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error) {
 				return p.SetAutoBargain(ctx, userID, id, enabled)
 			}),
 		ToolDef{
@@ -293,7 +295,7 @@ func (e *Endpoint) registerAccountComprehensiveTools(p AccountPorts, accountID A
 // registerAccountRuntimeTools 注册账号运行时与平台触达工具：长登录、运行时状态、
 // 重启、资料刷新与删除。
 // p 是账号应用用例端口；accountID 是共用的必填账号参数定义。
-func (e *Endpoint) registerAccountRuntimeTools(p AccountPorts, accountID ArgSpec) {
+func (e *Endpoint) registerAccountRuntimeTools(p capability.AccountPorts, accountID ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "account_get_long_login",
@@ -416,7 +418,7 @@ func (e *Endpoint) registerAccountRuntimeTools(p AccountPorts, accountID ArgSpec
 
 // registerAccountTaskTools 注册账号自动评价与每日擦亮任务工具：配置读写、运行记录与立即执行。
 // p 是账号应用用例端口；accountID 是共用的必填账号参数定义。
-func (e *Endpoint) registerAccountTaskTools(p AccountPorts, accountID ArgSpec) {
+func (e *Endpoint) registerAccountTaskTools(p capability.AccountPorts, accountID ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "account_task_get_settings",

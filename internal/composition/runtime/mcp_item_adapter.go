@@ -9,8 +9,8 @@ import (
 	"time"
 
 	itemapp "xianyu-go/internal/application/items"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpBatchRetryLease 是 MCP 重试失败批次时声明的 worker 租约时长。
@@ -37,7 +37,7 @@ type mcpItemPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 商品端口。
-var _ mcp.ItemPorts = (*mcpItemPorts)(nil)
+var _ capability.ItemPorts = (*mcpItemPorts)(nil)
 
 // ListItems 透传归属商品列表用例。
 func (a *mcpItemPorts) ListItems(ctx context.Context, userID int64, cookieID string) ([]itemapp.CatalogItem, error) {
@@ -85,7 +85,7 @@ func (a *mcpItemPorts) SyncItemsPage(ctx context.Context, query itemapp.SyncQuer
 }
 
 // PublishSingle 下载公网图片后透传单商品发布用例；二进制图片不经过 MCP 传输层。
-func (a *mcpItemPorts) PublishSingle(ctx context.Context, input mcp.SinglePublishInput) (itemapp.PublishOutcome, error) {
+func (a *mcpItemPorts) PublishSingle(ctx context.Context, input capability.SinglePublishInput) (itemapp.PublishOutcome, error) {
 	// images 是下载后的应用层图片切片。
 	images := make([]itemapp.Image, 0, len(input.ImageURLs))
 	// rawURL 是当前待下载的图片公网地址。

@@ -1,7 +1,7 @@
 package runtime
 
 // mcp_order_adapter.go 把订单服务集合、刷新任务服务、分析服务与异常服务投影为
-// internal/mcp 的 OrderPorts/AnalyticsPorts/IssuePorts。
+// internal/capability 的 OrderPorts/AnalyticsPorts/IssuePorts。
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	orderapp "xianyu-go/internal/application/orders"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpOrderPorts 聚合订单查询/履约端口与后台刷新任务端口。
@@ -24,7 +24,7 @@ type mcpOrderPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 订单端口。
-var _ mcp.OrderPorts = (*mcpOrderPorts)(nil)
+var _ capability.OrderPorts = (*mcpOrderPorts)(nil)
 
 // List 透传订单分页查询用例。
 func (a *mcpOrderPorts) List(ctx context.Context, query orderapp.ListQuery) (orderapp.ListResult, error) {
@@ -73,7 +73,7 @@ type mcpAnalyticsPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 分析端口。
-var _ mcp.AnalyticsPorts = (*mcpAnalyticsPorts)(nil)
+var _ capability.AnalyticsPorts = (*mcpAnalyticsPorts)(nil)
 
 // DashboardStats 透传仪表盘计数用例。
 func (a *mcpAnalyticsPorts) DashboardStats(ctx context.Context, userID int64) (analyticsapp.DashboardStats, error) {
@@ -97,7 +97,7 @@ type mcpIssuePorts struct {
 }
 
 // 编译期断言适配器满足 MCP 异常处理端口。
-var _ mcp.IssuePorts = (*mcpIssuePorts)(nil)
+var _ capability.IssuePorts = (*mcpIssuePorts)(nil)
 
 // ListIssues 透传异常与死信列表用例。
 func (a *mcpIssuePorts) ListIssues(ctx context.Context, userID int64) ([]automationapp.RunIssue, []automationapp.DeferredIssue, error) {

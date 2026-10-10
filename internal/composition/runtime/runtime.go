@@ -12,6 +12,7 @@ import (
 	"xianyu-go/internal/automation"
 	"xianyu-go/internal/backup"
 	"xianyu-go/internal/browser"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/heartbeat"
@@ -188,7 +189,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	// httpServerRef 保存 HTTP 服务构造完成后的引用，供 MCP 后台任务总览按调用时读取。
 	var httpServerRef *server.Server
 	// mcpBackgroundTasks 延迟读取进程后台任务快照；服务未就绪时返回空列表。
-	mcpBackgroundTasks := func() []mcp.BackgroundTask {
+	mcpBackgroundTasks := func() []capability.BackgroundTask {
 		if httpServerRef == nil {
 			return nil
 		}

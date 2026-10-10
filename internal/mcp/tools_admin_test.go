@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	adminapp "xianyu-go/internal/application/admin"
+
+	"xianyu-go/internal/capability"
 )
 
 // adminUserPasswordLike 是用户摘要中绝不应出现的字段名集合。
@@ -21,7 +23,7 @@ type fakeAdminPorts struct {
 	// stats 是全局统计返回。
 	stats adminapp.Stats
 	// tasks 是后台任务快照返回。
-	tasks []BackgroundTask
+	tasks []capability.BackgroundTask
 	// listErr、deleteErr、statsErr 是各用例注入错误。
 	listErr, deleteErr, statsErr error
 	// listCalls、deleteCalls、statsCalls 是各用例调用计数。
@@ -50,7 +52,7 @@ func (f *fakeAdminPorts) Stats(context.Context) (adminapp.Stats, error) {
 }
 
 // BackgroundTasks 回传预设后台任务快照。
-func (f *fakeAdminPorts) BackgroundTasks() []BackgroundTask {
+func (f *fakeAdminPorts) BackgroundTasks() []capability.BackgroundTask {
 	return f.tasks
 }
 
@@ -156,7 +158,7 @@ func TestAdminDeleteUserConfirmAndSelfGuard(t *testing.T) {
 func TestAdminBackgroundTasksOverview(t *testing.T) {
 	// fake 是含三类任务的假管理员端口。
 	fake := &fakeAdminPorts{
-		tasks: []BackgroundTask{
+		tasks: []capability.BackgroundTask{
 			{ID: "t1", Name: "order_refresh", State: "running", StartedAtUnixMilli: 1700000000000},
 			{ID: "t2", Name: "item_sync", State: "succeeded", StartedAtUnixMilli: 1700000001000, FinishedAtUnixMilli: 1700000002000},
 			{ID: "t3", Name: "recovery", State: "failed", StartedAtUnixMilli: 1700000003000, FinishedAtUnixMilli: 1700000004000},

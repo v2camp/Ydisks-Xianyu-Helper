@@ -9,8 +9,8 @@ import (
 	"time"
 
 	notificationsapp "xianyu-go/internal/application/notifications"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpNotificationChannelPorts 把通知渠道应用服务投影为 MCP 通知端口。
@@ -20,7 +20,7 @@ type mcpNotificationChannelPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 通知渠道端口。
-var _ mcp.NotificationChannelPorts = (*mcpNotificationChannelPorts)(nil)
+var _ capability.NotificationChannelPorts = (*mcpNotificationChannelPorts)(nil)
 
 // ListChannels 透传渠道摘要列表用例。
 func (a *mcpNotificationChannelPorts) ListChannels(ctx context.Context, userID int64) ([]notificationsapp.ChannelSummary, error) {
@@ -89,7 +89,7 @@ type mcpUncertainNotificationPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 不确定通知端口。
-var _ mcp.UncertainNotificationPorts = (*mcpUncertainNotificationPorts)(nil)
+var _ capability.UncertainNotificationPorts = (*mcpUncertainNotificationPorts)(nil)
 
 // ListUncertainForUser 透传当前用户的不确定通知查询。
 func (a *mcpUncertainNotificationPorts) ListUncertainForUser(ctx context.Context, userID int64, limit int) ([]notificationsapp.UncertainSummary, int, error) {

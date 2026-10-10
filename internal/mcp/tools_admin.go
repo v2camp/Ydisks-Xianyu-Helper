@@ -11,6 +11,8 @@ package mcp
 
 import (
 	"context"
+
+	"xianyu-go/internal/capability"
 )
 
 // adminUserDTO 是管理员用户列表的非敏感视图；不含密码哈希与任何凭证。
@@ -92,7 +94,7 @@ type adminBackgroundTaskListResult struct {
 }
 
 // RegisterAdminTools 注册管理员全局域全部工具。
-func (e *Endpoint) RegisterAdminTools(p AdminPorts) {
+func (e *Endpoint) RegisterAdminTools(p capability.AdminPorts) {
 	if p == nil {
 		return
 	}
@@ -101,7 +103,7 @@ func (e *Endpoint) RegisterAdminTools(p AdminPorts) {
 }
 
 // registerAdminReadTools 注册全局统计、用户列表与后台任务总览工具。
-func (e *Endpoint) registerAdminReadTools(p AdminPorts) {
+func (e *Endpoint) registerAdminReadTools(p capability.AdminPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "admin_stats",
@@ -181,7 +183,7 @@ func (e *Endpoint) registerAdminReadTools(p AdminPorts) {
 }
 
 // registerAdminMutationTools 注册删除用户工具。
-func (e *Endpoint) registerAdminMutationTools(p AdminPorts) {
+func (e *Endpoint) registerAdminMutationTools(p capability.AdminPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "admin_user_delete",

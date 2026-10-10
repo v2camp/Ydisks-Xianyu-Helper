@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/mcp"
@@ -155,19 +156,19 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 // RegisterMCPTools 在应用服务集合就绪后注册全部域工具；每域端口为 nil 时跳过该域。
 // lifecycleContext 为需要脱离请求生命周期的后台 worker（如订单刷新任务）提供进程级 Context。
 // backgroundTasks 返回进程后台任务快照，由 HTTP 服务在构造完成后提供；为空时总览返回空列表。
-func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context, backgroundTasks func() []mcp.BackgroundTask) {
+func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context, backgroundTasks func() []capability.BackgroundTask) {
 	if endpoint == nil {
 		return
 	}
 	// 账号域端口投影。
 	endpoint.RegisterAccountTools(newMCPAccountPorts(ports))
 	// 订单、分析与异常域端口投影；任一服务缺失时对应适配器为 nil，注册自动跳过。
-	var analytics mcp.AnalyticsPorts
+	var analytics capability.AnalyticsPorts
 	if ports.Analytics != nil {
 		analytics = &mcpAnalyticsPorts{service: ports.Analytics}
 	}
 	// issues 是自动化异常处理端口；服务缺失时保持 nil，工具注册自动跳过。
-	var issues mcp.IssuePorts
+	var issues capability.IssuePorts
 	if ports.AutomationIssues != nil {
 		issues = &mcpIssuePorts{service: ports.AutomationIssues}
 	}

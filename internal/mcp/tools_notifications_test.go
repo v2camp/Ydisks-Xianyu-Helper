@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	notificationsapp "xianyu-go/internal/application/notifications"
+
+	"xianyu-go/internal/capability"
 )
 
 // smtpSecret 是夹具中的模拟 SMTP 密码，任何 MCP 输出与错误都不得包含该片段。
@@ -160,12 +162,12 @@ func newNotificationToolEndpoint(t *testing.T, channels *fakeNotificationChannel
 	// endpoint、_ 是协议端点。
 	endpoint, _ := newProtocolEndpoint(t)
 	// channels、uncertain 任一为 nil 时对应域工具不注册。
-	var channelPorts NotificationChannelPorts
+	var channelPorts capability.NotificationChannelPorts
 	if channels != nil {
 		channelPorts = channels
 	}
 	// uncertainPorts 是不确定通知端口；为 nil 时该类工具不注册。
-	var uncertainPorts UncertainNotificationPorts
+	var uncertainPorts capability.UncertainNotificationPorts
 	if uncertain != nil {
 		uncertainPorts = uncertain
 	}

@@ -7,8 +7,8 @@ import (
 	"context"
 
 	cardsapp "xianyu-go/internal/application/cards"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpCardPorts 聚合卡券应用服务与 API 测试端口。
@@ -20,7 +20,7 @@ type mcpCardPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 卡券端口。
-var _ mcp.CardPorts = (*mcpCardPorts)(nil)
+var _ capability.CardPorts = (*mcpCardPorts)(nil)
 
 // ListCards 透传卡券组列表用例。
 func (a *mcpCardPorts) ListCards(ctx context.Context, userID int64) ([]cardsapp.Card, error) {

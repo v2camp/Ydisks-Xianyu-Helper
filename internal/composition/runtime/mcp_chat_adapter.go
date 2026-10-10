@@ -8,8 +8,8 @@ import (
 	"context"
 
 	chatapp "xianyu-go/internal/application/chat"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpChatPorts 把聊天应用服务投影为 MCP 聊天端口。
@@ -19,7 +19,7 @@ type mcpChatPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 聊天端口。
-var _ mcp.ChatPorts = (*mcpChatPorts)(nil)
+var _ capability.ChatPorts = (*mcpChatPorts)(nil)
 
 // ListSessionPage 透传会话键集分页用例。
 func (a *mcpChatPorts) ListSessionPage(ctx context.Context, userID int64, accountID string, cursor *chatapp.SessionCursor, limit int) (chatapp.SessionPage, error) {

@@ -10,10 +10,12 @@ import (
 	"context"
 
 	itemapp "xianyu-go/internal/application/items"
+
+	"xianyu-go/internal/capability"
 )
 
 // RegisterItemTools 注册商品域全部工具；accounts 提供账号归属复核，items 提供商品用例。
-func (e *Endpoint) RegisterItemTools(accounts AccountPorts, items ItemPorts) {
+func (e *Endpoint) RegisterItemTools(accounts capability.AccountPorts, items capability.ItemPorts) {
 	if items == nil {
 		return
 	}
@@ -35,7 +37,7 @@ func (e *Endpoint) RegisterItemTools(accounts AccountPorts, items ItemPorts) {
 
 // registerItemCatalogReadTools 注册本地商品只读工具：货架列表与单商品详情。
 // items 是商品应用用例端口；accountArg 是通用的必填账号参数。
-func (e *Endpoint) registerItemCatalogReadTools(items ItemPorts, accountArg ArgSpec) {
+func (e *Endpoint) registerItemCatalogReadTools(items capability.ItemPorts, accountArg ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "item_list",
@@ -89,7 +91,7 @@ func (e *Endpoint) registerItemCatalogReadTools(items ItemPorts, accountArg ArgS
 
 // registerItemCatalogWriteTools 注册本地商品写入工具：创建、局部更新、交付标记与逻辑删除。
 // items 是商品应用用例端口；accountArg 是必填账号参数；requireAccount 负责写入前归属复核。
-func (e *Endpoint) registerItemCatalogWriteTools(items ItemPorts, accountArg ArgSpec,
+func (e *Endpoint) registerItemCatalogWriteTools(items capability.ItemPorts, accountArg ArgSpec,
 	requireAccount func(context.Context, *CallIdentity, string) error) {
 	e.RegisterTools(
 		ToolDef{
@@ -223,7 +225,7 @@ func (e *Endpoint) registerItemCatalogWriteTools(items ItemPorts, accountArg Arg
 
 // registerItemSyncTools 注册平台商品同步与类目推荐工具：全量同步、分页同步与关键词类目推荐。
 // items 是商品应用用例端口；accountArg 是通用的必填账号参数。
-func (e *Endpoint) registerItemSyncTools(items ItemPorts, accountArg ArgSpec) {
+func (e *Endpoint) registerItemSyncTools(items capability.ItemPorts, accountArg ArgSpec) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "item_sync_all",
@@ -318,7 +320,7 @@ func (e *Endpoint) registerItemSyncTools(items ItemPorts, accountArg ArgSpec) {
 
 // registerItemPublishTools 注册单商品发布与批量发布预检/创建工具。
 // items 是商品应用用例端口；accountArg 是必填账号参数；requireAccount 负责发布前归属复核。
-func (e *Endpoint) registerItemPublishTools(items ItemPorts, accountArg ArgSpec,
+func (e *Endpoint) registerItemPublishTools(items capability.ItemPorts, accountArg ArgSpec,
 	requireAccount func(context.Context, *CallIdentity, string) error) {
 	e.RegisterTools(
 		ToolDef{
@@ -368,7 +370,7 @@ func (e *Endpoint) registerItemPublishTools(items ItemPorts, accountArg ArgSpec,
 
 // registerItemBatchTools 注册批量发布批次管理工具：启动、列表、详情、结果导出、取消、重试与删除。
 // items 是商品应用用例端口。
-func (e *Endpoint) registerItemBatchTools(items ItemPorts) {
+func (e *Endpoint) registerItemBatchTools(items capability.ItemPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "item_batch_start",

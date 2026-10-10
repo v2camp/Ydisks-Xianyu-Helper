@@ -8,8 +8,8 @@ import (
 	"context"
 
 	settingsapp "xianyu-go/internal/application/settings"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpSettingsPorts 把设置应用服务投影为 MCP 设置端口。
@@ -19,7 +19,7 @@ type mcpSettingsPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 设置端口。
-var _ mcp.SettingsPorts = (*mcpSettingsPorts)(nil)
+var _ capability.SettingsPorts = (*mcpSettingsPorts)(nil)
 
 // IsSensitiveSettingKey 透传敏感键判定。
 func (a *mcpSettingsPorts) IsSensitiveSettingKey(key string) bool {

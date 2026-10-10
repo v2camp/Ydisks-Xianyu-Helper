@@ -125,14 +125,17 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 
 - 依赖标准库与 `github.com/mark3labs/mcp-go`；
 - 依赖 `internal/application/*` 的应用模型；
-- 依赖 `internal/capability` 的共享用例契约；
-- 在包内定义只有本传输层使用的工具、资源与提示所需的最小消费者端口。
+- 依赖 `internal/capability` 的共享用例契约（`ports.go` 的领域端口）与危险等级；
+- 在包内定义只有本传输层使用的协议与装配端口：鉴权身份、调用审计、自身配置、
+  只读资源与提示所需的消费者端口。业务领域用例契约一律取自 `internal/capability`，
+  不在本包复数定义。
 
 禁止：
 
 - 导入 `internal/server`、`internal/db`、`internal/xianyu`、`internal/browser`；
 - 导入 `internal/automation`、`internal/engine`、`internal/adapter`、`internal/composition`；
 - 直接拼装 SQL、读取平台凭证、决定自动化规则或浏览器行为；
+- 自行声明工具的危险等级，或自行推导放行结论；
 - 使用万能服务容器或服务定位器，端口必须由组合层投影实现。
 
 `internal/server` 只保留 `/mcp` 的通用挂载缝：不得导入 `mcp-go`，也不得出现 JSON-RPC 协议语义。

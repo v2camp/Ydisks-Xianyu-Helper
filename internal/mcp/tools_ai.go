@@ -11,6 +11,8 @@ import (
 	"context"
 
 	settingsapp "xianyu-go/internal/application/settings"
+
+	"xianyu-go/internal/capability"
 )
 
 // aiReplySettingsDTO 是账号级 AI 回复设置摘要视图；不含模型地址、API 密钥等系统秘密。
@@ -62,7 +64,7 @@ type aiConnectionResult struct {
 }
 
 // RegisterAITools 注册 AI 助手域全部工具。
-func (e *Endpoint) RegisterAITools(p SettingsPorts) {
+func (e *Endpoint) RegisterAITools(p capability.SettingsPorts) {
 	if p == nil {
 		return
 	}

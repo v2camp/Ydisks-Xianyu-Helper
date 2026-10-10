@@ -11,6 +11,8 @@ import (
 
 	defaultreplyapp "xianyu-go/internal/application/defaultreply"
 	keywordsapp "xianyu-go/internal/application/keywords"
+
+	"xianyu-go/internal/capability"
 )
 
 // defaultReplyDTO 是默认回复配置的非敏感视图。
@@ -122,7 +124,7 @@ type keywordReplaceRequest struct {
 }
 
 // RegisterDefaultReplyTools 注册默认回复域全部工具。
-func (e *Endpoint) RegisterDefaultReplyTools(p DefaultReplyPorts) {
+func (e *Endpoint) RegisterDefaultReplyTools(p capability.DefaultReplyPorts) {
 	if p == nil {
 		return
 	}
@@ -234,7 +236,7 @@ func (e *Endpoint) RegisterDefaultReplyTools(p DefaultReplyPorts) {
 }
 
 // RegisterKeywordTools 注册关键词回复与指定商品回复域全部工具。
-func (e *Endpoint) RegisterKeywordTools(p KeywordPorts) {
+func (e *Endpoint) RegisterKeywordTools(p capability.KeywordPorts) {
 	if p == nil {
 		return
 	}
@@ -243,7 +245,7 @@ func (e *Endpoint) RegisterKeywordTools(p KeywordPorts) {
 }
 
 // registerKeywordTools 注册关键词回复工具。
-func (e *Endpoint) registerKeywordTools(p KeywordPorts) {
+func (e *Endpoint) registerKeywordTools(p capability.KeywordPorts) {
 	// draftArgs 是关键词草稿的公共入参定义。
 	draftArgs := []ArgSpec{
 		{Name: "keyword", Type: ArgString, Required: true, Description: "触发匹配文本。"},
@@ -416,7 +418,7 @@ func (e *Endpoint) registerKeywordTools(p KeywordPorts) {
 }
 
 // registerItemReplyTools 注册指定商品回复工具。
-func (e *Endpoint) registerItemReplyTools(p KeywordPorts) {
+func (e *Endpoint) registerItemReplyTools(p capability.KeywordPorts) {
 	// itemArgs 是指定商品回复的公共账号与商品入参。
 	itemArgs := []ArgSpec{
 		{Name: "account_id", Type: ArgString, Required: true, Description: "账号标识。"},

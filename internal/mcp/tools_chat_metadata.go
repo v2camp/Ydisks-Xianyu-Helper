@@ -7,6 +7,8 @@ package mcp
 
 import (
 	"context"
+
+	"xianyu-go/internal/capability"
 )
 
 // quickReplyDTO 是人工快捷回复的非敏感视图。
@@ -42,7 +44,7 @@ type buyerNoteDTO struct {
 }
 
 // registerChatMetadataTools 注册快捷回复与买家备注工具。
-func (e *Endpoint) registerChatMetadataTools(p ChatPorts) {
+func (e *Endpoint) registerChatMetadataTools(p capability.ChatPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "chat_quick_reply_list",

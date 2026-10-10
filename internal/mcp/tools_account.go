@@ -11,6 +11,8 @@ import (
 
 	accountapp "xianyu-go/internal/application/account"
 	automationapp "xianyu-go/internal/application/automation"
+
+	"xianyu-go/internal/capability"
 )
 
 // accountDTO 是账号的非敏感详情视图；不包含 Cookie、密码、令牌与任何凭证字段。
@@ -184,8 +186,8 @@ type taskSummaryDTO struct {
 }
 
 // accountBoolSettingTool 构造一个账号布尔开关写工具，减少三个同类开关的重复代码。
-func accountBoolSettingTool(name, description string, p AccountPorts,
-	apply func(ctx context.Context, p AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error)) ToolDef {
+func accountBoolSettingTool(name, description string, p capability.AccountPorts,
+	apply func(ctx context.Context, p capability.AccountPorts, userID int64, id string, enabled bool) (accountapp.SettingsResult, error)) ToolDef {
 	return ToolDef{
 		Name: name, Description: description,
 		Args: []ArgSpec{

@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 
 	automationapp "xianyu-go/internal/application/automation"
+
+	"xianyu-go/internal/capability"
 )
 
 // ruleDTO 是自动化规则的非敏感视图，字段与应用层规则模型一一对应。
@@ -310,7 +312,7 @@ func decodeToolArguments(args Arguments, target any) error {
 }
 
 // RegisterRuleTools 注册自动化规则域全部工具。
-func (e *Endpoint) RegisterRuleTools(p RulePorts) {
+func (e *Endpoint) RegisterRuleTools(p capability.RulePorts) {
 	if p == nil {
 		return
 	}
@@ -319,7 +321,7 @@ func (e *Endpoint) RegisterRuleTools(p RulePorts) {
 }
 
 // registerRuleQueryTools 注册规则查询、统计与规范化预览工具。
-func (e *Endpoint) registerRuleQueryTools(p RulePorts) {
+func (e *Endpoint) registerRuleQueryTools(p capability.RulePorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "rule_list",
@@ -368,7 +370,7 @@ func (e *Endpoint) registerRuleQueryTools(p RulePorts) {
 }
 
 // registerRuleWriteTools 注册规则 dry-run 预览、新建、编辑与删除工具。
-func (e *Endpoint) registerRuleWriteTools(p RulePorts) {
+func (e *Endpoint) registerRuleWriteTools(p capability.RulePorts) {
 	// draftArgs 是规则草稿的公共入参定义，预览、新建与编辑共用。
 	draftArgs := ruleDraftArgs()
 	e.RegisterTools(
@@ -450,7 +452,7 @@ func triggerTypeValues() []string {
 }
 
 // rulePage 执行规则分页查询并组装统计结果。
-func rulePage(ctx context.Context, p RulePorts, userID int64, args Arguments) (any, error) {
+func rulePage(ctx context.Context, p capability.RulePorts, userID int64, args Arguments) (any, error) {
 	// limit、offset 是归一后的分页参数。
 	limit, offset := args.Page()
 	// page 是回显页码，从 1 开始。
@@ -489,7 +491,7 @@ func rulePage(ctx context.Context, p RulePorts, userID int64, args Arguments) (a
 }
 
 // ruleCounts 执行触发类型计数查询。
-func ruleCounts(ctx context.Context, p RulePorts, userID int64, args Arguments) (any, error) {
+func ruleCounts(ctx context.Context, p capability.RulePorts, userID int64, args Arguments) (any, error) {
 	// filter 是计数过滤条件；分页字段不参与统计语义。
 	filter := automationapp.RuleFilter{
 		UserID: userID, CookieID: args.OptionalString("account_id", ""),
@@ -516,7 +518,7 @@ func ruleCounts(ctx context.Context, p RulePorts, userID int64, args Arguments) 
 }
 
 // rulePreview 执行规则草稿的规范化 dry-run 预览；不写入任何数据。
-func rulePreview(ctx context.Context, p RulePorts, userID int64, args Arguments) (any, error) {
+func rulePreview(ctx context.Context, p capability.RulePorts, userID int64, args Arguments) (any, error) {
 	// draft、draftErr 是解码后的规则草稿。
 	draft, draftErr := ruleDraftFromArgs(args)
 	if draftErr != nil {
@@ -540,7 +542,7 @@ func rulePreview(ctx context.Context, p RulePorts, userID int64, args Arguments)
 }
 
 // ruleCreate 规范化后创建自动化规则。
-func ruleCreate(ctx context.Context, p RulePorts, userID int64, args Arguments) (any, error) {
+func ruleCreate(ctx context.Context, p capability.RulePorts, userID int64, args Arguments) (any, error) {
 	// draft、draftErr 是解码后的规则草稿。
 	draft, draftErr := ruleDraftFromArgs(args)
 	if draftErr != nil {
@@ -560,7 +562,7 @@ func ruleCreate(ctx context.Context, p RulePorts, userID int64, args Arguments) 
 }
 
 // ruleUpdate 按更新语义规范化后覆盖既有自动化规则。
-func ruleUpdate(ctx context.Context, p RulePorts, userID int64, args Arguments) (any, error) {
+func ruleUpdate(ctx context.Context, p capability.RulePorts, userID int64, args Arguments) (any, error) {
 	// id 是规则标识。
 	id, err := args.Int("rule_id")
 	if err != nil {

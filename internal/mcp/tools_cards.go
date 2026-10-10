@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	cardsapp "xianyu-go/internal/application/cards"
+
+	"xianyu-go/internal/capability"
 )
 
 // cardDTO 是卡券组的非敏感视图；不含逐行卡密、API 请求头、参数或密钥。
@@ -104,7 +106,7 @@ type cardAPITestResult struct {
 
 // RegisterCardTools 注册卡密库存域全部工具。
 // p 是卡密应用用例端口，nil 时跳过注册以支持部分能力装配。
-func (e *Endpoint) RegisterCardTools(p CardPorts) {
+func (e *Endpoint) RegisterCardTools(p capability.CardPorts) {
 	if p == nil {
 		return
 	}
@@ -115,7 +117,7 @@ func (e *Endpoint) RegisterCardTools(p CardPorts) {
 
 // registerCardReadTools 注册卡密只读查询工具：卡券组列表与单组详情。
 // p 是卡密应用用例端口。
-func (e *Endpoint) registerCardReadTools(p CardPorts) {
+func (e *Endpoint) registerCardReadTools(p capability.CardPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "card_list",
@@ -160,7 +162,7 @@ func (e *Endpoint) registerCardReadTools(p CardPorts) {
 
 // registerCardMutationTools 注册卡券组创建与更新工具：两者共用元数据与内容入参。
 // p 是卡密应用用例端口。
-func (e *Endpoint) registerCardMutationTools(p CardPorts) {
+func (e *Endpoint) registerCardMutationTools(p capability.CardPorts) {
 	// commonArgs 是创建/更新共用的卡券元数据参数。
 	commonArgs := []ArgSpec{
 		{Name: "name", Type: ArgString, Required: true, Description: "卡券组名称。"},
@@ -251,7 +253,7 @@ func (e *Endpoint) registerCardMutationTools(p CardPorts) {
 
 // registerCardStockTools 注册卡券组库存维护与连通性测试工具：删除、追加卡密与 API 测试。
 // p 是卡密应用用例端口。
-func (e *Endpoint) registerCardStockTools(p CardPorts) {
+func (e *Endpoint) registerCardStockTools(p capability.CardPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "card_delete",

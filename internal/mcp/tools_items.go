@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	itemapp "xianyu-go/internal/application/items"
+
+	"xianyu-go/internal/capability"
 )
 
 // batchIDByteLen 是批量发布批次随机标识的随机字节数（24 位十六进制字符）。
@@ -173,7 +175,7 @@ type batchDetailRowDTO struct {
 }
 
 // itemBoolFlagTool 构造商品多规格/多数量标记的本地写入工具。
-func itemBoolFlagTool(name, description, flagName string, items ItemPorts,
+func itemBoolFlagTool(name, description, flagName string, items capability.ItemPorts,
 	requireAccount func(context.Context, *CallIdentity, string) error) ToolDef {
 	return ToolDef{
 		Name: name, Description: description,
