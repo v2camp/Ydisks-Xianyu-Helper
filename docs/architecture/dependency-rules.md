@@ -194,6 +194,41 @@ MCP 工具声明中的危险标记必须来自本包登记的危险等级，不�
 - `internal/agent/mcpclient` 承载对外第三方 MCP 客户端（如找书 MCP），与主循环同属本边界，
   但必须独立故障域与超时；第三方 MCP 返回不得绕过业务护栏直接落到账号动作。
 
+### 3.10 `internal/application/agentadmin`（客服 Agent 配置用例）
+
+`internal/application/agentadmin` 只回答两个问题：这个账号跑不跑客服 Agent、跑在哪一档。
+平台级定义（有哪些能力、各属哪一档）不在这里，它是 `internal/capability` 的代码常量，
+用户不可增删；本包只负责在租户默认与账号覆盖之间选出最终生效值。
+
+配置分层的落点：
+
+| 层 | 载体 | 本包角色 |
+|---|---|---|
+| 平台级 | `internal/capability` 的代码常量 | 只读消费 |
+| 租户级 | `user_settings` 的 `agent.support.enabled` / `agent.support.preset` | 读写 |
+| 账号级 | `ai_reply_settings` 的 `agent_enabled` / `agent_preset`，NULL 表示继承 | 读写 |
+
+允许：
+
+- 依赖标准库；
+- 依赖 `internal/capability` 的档位常量与合法性判定。
+
+禁止：
+
+- 导入 `internal/db`、`internal/server`、`net/http`（应用层通用规则）；
+- 返回含模型凭证的持久化模型：账号级配置与 `api_key` 同表，传输模型必须单独定义，
+  禁止复用 `AIReplySettings`（AGENTS.md §1.7）；
+- 自行列举合法档位：判定单点是 `capability.Preset.Valid()`。
+
+边界说明：
+
+- 读写两条路径的失败策略刻意不同。库中遗留的非法档位在读取时回落只读档，让 Agent 以
+  最保守档位继续服务；写入时直接拒绝，避免「配了什么」与「生效什么」长期不一致。
+- 账号归属校验内嵌在用例内。账号不存在与不属于当前租户共用同一个错误，避免调用方接口
+  退化成账号枚举器；调用方不得把归属失败降级为「未配置」继续执行。
+- 日预算不在本期配置项内：它的执行语义（按账号按日计数与扣减）尚未实现，先暴露一个不
+  生效的开关与「配置项必须生效」的约定冲突。
+
 ## 4. 数据与秘密边界
 
 - AccountSummary 不包含 Cookie、Token、密码或加密 metadata；

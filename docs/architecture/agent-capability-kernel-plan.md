@@ -222,9 +222,13 @@ capability.Evaluate(catalog, Request{Principal, Capability, Confirmed}) → Deci
 
 | 层 | 载体 | 键/列 |
 |---|---|---|
-| 租户级 | `user_settings` KV | `agent.support.enabled`、`agent.support.preset`、`agent.support.daily_budget` |
+| 租户级 | `user_settings` KV | `agent.support.enabled`、`agent.support.preset`（`agent.support.daily_budget` 推迟到预算执行语义落地后再加，见下） |
 | 账号级 | 扩展 `ai_reply_settings` | `agent_enabled`（可空，NULL = 继承）、`agent_preset`（可空，NULL = 继承） |
 | 运营待确认 | 新建 `agent_pending_operations` | 沿用 `status` / `expires_at` 模式，入参白名单脱敏 |
+
+**为什么 `daily_budget` 暂不加**：配置项的前提是它真的生效。日预算需要「按账号按日计数与
+扣减」的持久化与执行路径，该路径尚未实现；先暴露一个不生效的开关，正是 §7 反对的
+「在 Agent 中心开了但没生效」。
 
 **为何扩展 `ai_reply_settings` 而非新建表**：该表已承载账号级 AI 凭证（`api_key` / `base_url` / `model_name`），与 Agent 配置**归属相同、敏感度相同**，符合 AGENTS.md §1.5「敏感度或归属不同的类型尤其禁止合并」的反向判定。
 

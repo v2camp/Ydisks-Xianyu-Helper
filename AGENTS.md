@@ -161,6 +161,7 @@ cd ".worktree/<任务名>"
 - internal/agent 只依赖标准库、模型 SDK、应用层模型、internal/capability 与 engine 生成接缝。
 - internal/agent 禁止依赖 db、平台、浏览器、自动化、mcp、qqbot、server 与 adapter。
 - internal/agent 只实现 engine 的模型生成接缝，禁止调用其消息、连接与凭证链路。
+- internal/application/agentadmin 只管客服 Agent 的开关与档位，不管能力清单。
 - internal/mcp 是与 internal/server 并列的第二传输层。
 - internal/mcp 只依赖标准库、mcp-go 与应用层模型。
 - internal/mcp 禁止依赖 db、server、平台、浏览器、自动化与引擎。
