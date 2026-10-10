@@ -25,8 +25,16 @@ type liveKnowledge struct {
 }
 
 // deliveryAnswerConstraint 是回答发货方式类问题时必须写入 prompt 的系统约束。
-// 目的：禁止模型声称全店统一渠道，无线索时给出统一兜底话术。
-const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时：提示词给出了当前商品的确定发货渠道时，必须直接明确回答该渠道（如「这款发百度网盘」），不得含糊；禁止声称全店统一支持某渠道。只有当前商品没有任何渠道线索时，才回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
+// 目的：禁止模型声称全店统一渠道；有确定渠道时必须直答，无线索时才统一兜底。
+// 必须点明「优先于店铺通用说明」：知识库会同时注入「以商品详情页说明为准」的通用话术，
+// 不声明优先级时模型会错选后者，复述成回避回答（2026-10-11 生产样本实证）。
+const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时：若提示词给出了当前商品的确定发货渠道，必须直接明确回答该渠道（如「这款发百度网盘」）；该结论优先于店铺通用说明与商品描述，不得回答「以商品详情为准」或「以发货消息为准」。禁止声称全店统一支持某渠道。只有当前商品没有任何渠道线索时，才回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
+
+// deliveryHintAuthoritativeFormat 是卡密正文已确定渠道时的发货说明模板（参数为渠道与发送方式）。
+// 「优先于店铺通用说明」一句不可省略，理由同 deliveryAnswerConstraint。
+const deliveryHintAuthoritativeFormat = "【该商品确定发货方式】%s。" +
+	"以上是该商品的确定事实，优先于店铺通用说明与商品描述；买家问到网盘或发货方式时必须直接回答，" +
+	"不得回答「以商品详情为准」或「以发货消息为准」。"
 
 // liveCatalogInstruction 是动态在售列表的注入指令文案。
 const liveCatalogInstruction = "本店在售列表（买家问有没有/单买/第几季时依此回答，不在列表的回答暂时没有）"
@@ -329,16 +337,19 @@ func formatDeliveryHint(channels []string, stepwise bool, multiMessage int, sour
 	} else if stepwise {
 		parts = append(parts, "分步发送")
 	}
-	// basis 是括号里的推断依据：按实际来源标注描述/发货配置/卡密。
+	// detail 是拼接好的渠道与发送方式说明。
+	detail := strings.Join(parts, "；")
+	if authoritative {
+		// 卡密正文自带渠道，属确定事实：输出结论式文案并显式声明优先级，
+		// 避免与知识库中「以商品详情页说明为准」的通用话术冲突时被模型错选。
+		return fmt.Sprintf(deliveryHintAuthoritativeFormat, detail)
+	}
+	// basis 是括号里的推断依据：按发货配置或仅按描述，两种情况都只作参考。
 	basis := "按描述/发货配置推断，仅参考"
 	if !sourceB {
 		basis = "按描述推断，仅参考"
 	}
-	if authoritative {
-		// 卡密正文自带链接，渠道是确定事实，提示词应让 AI 直接回答而非含糊带过。
-		basis = "按该商品卡密内容确定，可直接回答"
-	}
-	return fmt.Sprintf("该商品发货方式（%s）：%s", basis, strings.Join(parts, "；"))
+	return fmt.Sprintf("该商品发货方式（%s）：%s", basis, detail)
 }
 
 // isCodeThenLinkOrder 判断模板消息是否按先资源码后链接的顺序发送。

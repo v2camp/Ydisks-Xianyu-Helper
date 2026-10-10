@@ -278,9 +278,15 @@ func (k *aiKnowledgeConfig) matchedFAQ(text string, limit int) []aiFAQItem {
 // buildKnowledgeContext 把命中的 FAQ 与在售清单格式化成注入 system 的知识上下文。
 // live 为动态查询结果：动态列表非空时优先注入并忽略手工 catalog；动态列表为空时
 // 才回落手工 catalog（兼容历史配置）。库存摘要与发货推断按需追加。
+// 段落顺序上发货推断固定置于最前：它是该商品的确定结论，必须早于并压过知识库里的
+// 通用发货话术，否则模型会复述「以商品详情为准」的回避回答。
 func (k *aiKnowledgeConfig) buildKnowledgeContext(text string, live liveKnowledge) string {
 	// parts 是知识上下文的段落列表。
 	var parts []string
+	// 发货推断仅在有线索时注入，且固定排在所有知识段之前。
+	if live.DeliveryHint != "" {
+		parts = append(parts, live.DeliveryHint)
+	}
 	// faqHits 是当前文本命中的 FAQ 条目。
 	faqHits := k.matchedFAQ(text, 3)
 	if len(faqHits) > 0 {
@@ -312,10 +318,6 @@ func (k *aiKnowledgeConfig) buildKnowledgeContext(text string, live liveKnowledg
 	// 库存摘要仅在查询成功且有数据卡组时注入。
 	if len(live.StockLines) > 0 {
 		parts = append(parts, liveStockInstruction+"：\n"+strings.Join(live.StockLines, "\n"))
-	}
-	// 发货推断仅在有线索时注入。
-	if live.DeliveryHint != "" {
-		parts = append(parts, live.DeliveryHint)
 	}
 	return strings.Join(parts, "\n\n")
 }
