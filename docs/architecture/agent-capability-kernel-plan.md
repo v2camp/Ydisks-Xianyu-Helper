@@ -231,6 +231,10 @@ capability.Evaluate(catalog, Request{Principal, Capability, Confirmed}) → Deci
 4. **前端传输边界照旧。** 两个 Agent 适配层都落在各自 feature 的 `api.ts`
    （依赖规则 §6「每个 feature 只有一个 api.ts 承担传输契约读取」），不新建
    `agentSupportApi.ts` 之类的平行适配文件——门禁实测会判违规。
+5. **QQ 卡片的「离线写操作策略」本期不加。** 它是异步确认的配置面，而异步确认状态机
+   本期未实现；先暴露一个不生效的开关，正是 §8 拒绝 `daily_budget` 时的同一条理由。
+   运营 Agent 本期只做只读迁移：三个 `ops_*` 命令在执行前经能力内核求值，判定恒为
+   放行，对管理员行为零变化。QQ 卡片因此保持原样，只由 Agent 中心放一行只读指引。
 
 ---
 
