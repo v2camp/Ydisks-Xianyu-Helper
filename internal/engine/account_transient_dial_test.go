@@ -107,6 +107,38 @@ func TestRecordNetworkFailureDrivesBackoff(t *testing.T) {
 	}
 }
 
+// TestHandleConnectFailureBacksOffTransientDialError 验证拨号阶段的瞬时网络故障走
+// 「记账 + 清失效令牌 + 置重连态 + 可取消退避」的重连分支，而不是按凭证失效终止账号。
+//
+// 这条分支就是 2026-09-15 停摆事故缺失的那一段：故障若不进这里，连接循环会直接退出，
+// 之后没有任何组件重新拉起账号，只能人工重启进程。
+func TestHandleConnectFailureBacksOffTransientDialError(t *testing.T) {
+	// account 是本次验证退避重连分支的账号，尚未建立任何连接。
+	account := New(Config{CookieID: "backoff", CookieStr: "unb=1"})
+	// ctx 是已取消的上下文：退避等待必须立即收束，否则用例会真的等满十几秒退避时长。
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// coordinator 是承载待测故障分流的连接协调器。
+	coordinator := &connectionCoordinator{account: account}
+	// dialErr 是拨号阶段的真实瞬时故障样本，必须被判定为可退避重连。
+	dialErr := errors.New("dial tcp: lookup wss-goofish.dingtalk.com: no such host")
+	// err 是退避等待被取消后的返回值；判定为终止路径时返回值形态完全不同。
+	if err := coordinator.handleConnectFailure(ctx, "连接", dialErr); !errors.Is(err, context.Canceled) {
+		t.Fatalf("退避等待应随上下文取消收束，实际 err=%v", err)
+	}
+	// 瞬时故障必须记账，否则后续退避阶梯不会增长。
+	if account.networkFailures != 1 {
+		t.Fatalf("瞬时网络故障应记录一次失败计数，实际 %d", account.networkFailures)
+	}
+	account.runtimeMu.Lock()
+	// state 是故障分流后的运行态快照。
+	state := account.runtimeState
+	account.runtimeMu.Unlock()
+	if state != RuntimeReconnecting {
+		t.Fatalf("瞬时网络故障后运行态应为 %v，实际 %v", RuntimeReconnecting, state)
+	}
+}
+
 // TestTransientDialErrorMatchedBeforeTerminalHandling 验证瞬时网络故障会在终止处理之前被分流：
 // 同一错误若走终止路径会返回非 nil 并结束账号运行，这正是本次停摆的成因。
 func TestTransientDialErrorMatchedBeforeTerminalHandling(t *testing.T) {
