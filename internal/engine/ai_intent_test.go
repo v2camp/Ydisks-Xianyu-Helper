@@ -1,89 +1,48 @@
-// ai_intent_test.go 意图注册表与 AI 接管策略的表驱动测试。
+// ai_intent_test.go 意图标签收敛与投诉扩展词表解析的表驱动测试。
+// 意图判定与接管策略由 ai_scope.go 的边界层负责，因此「命中什么意图」「是否接管」
+// 两类断言统一基于 defaultScope.decide，不再重复维护一套注册表测试。
 
 package engine
 
-import (
-	"reflect"
-	"testing"
-)
+import "testing"
 
-// TestClassifyIntent 验证各意图样例的命中集合与优先级排序。
-func TestClassifyIntent(t *testing.T) {
-	// cases 覆盖单一命中、负向短路、多命中与零命中四类形态。
+// TestDefaultScopeDecideBargainTakeover 验证内置边界下砍价放行、其余正向意图只标注不接管。
+// 该断言替代原「注册表与历史砍价正则一致」的保护，确保接管范围不回退。
+func TestDefaultScopeDecideBargainTakeover(t *testing.T) {
+	// cases 覆盖放行、只标注、负向拦截与零命中四类形态。
 	cases := []struct {
 		// name 是用例名称。
 		name string
 		// text 是买家消息样例。
 		text string
-		// want 是期望的按优先级排序的命中意图。
-		want []string
+		// wantTakeover 是期望的接管结论。
+		wantTakeover bool
+		// wantHits 是期望的命中意图名；nil 表示负向短路或未命中。
+		wantHits []string
 	}{
-		{name: "纯砍价", text: "60 块能卖吗，能便宜点吗", want: []string{IntentBargain}},
-		{name: "纯投诉", text: "这根本不是正品，我要举报你卖假货", want: []string{IntentComplaint}},
-		{name: "投诉优先于砍价", text: "再便宜点，不然我差评举报", want: []string{IntentComplaint}},
-		{name: "砍价叠加询价", text: "最低多少钱，包邮吗", want: []string{IntentBargain, IntentInquiry}},
-		{name: "纯发货咨询", text: "付款后什么时候发货，提取码怎么用", want: []string{IntentOrder, IntentConsult}},
-		{name: "纯询价", text: "这套资料怎么卖", want: []string{IntentInquiry}},
-		{name: "零命中闲聊", text: "你好在吗", want: []string{}},
+		{name: "纯砍价放行", text: "60 块能卖吗，能便宜点吗", wantTakeover: true, wantHits: []string{IntentBargain}},
+		{name: "发货咨询只标注不接管", text: "付款后什么时候发货，提取码怎么用", wantTakeover: false, wantHits: []string{IntentOrder, IntentConsult}},
+		{name: "询价只标注不接管", text: "这套资料怎么卖", wantTakeover: false, wantHits: []string{IntentInquiry}},
+		{name: "投诉负向短路", text: "这根本不是正品，我要举报你卖假货", wantTakeover: false, wantHits: nil},
+		{name: "砍价叠加投诉仍被拦截", text: "再便宜点，不然我差评举报", wantTakeover: false, wantHits: nil},
+		{name: "零命中", text: "你好在吗", wantTakeover: false, wantHits: nil},
 	}
 	// testCase 是当前遍历到的输入样例。
 	for _, testCase := range cases {
-		// got 是实际命中的意图集合。
-		got := classifyIntent(testCase.text)
-		if !reflect.DeepEqual(got, testCase.want) {
-			t.Fatalf("%s: classifyIntent(%q) = %v, want %v", testCase.name, testCase.text, got, testCase.want)
+		// gotTakeover 与 gotHits 是边界层的实际判定结果。
+		gotTakeover, gotHits := defaultScope.decide(testCase.text)
+		if gotTakeover != testCase.wantTakeover {
+			t.Fatalf("%s: decide(%q) 接管=%v，期望 %v（命中 %v）", testCase.name, testCase.text, gotTakeover, testCase.wantTakeover, gotHits)
+		}
+		if !equalStringSlice(gotHits, testCase.wantHits) {
+			t.Fatalf("%s: decide(%q) 命中=%v，期望 %v", testCase.name, testCase.text, gotHits, testCase.wantHits)
 		}
 	}
 }
 
-// TestClassifyIntentMixedLanguage 验证中英混排消息里的中文纠纷表达仍然命中负向意图。
-func TestClassifyIntentMixedLanguage(t *testing.T) {
-	// got 是中英混排投诉样例的命中集合。
-	got := classifyIntent("this is fake, 我要退款 REFUND NOW")
-	if len(got) == 0 || got[0] != IntentComplaint {
-		t.Fatalf("中英混排投诉应命中负向意图，实际 %v", got)
-	}
-}
-
-// TestAIShouldHandleIntent 验证 AI 接管策略的放行与拦截边界。
-func TestAIShouldHandleIntent(t *testing.T) {
-	// cases 覆盖放行、负向否决、零命中与其它意图不放行四类结论。
-	cases := []struct {
-		// name 是用例名称。
-		name string
-		// hits 是 classifyIntent 的输出。
-		hits []string
-		// want 是期望的接管结论。
-		want bool
-	}{
-		{name: "明确砍价放行", hits: []string{IntentBargain}, want: true},
-		{name: "砍价叠加询价仍放行", hits: []string{IntentBargain, IntentInquiry}, want: true},
-		{name: "投诉否决", hits: []string{IntentComplaint}, want: false},
-		{name: "投诉叠加砍价仍否决", hits: []string{IntentComplaint, IntentBargain}, want: false},
-		{name: "零命中不放行", hits: []string{}, want: false},
-		{name: "仅发货咨询不放行", hits: []string{IntentOrder}, want: false},
-		{name: "仅询价不放行", hits: []string{IntentInquiry}, want: false},
-	}
-	// testCase 是当前遍历到的策略样例。
-	for _, testCase := range cases {
-		// got 是实际的接管结论。
-		got := aiShouldHandleIntent(testCase.hits)
-		if got != testCase.want {
-			t.Fatalf("%s: aiShouldHandleIntent(%v) = %v, want %v", testCase.name, testCase.hits, got, testCase.want)
-		}
-	}
-}
-
-// TestAIShouldHandleIntentNilHits 验证空入参不接管且不 panic。
-func TestAIShouldHandleIntentNilHits(t *testing.T) {
-	if aiShouldHandleIntent(nil) {
-		t.Fatal("空命中集合不应接管 AI")
-	}
-}
-
-// TestClassifyIntentMatchesLegacyBargainGate 验证注册表的砍价规则与历史接管范围一致：
-// 历史 bargainMessageRe 命中的消息，注册表也必须给出砍价意图，保证接管范围不回退。
-func TestClassifyIntentMatchesLegacyBargainGate(t *testing.T) {
+// TestDefaultScopeDecideMatchesLegacyBargainGate 验证内置边界的砍价覆盖不窄于历史正则：
+// bargainMessageRe 命中的表达，边界也必须放行，保证接管范围不回退。
+func TestDefaultScopeDecideMatchesLegacyBargainGate(t *testing.T) {
 	// samples 是历史上会交给 AI 的砍价表达样例。
 	samples := []string{
 		"便宜点", "少点呗", "最低多少", "砍价", "降价", "打折",
@@ -91,9 +50,12 @@ func TestClassifyIntentMatchesLegacyBargainGate(t *testing.T) {
 	}
 	// sample 是当前遍历到的历史样例。
 	for _, sample := range samples {
-		// hits 是样例的命中集合。
-		hits := classifyIntent(sample)
-		// found 表示样例是否命中了砍价意图。
+		// takeover 表示样例是否被内置边界放行。
+		takeover, hits := defaultScope.decide(sample)
+		if !takeover {
+			t.Fatalf("历史砍价样例 %q 应被放行，实际命中 %v", sample, hits)
+		}
+		// found 表示命中集合里是否含砍价意图。
 		found := false
 		// intent 是当前遍历到的命中意图。
 		for _, intent := range hits {
@@ -105,6 +67,36 @@ func TestClassifyIntentMatchesLegacyBargainGate(t *testing.T) {
 		if !found {
 			t.Fatalf("历史砍价样例 %q 应命中砍价意图，实际 %v", sample, hits)
 		}
+	}
+}
+
+// TestDefaultScopeDecideComplaintUnion 验证扩展负向词表与内置负向词取并集而非替换：
+// 内置说法仍拦截、扩展新增说法也拦截，且不得因扩展而放行砍价。
+// 判定链路与 ai.go 的生产写法一致：先 scope.decide，再 intentBlockedByExtra。
+func TestDefaultScopeDecideComplaintUnion(t *testing.T) {
+	// extra 是运维新增的投诉说法（货不对板）。
+	extra := ParseComplaintKeywords("货不对板", nil)
+	// blocked 模拟生产判定：内置负向或扩展负向任一命中即不接管。
+	blocked := func(text string) bool {
+		// takeover 是边界层的接管结论。
+		takeover, _ := defaultScope.decide(text)
+		return !takeover || intentBlockedByExtra(extra, text)
+	}
+	// 内置说法仍应拦截（证明内置未被扩展替换）。
+	if !blocked("我要退款") {
+		t.Fatal("内置负向词表应仍生效，不应接管")
+	}
+	// 扩展说法也应拦截。
+	if !blocked("这东西货不对板") {
+		t.Fatal("扩展负向词表应生效，不应接管")
+	}
+	// 扩展词表不得误伤：含砍价表达且命中扩展投诉时应被拦截，而非当作砍价放行。
+	if !blocked("货不对板，再便宜点") {
+		t.Fatal("投诉叠加砍价应被拦截，而非当作砍价放行")
+	}
+	// 反向验证：不含任何投诉表达的正常砍价仍应放行，证明扩展词表没有过度拦截。
+	if take, _ := defaultScope.decide("再便宜点"); !take || intentBlockedByExtra(extra, "再便宜点") {
+		t.Fatal("正常砍价不应被扩展词表拦截")
 	}
 }
 
@@ -125,7 +117,7 @@ func TestParseComplaintKeywords(t *testing.T) {
 	if len(got) != want {
 		t.Fatalf("非法正则应被忽略，保留 %d 项，实际 %d 项: %v", want, len(got), got)
 	}
-	// re 表示当前遍历到的已编译正则，必须非 nil 且能匹配原关键词。
+	// re 表示当前遍历到的已编译正则，必须非 nil。
 	for _, re := range got {
 		if re == nil {
 			t.Fatal("不应出现 nil 正则")
@@ -134,32 +126,6 @@ func TestParseComplaintKeywords(t *testing.T) {
 	// 两个分隔符之间夹纯空白段（空格非分隔符）会得到空项，应被跳过不计入结果。
 	if empty := ParseComplaintKeywords("a; ;b", nil); len(empty) != 2 {
 		t.Fatalf("分隔符间纯空白段应跳过，期望 2 项，实际 %d 项: %v", len(empty), empty)
-	}
-}
-
-// TestClassifyIntentWithKeywordsUnion 验证扩展词表与内置取并集而非替换：内置仍生效、扩展新增也生效。
-func TestClassifyIntentWithKeywordsUnion(t *testing.T) {
-	// extra 是运维新增的投诉说法（货不对板）。
-	extra := ParseComplaintKeywords("货不对板", nil)
-	// 内置说法仍应命中负向意图（证明内置未被清空）。
-	if got := classifyIntentWithKeywords("我要退款", extra); len(got) == 0 || got[0] != IntentComplaint {
-		t.Fatalf("内置词表应仍生效，实际 %v", got)
-	}
-	// 扩展说法也应命中负向意图。
-	if got := classifyIntentWithKeywords("这东西货不对板", extra); len(got) == 0 || got[0] != IntentComplaint {
-		t.Fatalf("扩展词表应生效，实际 %v", got)
-	}
-	// 扩展词表不得误伤正常砍价：含砍价表达且命中扩展投诉时应被负向短路，而非当作砍价放行。
-	if got := classifyIntentWithKeywords("货不对板，再便宜点", extra); len(got) != 1 || got[0] != IntentComplaint {
-		t.Fatalf("投诉+砍价应被负向短路为 complaint，实际 %v", got)
-	}
-}
-
-// TestClassifyIntentWithKeywordsEmptyFallsBack 验证空扩展词表等价于内置分类，行为不回退。
-func TestClassifyIntentWithKeywordsEmptyFallsBack(t *testing.T) {
-	// 空扩展应与原 classifyIntent 行为完全一致。
-	if got := classifyIntentWithKeywords("便宜点", nil); !reflect.DeepEqual(got, classifyIntent("便宜点")) {
-		t.Fatalf("空扩展词表应等价内置，实际 %v", got)
 	}
 }
 
@@ -177,4 +143,18 @@ func TestPrimaryIntentLabel(t *testing.T) {
 	if got := primaryIntentLabel([]string{IntentBargain, IntentOrder}); got != IntentAmbiguous {
 		t.Fatalf("多命中应为 ambiguous，实际 %q", got)
 	}
+}
+
+// equalStringSlice 比较两个字符串切片是否等长且逐项相等；nil 与空切片视为相等。
+func equalStringSlice(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	// index 是当前比较的下标。
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
