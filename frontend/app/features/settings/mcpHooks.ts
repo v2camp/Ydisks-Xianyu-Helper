@@ -25,8 +25,8 @@ export interface UseMCPServiceResult {
   auditLoading: boolean;
   /** 审计加载失败信息；空串表示无错误。 */
   auditError: string;
-  /** 重新读取 MCP 服务状态。 */
-  reloadStatus: () => void;
+  /** 重新读取 MCP 服务状态；返回的 Promise 在回读落地后兑现，供保存流程等回读结果接管。 */
+  reloadStatus: () => Promise<void>;
   /** 保存启用开关与网络策略。 */
   submitSettings: (update: MCPSettingsUpdate) => Promise<void>;
   /** 生成或轮换持久化令牌。 */
@@ -41,8 +41,10 @@ export interface UseMCPServiceResult {
 
 /** 管理 MCP 服务状态、启停策略、令牌生命周期与调用审计；一次令牌明文只保留到管理员主动清除。 */
 export const useMCPService = (): UseMCPServiceResult => {
-  // status 保存 MCP 服务非敏感状态；未加载成功时为 null。
-  const [status, setStatus] = useState<MCPServiceStatus | null>(null);
+  // serverStatus 保存服务端回读到的 MCP 服务非敏感状态；未加载成功时为 null。
+  const [serverStatus, setServerStatus] = useState<MCPServiceStatus | null>(null);
+  // pendingSettings 是尚未被服务端回读确认的启停与网络策略目标值；null 表示没有在途保存。
+  const [pendingSettings, setPendingSettings] = useState<MCPSettingsUpdate | null>(null);
   // statusLoading 表示状态是否正在加载。
   const [statusLoading, setStatusLoading] = useState(false);
   // statusError 保存状态加载失败信息。
@@ -83,10 +85,10 @@ export const useMCPService = (): UseMCPServiceResult => {
     const sequence = statusSequence.current;
     setStatusLoading(true);
     setStatusError('');
-    void getMCPServiceStatus({ signal: controller.signal })
+    return getMCPServiceStatus({ signal: controller.signal })
       .then(/* response 是状态接口返回的 UI 模型。 */ response => {
         if (sequence !== statusSequence.current || controller.signal.aborted) return;
-        setStatus(response);
+        setServerStatus(response);
       })
       .catch(/* error 是状态读取失败或取消原因。 */ error => {
         if (sequence !== statusSequence.current || isSettingsAbortError(error)) return;
@@ -133,18 +135,28 @@ export const useMCPService = (): UseMCPServiceResult => {
     }; // 卸载回调中止全部在途请求，避免晚到响应写入已卸载组件。
   }, [loadAudit, reloadStatus]);
 
-  /** 保存启用开关与网络策略；成功后重新拉取状态确认生效。 */
+  /**
+   * 保存启用开关与网络策略。
+   *
+   * 先乐观置值让开关在点击的同一帧就呈现目标状态，再发保存请求，成功后等回读结果接管，
+   * 失败或取消一律回滚到服务端值并保留提示——这样开关不必等两次网络往返才响应点击。
+   */
   const submitSettings = useCallback(/* 当前回调封装 MCP 启停与网络策略保存流程。 */ async (update: MCPSettingsUpdate) => {
     setSaving(true);
     setMessage(null);
+    // 乐观值先于请求置位：受控开关在 change 事件结束时会按 props 还原，不先置值就会弹回旧状态。
+    setPendingSettings(update);
     try {
       await updateMCPServiceSettings(update);
       setMessage(createMCPServiceMessage('success', 'MCP 服务设置已保存'));
-      reloadStatus();
+      // 等回读落地再交班，避免开关在保存与回读之间闪回旧值。
+      await reloadStatus();
     } catch (error /* error 是 MCP 设置保存失败原因。 */) {
       if (isSettingsAbortError(error)) return;
       setMessage(createMCPServiceMessage('error', settingsErrorMessage(error, '保存 MCP 服务设置失败')));
     } finally {
+      // 无论成功、失败或取消都清掉乐观值：成功时由回读结果接管，失败与取消时回到服务端值。
+      setPendingSettings(null);
       setSaving(false);
     }
   }, [reloadStatus]);
@@ -195,8 +207,13 @@ export const useMCPService = (): UseMCPServiceResult => {
   /** 清除页面上保留的一次性令牌明文。 */
   const dismissToken = useCallback(/* 当前回调清除一次性令牌明文。 */ () => setToken(''), []);
 
+  // displayStatus 是叠加在途乐观目标值后的展示状态；在途目标值优先于服务端回读结果。
+  const displayStatus: MCPServiceStatus | null = serverStatus && pendingSettings
+    ? { ...serverStatus, enabled: pendingSettings.enabled, allowNonLoopback: pendingSettings.allowNonLoopback }
+    : serverStatus;
+
   return {
-    status, statusLoading, statusError, saving, message, token, tokenLoading,
+    status: displayStatus, statusLoading, statusError, saving, message, token, tokenLoading,
     audit, auditLoading, auditError,
     reloadStatus, submitSettings, generateToken, revokeToken, loadAudit, dismissToken,
   };

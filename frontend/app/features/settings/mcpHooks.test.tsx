@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
-import type { MCPAuditPage,MCPServiceStatus } from './api';
+import type { MCPAuditPage,MCPServiceStatus,OperationResponse } from './api';
 import { generateMCPToken,getMCPAudit,getMCPServiceStatus,revokeMCPToken,updateMCPServiceSettings } from './api';
 import { useMCPService } from './mcpHooks';
 
@@ -36,6 +36,8 @@ const statusFixture: MCPServiceStatus = {
   tokenCreatedAt: 0, tokenLastUsedAt: 0, hasPreviousToken: false,
   previousTokenExpiresAt: 0, endpoint: 'http://127.0.0.1:59188/mcp',
 };
+// disabledStatusFixture 是未启用、未放行的初始状态，用于复现启用开关的乐观置值。
+const disabledStatusFixture: MCPServiceStatus = { ...statusFixture, enabled: false, allowNonLoopback: false };
 // auditFixture 是包含一条成功调用的审计分页。
 const auditFixture: MCPAuditPage = {
   records: [{
@@ -74,6 +76,84 @@ describe('useMCPService', /* 当前回调验证 MCP 卡片的状态、启停、�
     expect(settingsMock).toHaveBeenCalledWith({ enabled: false, allowNonLoopback: false });
     expect(hook.result.current.message).toEqual({ type: 'success', text: 'MCP 服务设置已保存' });
     expect(statusMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('保存请求未返回前启用开关已呈现目标值', /* 当前回调验证启停开关在保存请求落地之前就反映管理员点击的目标状态。 */ async () => {
+    // resolveSave 是保存请求的延迟放行控制器。
+    let resolveSave: (value: OperationResponse) => void = () => undefined;
+    statusMock.mockResolvedValue(disabledStatusFixture);
+    // pendingSave 是保持挂起直到显式放行的保存请求，用于观察保存未落地时的开关展示值。
+    const pendingSave = new Promise<OperationResponse>(/* resolveSave 保存延迟保存请求的完成函数。 */ resolve => { resolveSave = resolve; });
+    settingsMock.mockReturnValue(pendingSave);
+    // hook 是 MCP 服务钩子的渲染结果。
+    const hook = renderHook(useMCPService);
+    await waitFor(/* 等待初始状态加载完成。 */ () => expect(hook.result.current.status).not.toBeNull());
+    act(/* 点击启用开关并触发保存。 */ () => { void hook.result.current.submitSettings({ enabled: true, allowNonLoopback: false }); });
+    expect(hook.result.current.status?.enabled).toBe(true);
+    expect(hook.result.current.saving).toBe(true);
+    await act(/* 放行保存请求并等待收尾。 */ async () => { resolveSave({ success: true }); });
+  });
+
+  test('保存成功后由回读结果接管且后续回读可覆盖', /* 当前回调验证乐观值在回读落地后被清除，不再遮蔽服务端值。 */ async () => {
+    statusMock.mockResolvedValueOnce(disabledStatusFixture);
+    statusMock.mockResolvedValueOnce({ ...disabledStatusFixture, enabled: true });
+    statusMock.mockResolvedValue(disabledStatusFixture);
+    // hook 是 MCP 服务钩子的渲染结果。
+    const hook = renderHook(useMCPService);
+    await waitFor(/* 等待初始状态加载完成。 */ () => expect(hook.result.current.status).not.toBeNull());
+    await act(/* 保存动作切换启用开关。 */ async () => hook.result.current.submitSettings({ enabled: true, allowNonLoopback: false }));
+    expect(hook.result.current.status?.enabled).toBe(true);
+    await act(/* 再次回读服务端状态。 */ async () => hook.result.current.reloadStatus());
+    expect(hook.result.current.status?.enabled).toBe(false);
+  });
+
+  test('保存失败时回滚到服务端值', /* 当前回调验证保存失败后开关回到服务端状态而不是停在乐观值。 */ async () => {
+    statusMock.mockResolvedValue(disabledStatusFixture);
+    settingsMock.mockRejectedValue(new Error('网络异常'));
+    // hook 是 MCP 服务钩子的渲染结果。
+    const hook = renderHook(useMCPService);
+    await waitFor(/* 等待初始状态加载完成。 */ () => expect(hook.result.current.status).not.toBeNull());
+    await act(/* 保存动作触发失败分支。 */ async () => hook.result.current.submitSettings({ enabled: true, allowNonLoopback: true }));
+    expect(hook.result.current.status?.enabled).toBe(false);
+    expect(hook.result.current.status?.allowNonLoopback).toBe(false);
+    expect(hook.result.current.message?.type).toBe('error');
+    expect(hook.result.current.saving).toBe(false);
+  });
+
+  test('非本机访问开关在保存请求未返回前已呈现目标值', /* 当前回调验证网络策略开关与启停开关同样乐观置值。 */ async () => {
+    // resolveAllow 是保存请求的延迟放行控制器。
+    let resolveAllow: (value: OperationResponse) => void = () => undefined;
+    statusMock.mockResolvedValue(disabledStatusFixture);
+    // pendingAllow 是保持挂起直到显式放行的保存请求，用于观察网络策略开关的乐观置值。
+    const pendingAllow = new Promise<OperationResponse>(/* resolveAllow 保存延迟保存请求的完成函数。 */ resolve => { resolveAllow = resolve; });
+    settingsMock.mockReturnValue(pendingAllow);
+    // hook 是 MCP 服务钩子的渲染结果。
+    const hook = renderHook(useMCPService);
+    await waitFor(/* 等待初始状态加载完成。 */ () => expect(hook.result.current.status).not.toBeNull());
+    act(/* 点击非本机访问开关并触发保存。 */ () => { void hook.result.current.submitSettings({ enabled: false, allowNonLoopback: true }); });
+    expect(hook.result.current.status?.allowNonLoopback).toBe(true);
+    await act(/* 放行保存请求并等待收尾。 */ async () => { resolveAllow({ success: true }); });
+  });
+
+  test('连续切换以最后一次目标值为准', /* 当前回调验证在途乐观值不会累积，最终展示最近一次点击的目标。 */ async () => {
+    // resolveFirst 是第一次保存请求的延迟放行控制器。
+    let resolveFirst: (value: OperationResponse) => void = () => undefined;
+    // resolveSecond 是第二次保存请求的延迟放行控制器。
+    let resolveSecond: (value: OperationResponse) => void = () => undefined;
+    statusMock.mockResolvedValue(disabledStatusFixture);
+    // pendingFirst 是第一次保持挂起的保存请求，用于观察在途乐观值。
+    const pendingFirst = new Promise<OperationResponse>(/* resolveFirst 保存第一次延迟保存请求的完成函数。 */ resolve => { resolveFirst = resolve; });
+    // pendingSecond 是第二次保持挂起的保存请求，用于验证在途乐观值以最后一次点击为准。
+    const pendingSecond = new Promise<OperationResponse>(/* resolveSecond 保存第二次延迟保存请求的完成函数。 */ resolve => { resolveSecond = resolve; });
+    settingsMock.mockReturnValueOnce(pendingFirst).mockReturnValueOnce(pendingSecond);
+    // hook 是 MCP 服务钩子的渲染结果。
+    const hook = renderHook(useMCPService);
+    await waitFor(/* 等待初始状态加载完成。 */ () => expect(hook.result.current.status).not.toBeNull());
+    act(/* 第一次点击请求启用。 */ () => { void hook.result.current.submitSettings({ enabled: true, allowNonLoopback: false }); });
+    act(/* 第二次点击改回关闭并放开非本机访问。 */ () => { void hook.result.current.submitSettings({ enabled: false, allowNonLoopback: true }); });
+    expect(hook.result.current.status?.enabled).toBe(false);
+    expect(hook.result.current.status?.allowNonLoopback).toBe(true);
+    await act(/* 放行两次保存请求并等待收尾。 */ async () => { resolveFirst({ success: true }); resolveSecond({ success: true }); });
   });
 
   test('保存失败时展示错误提示', /* 当前回调验证启停保存失败的错误提示。 */ async () => {

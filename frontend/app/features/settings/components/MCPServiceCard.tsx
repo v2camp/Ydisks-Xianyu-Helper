@@ -49,7 +49,7 @@ export const MCPServiceCard: React.FC = () => {
       {service.statusError && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{service.statusError}</span>
-          <button type="button" className="font-bold underline" onClick={/* 当前回调重新读取 MCP 服务状态。 */ service.reloadStatus}>重新加载</button>
+          <button type="button" className="font-bold underline" onClick={/* 当前回调重新读取 MCP 服务状态。 */ () => void service.reloadStatus()}>重新加载</button>
         </div>
       )}
 
