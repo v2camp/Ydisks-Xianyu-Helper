@@ -28,7 +28,7 @@ func (s *ChatStore) UpdateSessionRole(ctx context.Context, cookieID, chatID, ite
 	// result、err 保存带商品条件的角色更新结果，避免旧消息覆盖已经切换商品的会话。
 	result, err := s.DB.ExecContext(ctx, `UPDATE chat_sessions SET account_role=?,buyer_user_id=?,seller_user_id=?,
 		role_item_id=?,role_source=?,updated_at=? WHERE cookie_id=? AND chat_id=? AND item_id=?`,
-		accountRole, buyerUserID, sellerUserID, itemID, roleSource, time.Now().UTC().Unix(), cookieID, chatID, itemID)
+		accountRole, buyerUserID, sellerUserID, itemID, roleSource, time.Now().UTC().UnixMilli(), cookieID, chatID, itemID)
 	if err != nil {
 		return err
 	}

@@ -374,19 +374,40 @@ func TestCountNonEmptyLines(t *testing.T) {
 // TestFormatDeliveryHintBases 无配置来源时依据只写描述。
 func TestFormatDeliveryHintBases(t *testing.T) {
 	// onlyDesc 是无配置来源的推断结果。
-	onlyDesc := formatDeliveryHint([]string{"夸克网盘"}, false, 0, false)
+	onlyDesc := formatDeliveryHint([]string{"夸克网盘"}, false, 0, false, false)
 	if !strings.Contains(onlyDesc, "按描述推断") || strings.Contains(onlyDesc, "发货配置") {
 		t.Fatalf("无配置来源依据错误: %s", onlyDesc)
 	}
 	// stepOnly 是仅分步无线条数的结果。
-	stepOnly := formatDeliveryHint(nil, true, 1, true)
+	stepOnly := formatDeliveryHint(nil, true, 1, true, false)
 	if !strings.Contains(stepOnly, "分步发送") {
 		t.Fatalf("仅分步未标注: %s", stepOnly)
 	}
 	// multiNoStep 是多条消息无分步的结果。
-	multiNoStep := formatDeliveryHint(nil, false, 3, true)
+	multiNoStep := formatDeliveryHint(nil, false, 3, true, false)
 	if !strings.Contains(multiNoStep, "分 3 条消息发送") || strings.Contains(multiNoStep, "先资源码") {
 		t.Fatalf("多条无分步标注错误: %s", multiNoStep)
+	}
+}
+
+// TestFormatDeliveryHintAuthoritative 卡密识别出的渠道应标记为可确定，供 AI 直接回答。
+// 这是客服不再对「有夸克吗」打太极的关键：依据文案必须区别于「仅参考」的推断。
+func TestFormatDeliveryHintAuthoritative(t *testing.T) {
+	// authoritative 是卡密渠道确定时的结果。
+	authoritative := formatDeliveryHint([]string{"百度网盘", "夸克网盘"}, false, 1, true, true)
+	if !strings.Contains(authoritative, "按该商品卡密内容确定") {
+		t.Fatalf("卡密渠道应标注为可确定: %s", authoritative)
+	}
+	if strings.Contains(authoritative, "仅参考") {
+		t.Fatalf("卡密渠道不应再标注仅参考: %s", authoritative)
+	}
+	if !strings.Contains(authoritative, "百度网盘、夸克网盘") {
+		t.Fatalf("双盘渠道应并列输出: %s", authoritative)
+	}
+	// 同样是双盘，但来自文案推断时仍应标注仅参考。
+	inferred := formatDeliveryHint([]string{"百度网盘", "夸克网盘"}, false, 1, true, false)
+	if !strings.Contains(inferred, "仅参考") || strings.Contains(inferred, "卡密内容确定") {
+		t.Fatalf("文案推断不应冒充确定事实: %s", inferred)
 	}
 }
 
@@ -455,7 +476,7 @@ func TestAppendDeliveryConfigCluesOwnerQueryError(t *testing.T) {
 	// multi 是模板最大消息条数；codeThenLink 是先码后链标记。
 	multi, codeThenLink := 0, false
 	// found、err 是线索收集结果，应返回错误而不是静默成功。
-	found, err := a.appendDeliveryConfigClues(context.Background(), "any-item", &corpus, &multi, &codeThenLink)
+	found, _, err := a.appendDeliveryConfigClues(context.Background(), "any-item", &corpus, &multi, &codeThenLink)
 	if err == nil || found {
 		t.Fatalf("归属查询失败应报错: found=%v err=%v", found, err)
 	}
@@ -502,7 +523,7 @@ func TestAppendDeliveryConfigCluesSkips(t *testing.T) {
 	// multi 是模板最大消息条数；codeThenLink 是先码后链标记。
 	multi, codeThenLink := 0, false
 	// found 是线索来源命中结果。
-	found, err := a.appendDeliveryConfigClues(ctx, "skip-item", &corpus, &multi, &codeThenLink)
+	found, _, err := a.appendDeliveryConfigClues(ctx, "skip-item", &corpus, &multi, &codeThenLink)
 	if err != nil {
 		t.Fatalf("appendDeliveryConfigClues: %v", err)
 	}
@@ -561,5 +582,105 @@ func TestAppendDeliveryConfigCluesBindingCardName(t *testing.T) {
 	// 卡组名「百度网盘资源组」应被识别为百度网盘渠道，证明绑定名称进入线索。
 	if !strings.Contains(hint, "百度网盘") {
 		t.Fatalf("绑定卡组名未进入线索: %s", hint)
+	}
+}
+
+// TestInferDeliveryHintsPrefersCardAuthoritativeChannels 卡密正文识别出的渠道是确定事实，
+// 应压过商品描述里的渠道关键词，并让提示词标注为可直接回答——这是「有夸克吗」不再打太极的关键。
+func TestInferDeliveryHintsPrefersCardAuthoritativeChannels(t *testing.T) {
+	// s、cleanup 是带账号的测试 store。
+	s, cleanup := newAIStore(t)
+	defer cleanup()
+	// ctx 是夹具写入上下文。
+	ctx := context.Background()
+	// ownerID 是测试账号所属用户。
+	ownerID, err := s.Cookies.GetOwnerID(ctx, "cid")
+	if err != nil {
+		t.Fatalf("GetOwnerID: %v", err)
+	}
+	// cardID 是已由应用层提取渠道（百度网盘）的卡券；正文含百度分享链接。
+	cardID, err := s.Cards.Create(ctx, &db.CardFull{
+		UserID: ownerID, Name: "资源组", Type: "data", DataContent: "https://pan.baidu.com/s/1x",
+		Enabled: true, DeliveryChannels: "百度网盘",
+	})
+	if err != nil {
+		t.Fatalf("创建卡组失败: %v", err)
+	}
+	// 商品描述故意写夸克，用于验证权威渠道优先于文案关键词探测。
+	seedLiveItem(t, s, "auth-item", "网盘合集", "19", "夸克网盘发货")
+	// rule 是绑定该卡券的商品级发货规则。
+	if _, err := s.Automation.Create(ctx, db.AutomationRuleInput{
+		UserID: ownerID, CookieID: "cid", ItemID: "auth-item", Name: "发货规则",
+		TriggerType: "order_paid", Enabled: true,
+		Actions: []db.AutomationActionInput{{
+			ActionType: "send_card", CardID: cardID, ConfigJSON: `{}`, Enabled: true, SortOrder: 1,
+		}},
+	}); err != nil {
+		t.Fatalf("创建规则失败: %v", err)
+	}
+	// a 是待测 AI 实现。
+	a := NewAIReplier("cid", s, nil)
+	// hint、err 是发货推断结果。
+	hint, err := a.inferDeliveryHints(ctx, "auth-item")
+	if err != nil {
+		t.Fatalf("inferDeliveryHints: %v", err)
+	}
+	if !strings.Contains(hint, "百度网盘") {
+		t.Fatalf("应采用卡密权威渠道: %s", hint)
+	}
+	if strings.Contains(hint, "夸克网盘") {
+		t.Fatalf("描述里的夸克不应压过卡密渠道: %s", hint)
+	}
+	if !strings.Contains(hint, "按该商品卡密内容确定") || strings.Contains(hint, "仅参考") {
+		t.Fatalf("卡密渠道应标注为可确定: %s", hint)
+	}
+}
+
+// TestInferDeliveryHintsFallsBackToTextWhenCardHasNoChannel 卡券未识别出渠道时回落文案探测，
+// 并保留「仅参考」依据，避免把推断冒充确定事实。
+func TestInferDeliveryHintsFallsBackToTextWhenCardHasNoChannel(t *testing.T) {
+	// s、cleanup 是带账号的测试 store。
+	s, cleanup := newAIStore(t)
+	defer cleanup()
+	// ctx 是夹具写入上下文。
+	ctx := context.Background()
+	// ownerID 是测试账号所属用户。
+	ownerID, err := s.Cookies.GetOwnerID(ctx, "cid")
+	if err != nil {
+		t.Fatalf("GetOwnerID: %v", err)
+	}
+	// cardID 是未识别出渠道的卡券（正文不含网盘线索）。
+	cardID, err := s.Cards.Create(ctx, &db.CardFull{
+		UserID: ownerID, Name: "通用组", Type: "data", DataContent: "code-1", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("创建卡组失败: %v", err)
+	}
+	seedLiveItem(t, s, "fb-item", "资源合集", "12", "夸克网盘发货")
+	// rule 是绑定该卡券的商品级发货规则。
+	if _, err := s.Automation.Create(ctx, db.AutomationRuleInput{
+		UserID: ownerID, CookieID: "cid", ItemID: "fb-item", Name: "发货规则",
+		TriggerType: "order_paid", Enabled: true,
+		Actions: []db.AutomationActionInput{{
+			ActionType: "send_card", CardID: cardID, ConfigJSON: `{}`, Enabled: true, SortOrder: 1,
+		}},
+	}); err != nil {
+		t.Fatalf("创建规则失败: %v", err)
+	}
+	// a 是待测 AI 实现。
+	a := NewAIReplier("cid", s, nil)
+	// hint、err 是发货推断结果。
+	hint, err := a.inferDeliveryHints(ctx, "fb-item")
+	if err != nil {
+		t.Fatalf("inferDeliveryHints: %v", err)
+	}
+	if !strings.Contains(hint, "夸克网盘") {
+		t.Fatalf("应回落文案渠道: %s", hint)
+	}
+	if !strings.Contains(hint, "按描述/发货配置推断") || !strings.Contains(hint, "仅参考") {
+		t.Fatalf("无卡密渠道时应标注仅参考: %s", hint)
+	}
+	if strings.Contains(hint, "卡密内容确定") {
+		t.Fatalf("文案推断不应冒充确定事实: %s", hint)
 	}
 }

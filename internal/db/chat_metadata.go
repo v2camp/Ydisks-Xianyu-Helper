@@ -90,7 +90,7 @@ func (s *ChatStore) CreateQuickReply(ctx context.Context, cookieID, content stri
 		return ChatQuickReply{}, ErrChatQuickReplyLimitReached
 	}
 	// createdAt 保存新记录的 UTC 创建时间，供列表排序和传输 DTO 展示。
-	createdAt := time.Now().UTC().Unix()
+	createdAt := time.Now().UTC().UnixMilli()
 	// replyID 和 insertErr 保存数据库生成的主键及写入错误。
 	replyID, insertErr := insertReturningID(ctx, transaction, s.Dialect, `INSERT INTO chat_quick_replies(cookie_id,content,created_at) VALUES(?,?,?)`, cookieID, content, createdAt)
 	if insertErr != nil {
@@ -145,7 +145,7 @@ func (s *ChatStore) SaveBuyerNote(ctx context.Context, note ChatBuyerNote) (Chat
 		return ChatBuyerNote{CookieID: note.CookieID, BuyerID: note.BuyerID}, nil
 	}
 	// updatedAt 保存本次覆盖写入的 UTC 时间，客户端用它显示最新保存状态。
-	updatedAt := time.Now().UTC().Unix()
+	updatedAt := time.Now().UTC().UnixMilli()
 	// query 保存三方言共用的 upsert 语句；方言工具负责生成冲突更新差异。
 	query := `INSERT INTO chat_buyer_notes(cookie_id,buyer_id,content,updated_at) VALUES(?,?,?,?)` + dialectUpsert(s.Dialect, []string{"cookie_id", "buyer_id"}, map[string]string{"content": "EXCLUDED.content", "updated_at": "EXCLUDED.updated_at"})
 	// saveErr 保存备注 upsert 执行失败原因，失败时不得返回未持久化模型。

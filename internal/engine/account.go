@@ -45,7 +45,9 @@ const (
 	WSRecordBatchSize       = 32
 	WSRecordFlushInterval   = 250 * time.Millisecond
 	WSRecordWriteTimeout    = 5 * time.Second
-	WSRecordRetention       = 7 * 24 * time.Hour
+	// WSRecordRetention 是 WS 诊断帧保留期的兜底默认值，与统一日志保留默认值（30 天）一致。
+	// 运行时优先读取 log_retention_days 设置，仅在设置缺失或不可读时使用此值。
+	WSRecordRetention = 30 * 24 * time.Hour
 
 	// ShortConnectionThreshold 仅用于统计频繁短连接；已经建立后的网络断线
 	// 不会清 Token 缓存。

@@ -26,7 +26,7 @@ type liveKnowledge struct {
 
 // deliveryAnswerConstraint 是回答发货方式类问题时必须写入 prompt 的系统约束。
 // 目的：禁止模型声称全店统一渠道，无线索时给出统一兜底话术。
-const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时只能依据当前商品线索，禁止声称全店统一支持某渠道；无线索则回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
+const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时：提示词给出了当前商品的确定发货渠道时，必须直接明确回答该渠道（如「这款发百度网盘」），不得含糊；禁止声称全店统一支持某渠道。只有当前商品没有任何渠道线索时，才回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
 
 // liveCatalogInstruction 是动态在售列表的注入指令文案。
 const liveCatalogInstruction = "本店在售列表（买家问有没有/单买/第几季时依此回答，不在列表的回答暂时没有）"
@@ -185,39 +185,57 @@ func (a *AIReplierImpl) inferDeliveryHints(ctx context.Context, itemID string) (
 		return "", err
 	}
 	// sourceB 表示是否成功读到自动化发货配置（来源 b）；查询失败降级为只用来源 a。
-	sourceB, configErr := a.appendDeliveryConfigClues(ctx, itemID, &corpus, &multiMessage, &codeThenLink)
+	// cardIDs 是发货规则绑定的卡券标识，用于读取卡密自身识别出的权威渠道。
+	sourceB, cardIDs, configErr := a.appendDeliveryConfigClues(ctx, itemID, &corpus, &multiMessage, &codeThenLink)
 	if configErr != nil {
 		a.logger.Debug("发货配置线索查询失败，降级为只用商品描述", "err", configErr)
 		sourceB = false
+	}
+	// authoritative 是卡密正文识别出的确定渠道，优先于文案关键词探测。
+	var authoritative []string
+	if len(cardIDs) > 0 {
+		// channels、err 是卡券渠道查询结果；失败只记日志，回落到文案探测。
+		channels, err := a.store.Cards.DeliveryChannelsByIDs(ctx, cardIDs)
+		if err != nil {
+			a.logger.Debug("卡券发货渠道查询失败，降级为文案探测", "err", err)
+		} else {
+			authoritative = channels
+		}
 	}
 	// text 是汇总后的线索全文，用于关键词与模式探测。
 	text := corpus.String()
 	// stepwise 表示线索含分步发送模式（描述模式或模板先码后链）。
 	stepwise := containsAny(text, deliveryStepwisePatterns) || codeThenLink
-	// channels 是去重后的渠道展示名。
-	channels := detectDeliveryChannels(text)
+	// channels 是去重后的渠道展示名；有权威渠道时以它为准。
+	channels := authoritative
+	if len(channels) == 0 {
+		channels = detectDeliveryChannels(text)
+	}
 	// 无任何渠道且无分条/分步线索时不注入。
 	if len(channels) == 0 && multiMessage <= 1 && !stepwise {
 		return "", nil
 	}
-	return formatDeliveryHint(channels, stepwise, multiMessage, sourceB), nil
+	return formatDeliveryHint(channels, stepwise, multiMessage, sourceB, len(authoritative) > 0), nil
 }
 
 // appendDeliveryConfigClues 把商品相关自动化规则绑定的模板消息与卡组名追加进线索文本。
-// 返回是否读到发货配置来源；多条消息时抬高 multiMessage，并探测先码后链顺序。
-func (a *AIReplierImpl) appendDeliveryConfigClues(ctx context.Context, itemID string, corpus *strings.Builder, multiMessage *int, codeThenLink *bool) (bool, error) {
+// 返回是否读到发货配置来源与该商品绑定的卡券标识集合；多条消息时抬高 multiMessage，并探测先码后链顺序。
+// 卡券标识用于读取卡密自身识别出的权威发货渠道，比文案关键词探测更可靠。
+func (a *AIReplierImpl) appendDeliveryConfigClues(ctx context.Context, itemID string, corpus *strings.Builder, multiMessage *int, codeThenLink *bool) (bool, []int64, error) {
 	// ownerID 是当前账号所属用户主键，用于隔离自动化规则查询。
 	ownerID, err := a.store.Cookies.GetOwnerID(ctx, a.cookieID)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	// rules、err 是该用户在当前账号下的规则；再按商品过滤出相关发货规则。
 	rules, _, err := a.store.Automation.ListPageForUser(ctx, db.AutomationRuleListFilter{UserID: ownerID, CookieID: a.cookieID})
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	// found 表示是否命中该商品（或账号级）的自动化规则。
 	found := false
+	// cardIDs 是本次收集到的卡券标识，含动作直接绑定与模板变量绑定两类来源。
+	cardIDs := make([]int64, 0, 4)
 	// rule 表示当前遍历到的自动化规则。
 	for _, rule := range rules {
 		// 只关心绑定到本商品或账号级（ItemID 为空）的规则。
@@ -229,6 +247,10 @@ func (a *AIReplierImpl) appendDeliveryConfigClues(ctx context.Context, itemID st
 		for _, action := range rule.Actions {
 			if !action.Enabled {
 				continue
+			}
+			// 动作直接绑定的卡券是发货主体，其渠道即该商品的发货渠道。
+			if action.CardID > 0 {
+				cardIDs = append(cardIDs, action.CardID)
 			}
 			corpus.WriteString(action.MessageTemplate)
 			corpus.WriteString("\n")
@@ -245,6 +267,10 @@ func (a *AIReplierImpl) appendDeliveryConfigClues(ctx context.Context, itemID st
 			}
 			// binding 表示当前遍历到的卡密变量绑定。
 			for _, binding := range action.TemplateBindings {
+				// 模板变量引用的卡券同样参与发货，其渠道一并计入。
+				if binding.CardID > 0 {
+					cardIDs = append(cardIDs, binding.CardID)
+				}
 				corpus.WriteString(binding.CardName)
 				corpus.WriteString("\n")
 			}
@@ -258,7 +284,7 @@ func (a *AIReplierImpl) appendDeliveryConfigClues(ctx context.Context, itemID st
 			}
 		}
 	}
-	return found, nil
+	return found, cardIDs, nil
 }
 
 // detectDeliveryChannels 扫描线索文本并按优先级返回去重后的渠道展示名。
@@ -284,7 +310,8 @@ func detectDeliveryChannels(text string) []string {
 
 // formatDeliveryHint 把渠道、分步、分条线索拼成一行发货方式说明。
 // sourceB 表示是否含发货配置来源，影响括号里的推断依据描述。
-func formatDeliveryHint(channels []string, stepwise bool, multiMessage int, sourceB bool) string {
+// authoritative 表示渠道来自卡密正文本身（确定事实），此时提示词会明确要求 AI 直接回答。
+func formatDeliveryHint(channels []string, stepwise bool, multiMessage int, sourceB bool, authoritative bool) string {
 	// parts 是提示词中跟在前缀后的分号段落。
 	parts := make([]string, 0, 3)
 	if len(channels) > 0 {
@@ -302,10 +329,14 @@ func formatDeliveryHint(channels []string, stepwise bool, multiMessage int, sour
 	} else if stepwise {
 		parts = append(parts, "分步发送")
 	}
-	// basis 是括号里的推断依据：按实际来源标注描述/发货配置。
+	// basis 是括号里的推断依据：按实际来源标注描述/发货配置/卡密。
 	basis := "按描述/发货配置推断，仅参考"
 	if !sourceB {
 		basis = "按描述推断，仅参考"
+	}
+	if authoritative {
+		// 卡密正文自带链接，渠道是确定事实，提示词应让 AI 直接回答而非含糊带过。
+		basis = "按该商品卡密内容确定，可直接回答"
 	}
 	return fmt.Sprintf("该商品发货方式（%s）：%s", basis, strings.Join(parts, "；"))
 }

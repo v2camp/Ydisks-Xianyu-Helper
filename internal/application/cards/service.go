@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+
+	"xianyu-go/internal/netpan"
 )
 
 // ErrInvalidUser 表示调用方未提供有效的用户身份。
@@ -70,6 +72,9 @@ type Card struct {
 	SpecValue string
 	// UserID 是拥有该卡券组的本地用户标识。
 	UserID int64
+	// DeliveryChannels 是卡密正文或发货文本中识别出的网盘渠道，逗号连接（如「百度网盘,夸克网盘」）。
+	// 由保存时自动提取，不接收外部提交；空串表示未能识别，AI 回答发货方式时按无线索处理。
+	DeliveryChannels string
 }
 
 // Draft 是创建或更新卡券组时允许提交的业务字段。
@@ -397,5 +402,23 @@ func cardFromDraft(cardID, userID int64, draft Draft) Card {
 		TextContent: draft.TextContent, DataContent: draft.DataContent, ImageURL: draft.ImageURL,
 		Description: draft.Description, Enabled: draft.Enabled, DelaySeconds: draft.DelaySeconds,
 		IsMultiSpec: draft.IsMultiSpec, SpecName: draft.SpecName, SpecValue: draft.SpecValue, UserID: userID,
+		// 渠道在贴入或导入卡密时就地提取：识别只依赖卡券自身正文，结果与商品无关，
+		// 因此在这里算一次即可，AI 回答「有夸克吗」时直接读落库值，不必每次重新扫描。
+		DeliveryChannels: netpan.Encode(detectCardChannels(draft)),
+	}
+}
+
+// detectCardChannels 按卡券类型选取参与渠道识别的正文：
+// data 类型取逐行卡密库存，text 类型取发货文本，其余类型（图片/API）没有可识别的网盘线索。
+func detectCardChannels(draft Draft) []string {
+	// cardType 是归一化后的卡券类型。
+	cardType := strings.ToLower(strings.TrimSpace(draft.Type))
+	switch cardType {
+	case "data":
+		return netpan.Detect(draft.DataContent)
+	case "text":
+		return netpan.Detect(draft.TextContent)
+	default:
+		return nil
 	}
 }

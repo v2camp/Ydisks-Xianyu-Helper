@@ -74,8 +74,11 @@ func TestMultiDB_DeletedAutomationRulesUpgrade(t *testing.T) {
 			} {
 				// t 管理单个业务场景的独立规则和卡密，不并行操作迁移配置。
 				t.Run(scenario.name, func(t *testing.T) {
-					// cardID、err 创建虚构卡密组，内容不会触发任何外部调用。
-					cardID, err := store.Cards.Create(ctx, &CardFull{Name: scenario.name, Type: "text", TextContent: "fixture", Enabled: true, UserID: userID})
+					// cardID、err 在旧库上创建虚构卡密组：必须走原始 SQL，绕开后续版本新增的列，
+					// 否则回退到旧版本的测试会因「当前代码插入未来列」而失败。
+					cardID, err := insertReturningID(ctx, store.DB, store.Dialect,
+						`INSERT INTO cards (name,type,text_content,enabled,user_id) VALUES(?,?,?,?,?)`,
+						scenario.name, "text", "fixture", 1, userID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -186,7 +189,10 @@ func TestMultiDB_DeletedAutomationRulesSharedCard(t *testing.T) {
 			// userID、cookieID 是共享卡密和订单的合法归属。
 			userID, cookieID := seedAccount(t, store)
 			// cardID、err 保存共享卡密创建结果，测试数据不包含真实密钥。
-			cardID, err := store.Cards.Create(ctx, &CardFull{Name: "shared", Type: "text", Enabled: true, UserID: userID})
+			// 同样走原始 SQL 以兼容回退后的旧库结构。
+			cardID, err := insertReturningID(ctx, store.DB, store.Dialect,
+				`INSERT INTO cards (name,type,text_content,enabled,user_id) VALUES(?,?,?,?,?)`,
+				"shared", "text", "", 1, userID)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -150,6 +150,7 @@ func cardApplicationModel(record db.CardFull) cardsapp.Card {
 		TextContent: record.TextContent, DataContent: record.DataContent, ImageURL: record.ImageURL,
 		Description: record.Description, Enabled: record.Enabled, DelaySeconds: record.DelaySeconds,
 		IsMultiSpec: record.IsMultiSpec, SpecName: record.SpecName, SpecValue: record.SpecValue, UserID: record.UserID,
+		DeliveryChannels: record.DeliveryChannels,
 	}
 }
 
@@ -160,6 +161,7 @@ func cardDatabaseModel(card cardsapp.Card) db.CardFull {
 		TextContent: card.TextContent, DataContent: card.DataContent, ImageURL: card.ImageURL,
 		Description: card.Description, Enabled: card.Enabled, DelaySeconds: card.DelaySeconds,
 		IsMultiSpec: card.IsMultiSpec, SpecName: card.SpecName, SpecValue: card.SpecValue, UserID: card.UserID,
+		DeliveryChannels: card.DeliveryChannels,
 	}
 }
 

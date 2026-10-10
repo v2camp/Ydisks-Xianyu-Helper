@@ -890,8 +890,9 @@ func TestRenewalCleanupLogsUsesRetentionDays(t *testing.T) {
 			t.Fatalf("insert new %s: %v", table, err)
 		}
 	}
+	// 统一保留项生效：设为 10 天后，20 天前的旧行应被清理。
 	if // err 用于本次流程后续判断的err
-	err := store.Settings.Set(ctx, "renewal_log_retention_days", "10"); err != nil {
+	err := store.Settings.Set(ctx, "log_retention_days", "10"); err != nil {
 		t.Fatalf("set retention: %v", err)
 	}
 	// s 用于本次流程后续判断的s
@@ -916,6 +917,30 @@ func TestRenewalCleanupLogsUsesRetentionDays(t *testing.T) {
 		if oldRows != 0 || newRows != 1 {
 			t.Fatalf("%s cleanup old=%d new=%d, want old=0 new=1", table, oldRows, newRows)
 		}
+	}
+	// 统一保留项为空时回落旧的续期专用键：重新插入超期旧行，验证旧键仍能驱动清理。
+	// clearErr 是清空统一保留项失败的原因。
+	if _, clearErr := store.DB.ExecContext(ctx, `UPDATE system_settings SET value='' WHERE key='log_retention_days'`); clearErr != nil {
+		t.Fatalf("清空统一保留项: %v", clearErr)
+	}
+	// setErr 是回设旧续期保留项失败的原因。
+	if setErr := store.Settings.Set(ctx, "renewal_log_retention_days", "10"); setErr != nil {
+		t.Fatalf("回设旧续期保留项: %v", setErr)
+	}
+	// insertErr 是重新插入超期旧行失败的原因。
+	if _, insertErr := store.DB.ExecContext(ctx,
+		`INSERT INTO scheduled_cookies_refresh_log (batch_id, cookie_id, status, created_at) VALUES ('old2', 'cid-cleanup', 'failed', datetime('now','-20 days'))`); insertErr != nil {
+		t.Fatalf("重新插入超期旧行: %v", insertErr)
+	}
+	s.cleanupExpiredLogs(ctx)
+	// legacyRows 是回落旧键清理后残留的超期行数。
+	var legacyRows int
+	// countErr 是统计残留旧行失败的原因。
+	if countErr := store.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduled_cookies_refresh_log WHERE batch_id='old2'`).Scan(&legacyRows); countErr != nil {
+		t.Fatalf("count legacy: %v", countErr)
+	}
+	if legacyRows != 0 {
+		t.Fatalf("统一项为空时应回落旧键并清理，剩余=%d", legacyRows)
 	}
 }
 
