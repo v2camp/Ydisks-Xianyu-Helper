@@ -34,6 +34,7 @@ import { cancelOrderRefreshJob,deleteOrder,getAdminStats,getOrderDetail,getOrder
 import { clearDefaultReplyRecords,deleteDefaultReply,deleteReplyRule,deleteShippingRule,getAutomationIssues,getDefaultReplies,getDefaultReply,getReplyRules,getShippingRules,getShippingRulesPage,resolveAutomationRun,resolveDeferredAutomationTask,updateDefaultReply,updateReplyRule,updateShippingRule } from './rules/api';
 import { initializeAdmin,login,logout,verifySession } from './session/api';
 import { changePassword,fetchAIModels,generateMCPToken,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
+import { getAgentSupportSettings,updateAgentSupportSettings } from './settings/agentSupportApi';
 import { getHealth } from './system/api';
 import { normalizeSystemSettingsUpdate } from '../../shared/api-contract/settings';
 
@@ -1861,4 +1862,36 @@ test('MCP 审计查询透传分页与过滤参数', /* mcpAuditAdapterTest 检�
   expect(requestURL).toContain('page_size=10');
   expect(requestURL).toContain('category=tool');
   expect(requestURL).toContain('success=false');
+});
+
+// 客服 Agent 租户配置读取归一档位名单，并丢弃缺少稳定标识的服务端条目。
+test('客服 Agent 租户配置读取归一档位名单', /* agentSupportSettingsAdapterTest 检查档位名单归一。 */ async () => {
+	// fetchMock 是客服 Agent 租户配置读取的 HTTP 替身。
+	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+		enabled: true,
+		preset: 'standard',
+		presets: [
+			{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' },
+			{ value: '', label: '非法档位', description: '缺少稳定标识，不能作为可保存候选' },
+		],
+	}));
+	stubContractFetch(fetchMock);
+	// settings 是归一后的客服 Agent 租户配置 UI 模型。
+	const settings = await getAgentSupportSettings();
+	expect(settings.enabled).toBe(true);
+	expect(settings.preset).toBe('standard');
+	expect(settings.presets).toEqual([{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' }]);
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/settings', expect.objectContaining({ method: 'GET', credentials: 'include' }));
+});
+
+// 客服 Agent 租户配置保存按全量替换语义提交开关与档位。
+test('客服 Agent 租户配置保存提交全量开关与档位', /* agentSupportSettingsUpdateAdapterTest 检查保存载荷。 */ async () => {
+	// fetchMock 是客服 Agent 租户配置保存的 HTTP 替身。
+	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+	stubContractFetch(fetchMock);
+	await updateAgentSupportSettings({ enabled: true, preset: 'advanced' });
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/settings', expect.objectContaining({ method: 'PUT', credentials: 'include' }));
+	// payload 是实际发送的租户配置请求体。
+	const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+	expect(payload).toEqual({ enabled: true, preset: 'advanced' });
 });
