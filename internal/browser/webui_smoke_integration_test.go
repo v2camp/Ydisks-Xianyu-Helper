@@ -414,9 +414,25 @@ func assertMCPServiceCardFlow(t *testing.T, page playwright.Page, errors *e2eCon
 	}
 	// 默认关闭时先启用；已启用时保持现状，避免把动线变成关闭操作。
 	if !checked {
-		// checkErr 是勾选启用开关并触发保存的失败原因。
-		if checkErr := enabledToggle.Check(playwright.LocatorCheckOptions{Timeout: playwright.Float(5000)}); checkErr != nil {
-			failE2EWithScreenshot(t, page, fmt.Sprintf("启用 MCP 服务失败: %v", checkErr))
+		// clickErr 是点击启用开关并触发保存的失败原因。
+		if clickErr := enabledToggle.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000)}); clickErr != nil {
+			failE2EWithScreenshot(t, page, fmt.Sprintf("点击 MCP 启用开关失败: %v", clickErr))
+		}
+		// enabledDeadline 是等待开关呈现已勾选状态的截止时间。
+		enabledDeadline := time.Now().Add(e2eNavigateTimeout)
+		// enabledSettled 表示开关已呈现已勾选状态。
+		enabledSettled := false
+		for time.Now().Before(enabledDeadline) {
+			// settled、settledErr 是开关当前勾选状态与读取失败原因。
+			settled, settledErr := enabledToggle.IsChecked()
+			if settledErr == nil && settled {
+				enabledSettled = true
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if !enabledSettled {
+			failE2EWithScreenshot(t, page, "启用 MCP 服务后开关未落定为已勾选")
 		}
 	}
 	// address 是只读接入地址输入框；启用成功后应展示真实 /mcp 地址。
