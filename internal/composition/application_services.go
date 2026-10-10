@@ -17,6 +17,7 @@ import (
 	"xianyu-go/internal/adapter"
 	accountapp "xianyu-go/internal/application/account"
 	adminapp "xianyu-go/internal/application/admin"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
@@ -132,6 +133,8 @@ type Services struct {
 	admin *adminapp.Service
 	// mcpAdmin 是 MCP 服务管理应用服务：状态、令牌生命周期与调用审计查询。
 	mcpAdmin *mcpadminapp.Service
+	// agentSupport 是客服 Agent 的租户级默认与账号级覆盖配置应用服务。
+	agentSupport *agentadminapp.Service
 }
 
 // LifecycleContext 返回已启动协调器拥有的进程生命周期 Context，供组合层 transport adapter 注册后台 worker。
@@ -342,6 +345,8 @@ type TransportPorts struct {
 	Admin                  *adminapp.Service
 	// MCPAdmin 是 MCP 服务管理应用端口：状态、令牌生命周期与调用审计查询。
 	MCPAdmin *mcpadminapp.Service
+	// AgentSupport 是客服 Agent 配置应用端口：租户级默认与账号级覆盖。
+	AgentSupport *agentadminapp.Service
 }
 
 // TransportPorts 返回已完成构造的只读服务引用；调用方不得在运行期替换任何字段。
@@ -363,7 +368,8 @@ func (services *Services) TransportPorts() TransportPorts {
 		Analytics: services.analytics, AutomationIssues: services.automationIssues, AutomationRules: services.automationRules, DeliveryTemplates: services.deliveryTemplates,
 		Cards: services.cards, APICardTester: services.apiCardTester, PublishAutomationRules: services.publishAutomationRules, DefaultReplies: services.defaultReplies,
 		Keywords: services.keywords, Settings: services.settings, Admin: services.admin,
-		MCPAdmin: services.mcpAdmin,
+		MCPAdmin:     services.mcpAdmin,
+		AgentSupport: services.agentSupport,
 	}
 }
 
@@ -535,6 +541,7 @@ func New(dependencies Dependencies) (*Services, error) {
 		settings:               dependencies.TransportApplications.Settings,
 		admin:                  dependencies.TransportApplications.Admin,
 		mcpAdmin:               dependencies.TransportApplications.MCPAdmin,
+		agentSupport:           dependencies.TransportApplications.AgentSupport,
 	}
 	// authentication、authenticationErr 分别是认证应用服务及其构造错误。
 	authentication, authenticationErr := accountapp.NewAuthenticationService(dependencies.AccountDependencies.NewAuthenticationRepository())

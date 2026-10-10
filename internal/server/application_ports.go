@@ -7,6 +7,7 @@ import (
 
 	accountapp "xianyu-go/internal/application/account"
 	adminapp "xianyu-go/internal/application/admin"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
@@ -388,6 +389,20 @@ type MCPAdminPort interface {
 	ListAudit(context.Context, mcpadminapp.AuditFilter) (mcpadminapp.AuditPage, error)
 }
 
+// AgentSupportPort 定义客服 Agent 配置接口消费的最小用例能力：
+// 租户级默认与账号级覆盖的读取与保存。
+// 它只处理开关与档位，不暴露能力清单、工具名或模型凭证。
+type AgentSupportPort interface {
+	// TenantSettings 返回租户级默认配置；未配置或取值非法时按平台默认收敛。
+	TenantSettings(context.Context, int64) (agentadminapp.TenantConfig, error)
+	// UpdateTenantSettings 保存租户级默认配置；档位非法时返回错误且不落库。
+	UpdateTenantSettings(context.Context, int64, agentadminapp.TenantConfig) error
+	// AccountSettings 返回指定账号最终生效的配置，并标注来源是账号级覆盖还是继承租户。
+	AccountSettings(context.Context, int64, string) (agentadminapp.EffectiveConfig, error)
+	// UpdateAccountOverride 保存账号级覆盖；两个维度均为空表示恢复完全继承。
+	UpdateAccountOverride(context.Context, int64, string, agentadminapp.AccountOverride) error
+}
+
 // ApplicationPorts 是构造期注入 HTTP transport 的不可变应用 Port 集合。
 // 它不包含 adapter、数据库、平台 client、账号 Manager 或 worker 生命周期拥有权。
 type ApplicationPorts struct {
@@ -471,6 +486,8 @@ type ApplicationPorts struct {
 	admin AdminPort
 	// mcpAdmin 是 MCP 服务管理用例。
 	mcpAdmin MCPAdminPort
+	// agentSupport 是客服 Agent 配置用例。
+	agentSupport AgentSupportPort
 }
 
 // ApplicationPortsInput 是组合根向 HTTP transport 交付的完整应用 Port 快照。
@@ -516,6 +533,7 @@ type ApplicationPortsInput struct {
 	Settings                    SettingsPort
 	Admin                       AdminPort
 	MCPAdmin                    MCPAdminPort
+	AgentSupport                AgentSupportPort
 }
 
 // NewApplicationPorts 将组合根已经验证的用例依赖冻结为 Server 私有快照。
@@ -535,7 +553,7 @@ func NewApplicationPorts(input ApplicationPortsInput) *ApplicationPorts {
 		analytics: input.Analytics, automationIssues: input.AutomationIssues, automationRules: input.AutomationRules,
 		cards: input.Cards, deliveryTemplates: input.DeliveryTemplates, apiRequestTester: input.APIRequestTester, publishAutomationRules: input.PublishAutomationRules, defaultReplies: input.DefaultReplies,
 		keywords: input.Keywords, settings: input.Settings, admin: input.Admin,
-		mcpAdmin: input.MCPAdmin,
+		mcpAdmin: input.MCPAdmin, agentSupport: input.AgentSupport,
 	}
 }
 
@@ -564,7 +582,7 @@ func (ports *ApplicationPorts) validate() error {
 		{"notification_channels", ports.notificationChannels}, {"analytics", ports.analytics}, {"automation_issues", ports.automationIssues},
 		{"automation_rules", ports.automationRules}, {"cards", ports.cards}, {"publish_automation_rules", ports.publishAutomationRules},
 		{"default_replies", ports.defaultReplies}, {"keywords", ports.keywords}, {"settings", ports.settings}, {"admin", ports.admin},
-		{"mcp_admin", ports.mcpAdmin},
+		{"mcp_admin", ports.mcpAdmin}, {"agent_support", ports.agentSupport},
 	}
 	// requiredPort 是当前必须在 Server 构造前绑定的应用 Port 名称。
 	for _, requiredPort := range required {
@@ -711,6 +729,11 @@ func (server *Server) settingsApplication() SettingsPort {
 // mcpAdminApplication 返回 MCP 服务管理用例。
 func (server *Server) mcpAdminApplication() MCPAdminPort {
 	return server.applicationServiceSet().mcpAdmin
+}
+
+// agentSupportApplication 返回客服 Agent 配置用例。
+func (server *Server) agentSupportApplication() AgentSupportPort {
+	return server.applicationServiceSet().agentSupport
 }
 
 // applicationServiceSet 返回构造期注入的不可变 Port 快照；零值 Server 不会隐式装配业务服务。

@@ -403,6 +403,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/support/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getApiV1AgentSupportSettings */
+        get: operations["getApiV1AgentSupportSettings"];
+        /** putApiV1AgentSupportSettings */
+        put: operations["putApiV1AgentSupportSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/support/accounts/{cookie_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getApiV1AgentSupportAccount */
+        get: operations["getApiV1AgentSupportAccount"];
+        /** putApiV1AgentSupportAccount */
+        put: operations["putApiV1AgentSupportAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tasks": {
         parameters: {
             query?: never;
@@ -2041,6 +2077,36 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AgentPresetResponse: {
+            /** @enum {string} */
+            value: "readonly" | "standard" | "advanced";
+            label: string;
+            description: string;
+        };
+        AgentSupportSettingsResponse: {
+            enabled: boolean;
+            /** @enum {string} */
+            preset: "readonly" | "standard" | "advanced";
+            presets: components["schemas"]["AgentPresetResponse"][];
+        };
+        AgentSupportSettingsUpdateRequest: {
+            enabled: boolean;
+            /** @enum {string} */
+            preset: "readonly" | "standard" | "advanced";
+        };
+        AgentSupportAccountResponse: {
+            cookie_id: string;
+            enabled: boolean;
+            /** @enum {string} */
+            preset: "readonly" | "standard" | "advanced";
+            account_enabled: boolean | null;
+            account_preset: string | null;
+            presets: components["schemas"]["AgentPresetResponse"][];
+        };
+        AgentSupportAccountUpdateRequest: {
+            enabled: boolean | null;
+            preset: string | null;
+        };
         /** @description 统一响应的稳定字段；业务成功字段由各阶段 operation schema 收紧。 */
         ApiResponse: {
             success: boolean;
@@ -5419,6 +5485,278 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["McpAuditResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getApiV1AgentSupportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSupportSettingsResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    putApiV1AgentSupportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSupportSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getApiV1AgentSupportAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookie_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSupportAccountResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 统一错误响应 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    putApiV1AgentSupportAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cookie_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSupportAccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
                 };
             };
             /** @description 统一错误响应 */

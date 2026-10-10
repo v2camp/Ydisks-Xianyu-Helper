@@ -34,3 +34,11 @@ func PresetOptions() []PresetOption {
 	copy(out, presetOptions)
 	return out
 }
+
+// PresetValue 把外部输入的档位文本转为档位值，不做合法性判断。
+//
+// 之所以提供它：传输层不应为了构造请求参数而自行实现一份档位类型转换，更不应顺手
+// 复制一份合法取值判断；合法性统一由写入路径判定，HTTP 层只负责搬运。
+func PresetValue(raw string) capability.Preset {
+	return capability.Preset(raw)
+}

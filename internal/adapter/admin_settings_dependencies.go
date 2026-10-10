@@ -2,6 +2,7 @@ package adapter
 
 import (
 	adminapp "xianyu-go/internal/application/admin"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	mcpadminapp "xianyu-go/internal/application/mcpadmin"
 	"xianyu-go/internal/db"
 )
@@ -42,4 +43,12 @@ func (d *AdminSettingsDependencies) NewMCPAdminRepository() mcpadminapp.Reposito
 		return nil
 	}
 	return NewMCPAdminRepository(d.store)
+}
+
+// NewAgentSupportRepository 创建客服 Agent 配置仓储（租户级默认与账号级覆盖）适配器。
+func (d *AdminSettingsDependencies) NewAgentSupportRepository() agentadminapp.Repository {
+	if d == nil {
+		return nil
+	}
+	return NewAgentSupportRepository(d.store)
 }

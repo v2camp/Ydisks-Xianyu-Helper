@@ -13,6 +13,7 @@ import (
 
 	"xianyu-go/internal/account"
 	"xianyu-go/internal/adapter"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	lifecycleapp "xianyu-go/internal/application/lifecycle"
 	orderapp "xianyu-go/internal/application/orders"
 	"xianyu-go/internal/auth"
@@ -373,8 +374,34 @@ func testServerDependencies(authentication *auth.Service, databaseHealth Databas
 		DeliveryTemplates:      ports.DeliveryTemplates,
 		PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies, Keywords: ports.Keywords,
 		Settings: ports.Settings, Admin: ports.Admin,
-		MCPAdmin: ports.MCPAdmin,
+		MCPAdmin: ports.MCPAdmin, AgentSupport: testAgentSupportAdapter{service: ports.AgentSupport},
 	})}
+}
+
+// testAgentSupportAdapter 将组合层客服 Agent 配置服务适配为 Server 的测试 transport Port。
+type testAgentSupportAdapter struct {
+	// service 是测试组合根创建的客服 Agent 配置用例。
+	service *agentadminapp.Service
+}
+
+// TenantSettings 透传租户级默认配置读取用例。
+func (adapter testAgentSupportAdapter) TenantSettings(ctx context.Context, userID int64) (agentadminapp.TenantConfig, error) {
+	return adapter.service.TenantConfig(ctx, userID)
+}
+
+// UpdateTenantSettings 透传租户级默认配置保存用例。
+func (adapter testAgentSupportAdapter) UpdateTenantSettings(ctx context.Context, userID int64, config agentadminapp.TenantConfig) error {
+	return adapter.service.UpdateTenantConfig(ctx, userID, config)
+}
+
+// AccountSettings 透传账号级生效配置读取用例。
+func (adapter testAgentSupportAdapter) AccountSettings(ctx context.Context, userID int64, cookieID string) (agentadminapp.EffectiveConfig, error) {
+	return adapter.service.AccountConfig(ctx, userID, cookieID)
+}
+
+// UpdateAccountOverride 透传账号级覆盖保存用例。
+func (adapter testAgentSupportAdapter) UpdateAccountOverride(ctx context.Context, userID int64, cookieID string, override agentadminapp.AccountOverride) error {
+	return adapter.service.UpdateAccountOverride(ctx, userID, cookieID, override)
 }
 
 // newTestOrderReconciliationRecovery 以与进程组合根一致的路径构造订单补偿扫描应用服务。
