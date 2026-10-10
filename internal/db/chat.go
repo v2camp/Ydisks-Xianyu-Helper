@@ -93,7 +93,7 @@ type ChatStore struct {
 // UpsertSession 封装Upsert会话业务协调。
 func (s *ChatStore) UpsertSession(ctx context.Context, session ChatSession) error {
 	// now 用于本次流程后续判断的now
-	now := time.Now().UTC().Unix()
+	now := time.Now().UTC().UnixMilli()
 	// prefix 用于本次流程后续判断的prefix
 	prefix := dialectInsertIgnorePrefix(s.Dialect)
 	// query 用于本次流程后续判断的查询
@@ -182,7 +182,7 @@ func (s *ChatStore) SetSessionVisible(ctx context.Context, cookieID, chatID stri
 	visibleValue := visible
 	// err 保存可见状态更新失败；会话不存在时保持幂等成功。
 	_, err := s.DB.ExecContext(ctx, `UPDATE chat_sessions SET is_visible=?,updated_at=? WHERE cookie_id=? AND chat_id=?`,
-		visibleValue, time.Now().UTC().Unix(), cookieID, chatID)
+		visibleValue, time.Now().UTC().UnixMilli(), cookieID, chatID)
 	return err
 }
 
@@ -280,7 +280,7 @@ func (s *ChatStore) HideAndClearSession(ctx context.Context, userID int64, cooki
 		buyer_name=CASE WHEN ?<>'' THEN ? ELSE buyer_name END,user_hidden_at=?,local_messages_cleared_at=?,messages_cleared_at=?,
 		last_message='',last_message_at=0,unread_count=0,updated_at=?
 		WHERE cookie_id=? AND chat_id=? AND user_hidden_at=0`, preservedName, preservedName, clearedAt, clearedAt, historyCutoff,
-		time.Now().UTC().Unix(), cookieID, chatID)
+		time.Now().UTC().UnixMilli(), cookieID, chatID)
 	if updateErr != nil {
 		return false, updateErr
 	}
@@ -325,7 +325,7 @@ func (s *ChatStore) SyncSessionSummary(ctx context.Context, cookieID, chatID, su
 	_, err := s.DB.ExecContext(ctx, `UPDATE chat_sessions SET last_message=?,last_message_at=?,unread_count=?,
 		user_hidden_at=CASE WHEN user_hidden_at>0 THEN 0 ELSE user_hidden_at END,updated_at=?
 		WHERE cookie_id=? AND chat_id=? AND last_message_at<=? AND ?>messages_cleared_at`, summary, sentAt, unread,
-		time.Now().UTC().Unix(), cookieID, chatID, observedModifyAt, sentAt)
+		time.Now().UTC().UnixMilli(), cookieID, chatID, observedModifyAt, sentAt)
 	return err
 }
 
@@ -337,7 +337,7 @@ func (s *ChatStore) UpdateSessionIdentity(ctx context.Context, cookieID, chatID,
 		buyer_name=CASE WHEN ?<>'' THEN ? ELSE buyer_name END,
 		buyer_avatar_url=CASE WHEN ?<>'' THEN ? ELSE buyer_avatar_url END,
 		updated_at=? WHERE cookie_id=? AND chat_id=?`, buyerID, buyerID, buyerName, buyerName,
-		avatarURL, avatarURL, time.Now().UTC().Unix(), cookieID, chatID)
+		avatarURL, avatarURL, time.Now().UTC().UnixMilli(), cookieID, chatID)
 	return err
 }
 
@@ -413,7 +413,7 @@ func (s *ChatStore) SaveMessage(ctx context.Context, session ChatSession, messag
 	}
 	message.CookieID, message.ChatID = session.CookieID, session.ChatID
 	// now 用于本次流程后续判断的now
-	now := time.Now().UTC().Unix()
+	now := time.Now().UTC().UnixMilli()
 	// tx、err 用于本次流程后续判断的tx、err
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -731,7 +731,7 @@ func (s *ChatStore) MarkRead(ctx context.Context, userID int64, cookieID, chatID
 	// err 保存归零会话红点的错误，该更新通过用户归属子查询阻止越权修改。
 	_, err := s.DB.ExecContext(ctx, `UPDATE chat_sessions SET unread_count=0,updated_at=?
 		WHERE cookie_id=? AND chat_id=? AND EXISTS(SELECT 1 FROM cookies c WHERE c.id=chat_sessions.cookie_id AND c.user_id=?)`,
-		now.Unix(), cookieID, chatID, userID)
+		now.UnixMilli(), cookieID, chatID, userID)
 	return err
 }
 

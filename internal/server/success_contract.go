@@ -88,7 +88,7 @@ type chatSessionDTO struct {
 	ItemImageURL string `json:"item_image_url"`
 	// LastMessage 是最近一条消息摘要。
 	LastMessage string `json:"last_message"`
-	// LastMessageAt 是最近消息时间的 Unix 秒。
+	// LastMessageAt 是最近消息时间的 Unix 毫秒，与 chat_sessions.last_message_at 落库单位一致。
 	LastMessageAt int64 `json:"last_message_at"`
 	// UnreadCount 是当前会话未读消息数量。
 	UnreadCount int `json:"unread_count"`

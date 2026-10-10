@@ -194,9 +194,9 @@ func TestMigrate_ExistingAutomationRunsReceiveEmptyDeliveryProof(t *testing.T) {
 	if enabledAutoConsign != 1 || disabledAutoConsign != 0 {
 		t.Fatalf("迁移回填 auto_consign 错误: enabled=%d disabled=%d", enabledAutoConsign, disabledAutoConsign)
 	}
-	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务与账号每日定时下架迁移，不能仅证明旧 delivery_proof 列存在。
+	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务、账号每日定时下架与聊天时间单位统一（00060）迁移，不能仅证明旧 delivery_proof 列存在。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
-	if versionErr != nil || finalVersion != 58 {
+	if versionErr != nil || finalVersion != 60 {
 		t.Fatalf("final migration version=%d err=%v", finalVersion, versionErr)
 	}
 	// credential_cooldowns 表由 00050 创建，账号任务重试计数列由 00048 创建，发送日计数表由 00051 创建，进程心跳表由 00052 创建，免拼名单表由 00053 建立并已被 00056 移除，都必须在最终版本中符合预期。
@@ -302,13 +302,13 @@ func TestMigrate_UpgradesDatabaseWithMainChatVersions(t *testing.T) {
 	if !columnExists(t, rawDB, "automation_rule_actions", "delivery_template_id") {
 		t.Fatal("automation_rule_actions should reference delivery templates")
 	}
-	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）、上游自动免拼（00054）、砍价免拼阶段（00055）、账号级免拼安抚模板（00056）、MCP 开放服务（00057）与账号每日定时下架（00058），或记录读取失败。
+	// finalVersion、versionErr 验证迁移账本已推进到账号自动确认发货语义（00049）、凭证冷却持久化（00050）、发送日计数持久化（00051）、进程心跳持久化（00052）、上游自动免拼（00054）、砍价免拼阶段（00055）、账号级免拼安抚模板（00056）、MCP 开放服务（00057）、账号每日定时下架（00058）与聊天时间单位统一（00060），或记录读取失败。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
 	if versionErr != nil {
 		t.Fatalf("read final migration version: %v", versionErr)
 	}
-	if finalVersion != 58 {
-		t.Fatalf("final migration version=%d, want 58", finalVersion)
+	if finalVersion != 60 {
+		t.Fatalf("final migration version=%d, want 60", finalVersion)
 	}
 	if !tableExists(t, rawDB, "process_heartbeats") {
 		t.Fatal("升级后必须创建进程心跳持久化表")
