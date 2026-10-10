@@ -2078,33 +2078,35 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AgentPresetResponse: {
-            /** @enum {string} */
-            value: "readonly" | "standard" | "advanced";
+            /** @description 档位稳定标识；取值由同一响应中的 presets 名单定义 */
+            value: string;
             label: string;
             description: string;
         };
         AgentSupportSettingsResponse: {
             enabled: boolean;
-            /** @enum {string} */
-            preset: "readonly" | "standard" | "advanced";
+            /** @description 当前租户默认档位；取值属于 presets 名单 */
+            preset: string;
             presets: components["schemas"]["AgentPresetResponse"][];
         };
         AgentSupportSettingsUpdateRequest: {
             enabled: boolean;
-            /** @enum {string} */
-            preset: "readonly" | "standard" | "advanced";
+            /** @description 目标档位；不属于 presets 名单时返回 400 */
+            preset: string;
         };
         AgentSupportAccountResponse: {
             cookie_id: string;
             enabled: boolean;
-            /** @enum {string} */
-            preset: "readonly" | "standard" | "advanced";
+            /** @description 账号当前生效档位；账号未覆盖时即租户默认档位 */
+            preset: string;
             account_enabled: boolean | null;
+            /** @description 账号级档位覆盖；null 表示继承租户默认 */
             account_preset: string | null;
             presets: components["schemas"]["AgentPresetResponse"][];
         };
         AgentSupportAccountUpdateRequest: {
             enabled: boolean | null;
+            /** @description 账号级档位覆盖；null 表示继承租户默认；不属于 presets 名单时返回 400 */
             preset: string | null;
         };
         /** @description 统一响应的稳定字段；业务成功字段由各阶段 operation schema 收紧。 */

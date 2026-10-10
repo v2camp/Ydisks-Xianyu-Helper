@@ -7653,7 +7653,7 @@ components:
       type: object
       required: [value, label, description]
       properties:
-        value: {type: string, enum: [readonly, standard, advanced]}
+        value: {type: string, description: 档位稳定标识；取值由同一响应中的 presets 名单定义}
         label: {type: string}
         description: {type: string}
     AgentSupportSettingsResponse:
@@ -7661,7 +7661,7 @@ components:
       required: [enabled, preset, presets]
       properties:
         enabled: {type: boolean}
-        preset: {type: string, enum: [readonly, standard, advanced]}
+        preset: {type: string, description: 当前租户默认档位；取值属于 presets 名单}
         presets:
           type: array
           items: {$ref: '#/components/schemas/AgentPresetResponse'}
@@ -7670,16 +7670,16 @@ components:
       required: [enabled, preset]
       properties:
         enabled: {type: boolean}
-        preset: {type: string, enum: [readonly, standard, advanced]}
+        preset: {type: string, description: 目标档位；不属于 presets 名单时返回 400}
     AgentSupportAccountResponse:
       type: object
       required: [cookie_id, enabled, preset, account_enabled, account_preset, presets]
       properties:
         cookie_id: {type: string}
         enabled: {type: boolean}
-        preset: {type: string, enum: [readonly, standard, advanced]}
+        preset: {type: string, description: 账号当前生效档位；账号未覆盖时即租户默认档位}
         account_enabled: {type: boolean, nullable: true}
-        account_preset: {type: string, nullable: true}
+        account_preset: {type: string, nullable: true, description: 账号级档位覆盖；null 表示继承租户默认}
         presets:
           type: array
           items: {$ref: '#/components/schemas/AgentPresetResponse'}
@@ -7688,7 +7688,7 @@ components:
       required: [enabled, preset]
       properties:
         enabled: {type: boolean, nullable: true}
-        preset: {type: string, nullable: true}
+        preset: {type: string, nullable: true, description: 账号级档位覆盖；null 表示继承租户默认；不属于 presets 名单时返回 400}
     ApiResponse:
       type: object
       required: [success]
