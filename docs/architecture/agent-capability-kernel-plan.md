@@ -274,7 +274,7 @@ capability.Evaluate(catalog, Request{Principal, Capability, Confirmed}) → Deci
 **必须遵守**：
 
 - `AIReplySettings` 含 `api_key`，按 §1.7 禁止序列化为 HTTP 响应、禁止进入前端状态。新增 Agent 配置必须**新建领域模型**（如 `AgentAccountConfig`），不得复用含凭证的持久化模型作 DTO。
-- 新增迁移 `00059_agent_account_config.sql` 与 `00060_agent_pending_operations.sql`。**`00058` 已被占用**（`00058_account_auto_delist.sql`，账号每日定时下架，随 v1.0.32 上线）。
+- 新增迁移 `00059_agent_account_config.sql`（已落地，SQLite + PostgreSQL 两份）。`00060_agent_pending_operations.sql` **本期未建**——它是异步确认状态机的载体，而该状态机本期不做（见 §7 第 5 条与 §13），先建空表会留下不生效的 schema。**`00058` 已被占用**（`00058_account_auto_delist.sql`，账号每日定时下架，随 v1.0.32 上线）。
 - 迁移只需 `sqlite` / `postgres` **两份**，编号与最终 schema 一致。MySQL 已于 v1.0.32 移除，AGENTS.md §1.5 现为「两种方言」。
 - 数据库行为变更需 SQLite 聚焦测试；有环境时用**本机已运行实例**加 `TEST_POSTGRES_URL` 补 PostgreSQL 回归，**禁止为门禁启动数据库容器**（§0.1）。
 
@@ -295,12 +295,21 @@ internal/capability/              新增（L0，纯策略）
   scope.go                        账号作用域断言
 
 internal/mcp/                     瘦身为传输 adapter（Guard + 内核投影）
-internal/qqbot/                   升级为运营 Agent（命令解析 + 异步确认状态机）
-internal/agent/                   新增（客服端 Loop）
-  runtime.go                      回合预算、步骤上限、转人工逃生阀
-  mcpclient/                      对外 MCP Client
+internal/qqbot/                   升级为运营 Agent（只读能力迁移已落地；异步确认状态机未做，见 §13）
+internal/agent/                   新增（客服端 Loop，已落地）
+  doc.go                          包边界说明：只替换生成、作用域锁定、失败即回落
+  ports.go                        会话解析、工具、模型三组端口与循环消息模型
+  budget.go                       回合预算、步骤上限与预算耗尽错误
+  loop.go                         工具回合循环（可用工具由 capability 求值决定）
+  tools.go                        只读能力工具集（4 个：订单/商品查询）
+  model_default.go                支持函数调用的默认模型客户端
+  replier.go                      适配为 engine.AIGenerator，未启用/配置不可解析/循环失败三级回落
+  mcpclient/                      【未落地】对外 MCP Client，卡在 §13 未决项「连接配置层级」
 internal/application/agentadmin/  新增（配置用例）
 ```
+
+关于「转人工逃生阀」：本期实现为**预算耗尽或模型失败回落单次问答**（`replier.go`），
+保证买家始终收到一条回复；「每会话转人工按钮」属 §13 未决项，未落地。
 
 ### 规范变更提示（必须同步修订）
 
@@ -330,11 +339,15 @@ cd ".worktree/agent-capability-kernel"
 1. 修订 AGENTS.md §1.1 与 `dependency-rules.md`；
 2. 新建 `internal/capability`（risk / preset / principal / spec / catalog / policy / scope）+ 聚焦测试；
 3. `internal/mcp` 瘦身为传输 adapter，现有 tools 测试**不减项**；
-4. 迁移 `00059` / `00060`（SQLite + PostgreSQL 两份）+ `agentadmin` 应用服务 + 仓储端口；
+4. 迁移 `00059`（SQLite + PostgreSQL 两份；`00060` 随异步确认推迟，见 §8）+ `agentadmin` 应用服务 + 仓储端口；
 5. `/api/v1` 接口登记 + 生成类型 + 契约测试；
 6. 客服 Agent Loop（`internal/agent`）+ 对外 MCP Client；
 7. 运营 Agent：`internal/qqbot` 接入 capability + 异步确认状态机；
 8. 前端 Agent 中心页、账号弹窗精简、QQ 卡片扩展。
+
+**本期实际交付范围**：1-6（步骤 6 中的对外 MCP Client 除外）、7 的只读迁移部分、8 的
+Agent 中心页与账号弹窗部分。**未交付**：步骤 6 的 `internal/agent/mcpclient`、步骤 7 的
+异步确认状态机、步骤 8 的 QQ 卡片离线写策略扩展——三项均见 §7 与 §13 的推迟理由。
 
 提交按 AGENTS.md §3.1 拆分：一条提交只做一件事，且该提交点自身可编译。
 本任务属改进性任务，不适用阶段制度的「一阶段一提交」约束；但**禁止把互不相关的改动合并进同一条提交**。
