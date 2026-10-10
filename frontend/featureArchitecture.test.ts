@@ -71,6 +71,7 @@ const canonicalPageEntrypoints = [
   'app/features/orders/pages/OrderList.tsx',
   'app/features/rules/pages/Rules.tsx',
   'app/features/session/pages/SessionGate.tsx',
+  'app/features/settings/pages/AgentCenter.tsx',
   'app/features/settings/pages/AISettings.tsx',
   'app/features/settings/pages/Settings.tsx',
 ];

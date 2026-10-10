@@ -35,9 +35,9 @@ describe('frontend navigation routing', () => {
 
   test('route pages are lazy-loaded behind a shared Suspense boundary', () => {
     const app = readFrontendFile('app/shell/AuthenticatedShell.tsx'); /* app 表示认证后页面组合器源码。 */
-    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|Settings|Rules|Notifications|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
+    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|AgentCenter|Settings|Rules|Notifications|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
 
-    expect(lazyPageCount).toBe(10);
+    expect(lazyPageCount).toBe(11);
     expect(app).toContain('const PageLoading: React.FC');
     expect(app).toContain('<Suspense fallback={<PageLoading />}>');
     expect(app).not.toContain("import Dashboard from '../../components/Dashboard'");
@@ -101,26 +101,29 @@ describe('frontend navigation routing', () => {
 
     expect(app).toContain('const { isLoggedIn, isAdmin, signOut } = useSession();');
     expect(sessionProvider).toContain('setIsAdmin(response.is_admin === true)');
-    expect(app).toContain("activeRoute === 'settings'");
-    expect(app).toContain("activeRoute === 'ai-settings'");
-    expect(app).toContain("route === 'ai-settings'");
+    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'ai-settings', 'agent-center'];");
+    expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
+    expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
     expect(shell).toContain('isAdmin ? <AISettings /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <AgentCenter /> : <Dashboard />');
     expect(sidebar).toContain('isAdmin = false');
     expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
     expect(sidebar).toContain("{ id: 'ai-settings', icon: Sparkles, label: 'AI 设置' }");
+    expect(sidebar).toContain("{ id: 'agent-center', icon: Bot, label: 'Agent 中心' }");
     expect(settingsHook).toContain('setLoadError');
     expect(settingsHook).toContain("scope === 'ai'");
     expect(settingsHook).toContain('buildPersistableSettings(settings, scope)');
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);
 
-  test('ai-settings route maps to /app/ai-settings alongside system settings', () => {
+  test('admin configuration pages each own a distinct route mapping', () => {
     const routes = readFrontendFile('app/router/routes.ts'); /* routes 表示路由映射源码。 */
 
     expect(routes).toContain("'ai-settings'");
     expect(routes).toContain("'/app/ai-settings': 'ai-settings'");
     expect(routes).toContain("'/app/settings': 'settings'");
-  } /* 测试回调断言系统设置与 AI 设置各自拥有独立路由映射。 */);
+    expect(routes).toContain("'/app/agent-center': 'agent-center'");
+  } /* 测试回调断言系统设置、AI 设置与 Agent 中心各自拥有独立路由映射。 */);
 
   test('captcha remote settings expose the reference privacy and fallback semantics', () => {
     const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示settings。 */

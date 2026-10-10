@@ -5,6 +5,9 @@ import { useSession } from '../providers/SessionProvider';
 import AuthenticatedShell, { type DeliveryRuleTarget } from '../shell/AuthenticatedShell';
 import { pathByRoute, routeFromLocation, type AppRoute } from './routes';
 
+// adminOnlyRoutes 是仅管理员可访问的配置类路由；地址栏直达、历史回退与侧边栏跳转都按这一份名单做门禁。
+const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'ai-settings', 'agent-center'];
+
 /** AppRouter 管理认证后的浏览器路由、侧边栏偏好与跨页面规则配置载荷。 */
 export const AppRouter: React.FC = () => {
   // isLoggedIn 与 isAdmin 是 Provider 拥有的认证服务端状态，仅用于选择应用壳和授权路由。
@@ -26,8 +29,8 @@ export const AppRouter: React.FC = () => {
 
   /** effect 在权限变化时将设置类页面改写为仪表盘，防止地址栏或历史回退绕过客户端展示限制。 */
   useEffect(/* authorizationEffect 负责将失效的管理员页面安全回退。 */ () => {
-    // activeRoute 是浏览器历史事件同步进来的当前路由，settings 与 ai-settings 同为管理员专用。
-    if (isLoggedIn && !isAdmin && (activeRoute === 'settings' || activeRoute === 'ai-settings')) {
+    // activeRoute 是浏览器历史事件同步进来的当前路由，配置类页面全部只对管理员开放。
+    if (isLoggedIn && !isAdmin && adminOnlyRoutes.includes(activeRoute)) {
       window.history.replaceState({}, '', pathByRoute.dashboard);
       setActiveRoute('dashboard');
     }
@@ -35,8 +38,8 @@ export const AppRouter: React.FC = () => {
 
   /** navigate 由侧边栏用户操作触发，写入规范 URL 并更新当前路由。 */
   const navigate = (route: AppRoute): void => {
-    // permittedRoute 是应用当前权限允许的最终路由；非管理员访问设置类页面一律回退仪表盘。
-    const permittedRoute = (route === 'settings' || route === 'ai-settings') && !isAdmin ? 'dashboard' : route;
+    // permittedRoute 是应用当前权限允许的最终路由；非管理员访问配置类页面一律回退仪表盘。
+    const permittedRoute = adminOnlyRoutes.includes(route) && !isAdmin ? 'dashboard' : route;
     // nextPath 是最终路由对应的规范浏览器地址。
     const nextPath = pathByRoute[permittedRoute];
     if (nextPath !== window.location.pathname) window.history.pushState({}, '', nextPath);

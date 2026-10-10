@@ -55,6 +55,8 @@ const PublishImagesEditor = lazy(/* 图片编辑器随商品页面路由加载�
 const Settings = lazy(/* Settings 页面按路由激活时加载。 */ () => import('../features/settings/pages/Settings'));
 // AISettings 是按需加载的 AI 设置页面，仅在管理员访问时加载。
 const AISettings = lazy(/* AISettings 页面按路由激活时加载。 */ () => import('../features/settings/pages/AISettings'));
+// AgentCenter 是按需加载的 Agent 中心页面，仅在管理员访问时加载。
+const AgentCenter = lazy(/* AgentCenter 页面按路由激活时加载。 */ () => import('../features/settings/pages/AgentCenter'));
 // Rules 是按需加载的自动化规则页面，避免首屏载入规则编辑器代码。
 const Rules = lazy(/* Rules 页面按路由激活时加载。 */ () => import('../features/rules/pages/Rules'));
 // DeliveryTemplates 是按需加载的发货模板管理页面。
@@ -119,6 +121,7 @@ export const AppContent: React.FC<AppContentProps> = ({
       case 'notifications': return <Notifications isAdmin={isAdmin} />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
       case 'ai-settings': return isAdmin ? <AISettings /> : <Dashboard />;
+      case 'agent-center': return isAdmin ? <AgentCenter /> : <Dashboard />;
       default: return <Dashboard />;
     }
   };
