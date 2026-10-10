@@ -17,14 +17,13 @@ type AIConversationMessage struct {
 	BargainCount int
 }
 
-// AIReplySettings 对应 ai_reply_settings 表。
+// AIReplySettings 对应 ai_reply_settings 表，只承载账号级开关与砍价护栏。
+// 模型名、API 地址与密钥不在此表：它们统一来自 system_settings 的全局 AI 配置（00003 建立，
+// 由 00063 从本表删除模型列），因此本结构体刻意不含任何模型字段。
 type AIReplySettings struct {
 	CookieID               string `json:"cookie_id"`
 	AIEnabled              bool   `json:"ai_enabled"`
 	AutoAdjustPriceEnabled bool   `json:"auto_adjust_price_enabled"`
-	ModelName              string `json:"model_name"`
-	APIKey                 string `json:"api_key"`
-	BaseURL                string `json:"base_url"`
 	MaxDiscountPercent     int    `json:"max_discount_percent"`
 	MaxDiscountAmount      int    `json:"max_discount_amount"`
 	MaxBargainRounds       int    `json:"max_bargain_rounds"`
@@ -53,7 +52,6 @@ type AIBargainQuote struct {
 type AIReply struct {
 	DB      *sql.DB
 	Dialect Dialect
-	codec   *secretCodec
 }
 
 // IsEnabled 只读取账号 AI 议价开关，不解密模型密钥或其他敏感字段。
@@ -80,7 +78,8 @@ func (a *AIReply) PricingMode(ctx context.Context, cookieID string) (bool, bool,
 	return aiEnabled != 0, autoAdjustEnabled != 0, err
 }
 
-// Get 取某账号 AI 回复配置。
+// Get 取某账号 AI 回复配置。模型名、API 地址与密钥一律不在此表读取：
+// 模型配置的权威来源是 system_settings 的全局 AI 配置，本表三列已由 00063 删除。
 func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, error) {
 	// s 用于本次流程后续判断的s
 	var s AIReplySettings
@@ -88,14 +87,14 @@ func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, e
 	var enabled int
 	// autoAdjustEnabled 表示 AI 报价是否允许在订单创建后触发真实改价。
 	var autoAdjustEnabled int
-	// apiKey、customPrompts 用于本次流程后续判断的apiKey、customPrompts
-	var apiKey, customPrompts sql.NullString
+	// customPrompts 是账号自定义提示词，数据库允许为空。
+	var customPrompts sql.NullString
 	// err 用于本次流程后续判断的err
 	err := a.DB.QueryRowContext(ctx,
-		`SELECT cookie_id, ai_enabled, auto_adjust_price_enabled, COALESCE(model_name, ''), COALESCE(api_key, ''), COALESCE(base_url, ''),
+		`SELECT cookie_id, ai_enabled, auto_adjust_price_enabled,
 		        max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts
 		 FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(
-		&s.CookieID, &enabled, &autoAdjustEnabled, &s.ModelName, &apiKey, &s.BaseURL,
+		&s.CookieID, &enabled, &autoAdjustEnabled,
 		&s.MaxDiscountPercent, &s.MaxDiscountAmount, &s.MaxBargainRounds, &customPrompts)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -105,17 +104,7 @@ func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, e
 	}
 	s.AIEnabled = enabled != 0
 	s.AutoAdjustPriceEnabled = autoAdjustEnabled != 0
-	s.APIKey, err = a.codec.decrypt("ai-api-key", cookieID, apiKey.String)
-	if err != nil {
-		return nil, err
-	}
 	s.CustomPrompts = customPrompts.String
-	if s.ModelName == "" {
-		s.ModelName = "qwen-plus"
-	}
-	if s.BaseURL == "" {
-		s.BaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	}
 	return &s, nil
 }
 

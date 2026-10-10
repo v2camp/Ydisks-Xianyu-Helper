@@ -37,7 +37,7 @@
 | QQ 入站既有规划 | `docs/architecture/qq-inbound-command-plan.md` §4 已明确远期方向：「经应用内 Agent 调用 MCP tools 执行货架操作」 |
 | 客服端现状 | `internal/engine/ai.go` 473 行，单次 chat completions；无 loop、无工具、无权限模型；直连 `*db.Store`，与 AGENTS.md §1.1 存在张力 |
 | 全局设置载体 | `user_settings(user_id, key, value)` 字符串 KV |
-| 账号级 AI 载体 | `ai_reply_settings`（主键 `cookie_id`），含 `ai_enabled`、`model_name`、`api_key`、`base_url`、业务护栏字段 |
+| 账号级 AI 载体 | `ai_reply_settings`（主键 `cookie_id`），含 `ai_enabled`、业务护栏字段与 Agent 开关/档位；模型名、API 地址与密钥**不在本表**，统一由 `system_settings` 全局配置提供（账号级模型三列已由迁移 `00063` 删除） |
 | MCP 持久化 | 迁移 `00057`：`mcp_tokens`（仅存 SHA-256 哈希）、`mcp_call_audit` |
 | 前端入口（现状分散） | `settings/pages/AISettings.tsx`、`accounts/components/AccountAISettingsModal.tsx`、`settings/components/MCPServiceCard.tsx`、`settings/components/QQConnectorCard.tsx` |
 
@@ -269,7 +269,7 @@ capability.Evaluate(catalog, Request{Principal, Capability, Confirmed}) → Deci
 扣减」的持久化与执行路径，该路径尚未实现；先暴露一个不生效的开关，正是 §7 反对的
 「在 Agent 中心开了但没生效」。
 
-**为何扩展 `ai_reply_settings` 而非新建表**：该表已承载账号级 AI 凭证（`api_key` / `base_url` / `model_name`），与 Agent 配置**归属相同、敏感度相同**，符合 AGENTS.md §1.5「敏感度或归属不同的类型尤其禁止合并」的反向判定。
+**为何扩展 `ai_reply_settings` 而非新建表**：该表已承载账号级 AI 配置（`ai_enabled` 与砍价护栏），与 Agent 配置**归属相同**——都回答「这个账号怎么跑 AI」，符合 AGENTS.md §1.5「敏感度或归属不同的类型尤其禁止合并」的反向判定。该表原有的模型与密钥三列（`api_key` / `base_url` / `model_name`）已由迁移 `00063` 删除：模型配置统一由 `system_settings` 提供，账号级不再承载凭证，因此扩展 `agent_enabled` / `agent_preset` 也不再引入敏感度。
 
 **必须遵守**：
 

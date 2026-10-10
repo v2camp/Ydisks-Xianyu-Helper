@@ -36,8 +36,6 @@ func TestAIReplySettingsAndConversationBranches(t *testing.T) {
 	settings := AIReplySettings{
 		AIEnabled:              true,
 		AutoAdjustPriceEnabled: true,
-		ModelName:              "model",
-		BaseURL:                "https://example.test/v1",
 		MaxDiscountPercent:     12,
 		MaxDiscountAmount:      88,
 		MaxBargainRounds:       3,
@@ -47,14 +45,14 @@ func TestAIReplySettingsAndConversationBranches(t *testing.T) {
 	if err := store.AIReply.UpsertSettings(ctx, cookieID, settings); err != nil {
 		t.Fatal(err)
 	}
-	// loaded、loadedErr 保存重新读取后的非敏感 AI 配置。
+	// loaded、loadedErr 保存重新读取后的账号级 AI 配置。
 	loaded, loadedErr := store.AIReply.Get(ctx, cookieID)
-	if loadedErr != nil || loaded == nil || !loaded.AIEnabled || !loaded.AutoAdjustPriceEnabled || loaded.ModelName != "qwen-plus" || loaded.BaseURL == "" || loaded.CustomPrompts != "prompt" {
+	if loadedErr != nil || loaded == nil || !loaded.AIEnabled || !loaded.AutoAdjustPriceEnabled || loaded.CustomPrompts != "prompt" {
 		t.Fatalf("loaded=%+v err=%v", loaded, loadedErr)
 	}
-	// listed、listErr 验证用户列表只返回非敏感配置。
+	// listed、listErr 验证用户列表返回账号级开关与护栏；模型配置已不在该结构体中，无从泄漏。
 	listed, listErr := store.AIReply.ListForUser(ctx, userID)
-	if listErr != nil || len(listed) != 1 || !listed[0].AIEnabled || listed[0].APIKey != "" {
+	if listErr != nil || len(listed) != 1 || !listed[0].AIEnabled || listed[0].CustomPrompts != "prompt" {
 		t.Fatalf("listed=%+v err=%v", listed, listErr)
 	}
 	// replaced 验证空提示词的持久化兼容分支。
