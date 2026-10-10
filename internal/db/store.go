@@ -95,7 +95,7 @@ func NewStore(db *sql.DB, dialect Dialect) *Store {
 		Keywords:          &Keywords{DB: db, Dialect: dialect},
 		DefaultReps:       &DefaultReplies{DB: db, Dialect: dialect},
 		ItemReps:          &ItemReplies{DB: db, Dialect: dialect},
-		AIReply:           &AIReply{DB: db, Dialect: dialect, codec: codec},
+		AIReply:           &AIReply{DB: db, Dialect: dialect},
 		Notifications:     &Notifications{DB: db, Dialect: dialect, codec: codec},
 		Settings:          &SystemSettings{DB: db, Dialect: dialect, codec: codec},
 		UserSettings:      &UserSettings{DB: db, Dialect: dialect},

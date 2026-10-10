@@ -1317,8 +1317,9 @@ func TestAIReply_GetNotFound(t *testing.T) {
 	}
 }
 
-// TestAIReply_GetDefaults 缺省值兜底（model_name/base_url 为空时填默认）。
-func TestAIReply_GetDefaults(t *testing.T) {
+// TestAIReply_GetReadsMinimalRow 校验 Get 不再触碰模型列：只含开关与提示词的最小行也能读出。
+// 若 Get 回退为读取 model_name/base_url，00063 删列后本用例会直接报错。
+func TestAIReply_GetReadsMinimalRow(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newTestDB(t)
 	defer cleanup()
@@ -1327,25 +1328,19 @@ func TestAIReply_GetDefaults(t *testing.T) {
 	// cid 用于本次流程后续判断的cid
 	_, cid := seedAccount(t, s)
 
-	// 直接插入一条 model_name/base_url 均为 NULL 的记录。
-	_, err := s.DB.ExecContext(ctx,
-		`INSERT INTO ai_reply_settings (cookie_id, ai_enabled, model_name, base_url) VALUES (?, 0, NULL, NULL)`, cid)
-	if err != nil {
-		t.Fatalf("insert ai_reply: %v", err)
+	// 只写账号级开关与提示词，不写任何模型列。
+	if // insertErr 是写入最小 AI 配置行的数据库错误
+	_, insertErr := s.DB.ExecContext(ctx,
+		`INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES (?, 1, '温和议价')`, cid); insertErr != nil {
+		t.Fatalf("insert ai_reply: %v", insertErr)
 	}
 	// got、err 用于本次流程后续判断的got、err
 	got, err := s.AIReply.Get(ctx, cid)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.ModelName != "qwen-plus" {
-		t.Fatalf("默认 model_name=%q want qwen-plus", got.ModelName)
-	}
-	if got.BaseURL != "https://dashscope.aliyuncs.com/compatible-mode/v1" {
-		t.Fatalf("默认 base_url=%q", got.BaseURL)
-	}
-	if got.AIEnabled {
-		t.Fatal("ai_enabled 应 false")
+	if !got.AIEnabled || got.CustomPrompts != "温和议价" {
+		t.Fatalf("账号级开关与提示词应正确读出，实际 %+v", got)
 	}
 }
 

@@ -326,6 +326,17 @@ delivery: 渠道词(百度|度盘|夸克|网盘|迅雷|阿里|UC|115|天翼) & �
    `ai_scope.go` 的 `scope.decide()` 接管。两套意图判定并存（`ai_intent.go` 的 complaint/bargain/order/inquiry/consult
    与 `ai_scope_config` 的 bargain/product_qa/delivery/stock）容易误导后续维护，建议明确取舍。
 
+### 处置结论
+
+| 待确认项 | 结论 | 落地 |
+|---|---|---|
+| 1. 消息保留策略 | 生产库仅 3 天与采集侧写入有关，代码里本无清理逻辑；新增统一保留清理任务，默认 30 天、下限 10 天，可配置，覆盖聊天消息与全部日志表（含此前完全没有清理逻辑的 `account_login_logs` / `risk_control_logs` / `security_audit_logs` / `mcp_call_audit`） | 迁移 `00062` |
+| 2. 会话数 > 消息数 | **不是过滤条件问题**：347 个会话中 229 个有时间戳但消息从未回填（2024-12~2026-06 历史遗留），4 个 `last_message_at = 0`，仅 114 个有消息。存储无压力（消息表 344 kB、会话表 392 kB、整库 85 MB），无需改代码 | 仅排查结论 |
+| 3. 模型配置双份 | 判定为配置漂移并彻底收口：账号级模型三列（`model_name` / `api_key` / `base_url`）写入侧早已停写、消费侧零读取，现从代码与表结构中一并移除；模型配置单一来源 = `system_settings` 全局 AI 配置 | 迁移 `00063` |
+| 4. `aiShouldHandleIntent` 死代码 | 确认为死代码，连同整张意图注册表（`classifyIntent` / `aiIntentRules` / `buildComplaintPatterns` 等）一并移除；生产路径保持不变，仍由 `ai_scope.go` 的 `scope.decide()` 接管 | 已随客服 Agent 改进分支合入 main |
+
+用户批复同时决定：模型配置**保留生效的全局配置**（`system_settings` 的 deepseek-flash 一套）；月度趋势暂不做，**先看周趋势**；自动发货相关问题**暂缓**，后续单独起任务做 badcase 回放，保证关键场景不回归。
+
 ---
 
 ## 附录：复现命令
