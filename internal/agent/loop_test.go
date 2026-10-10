@@ -1,4 +1,4 @@
-// loop_test.go 覆盖客服 Agent 循环的编排与预算，以及适配器的回落行为。
+// loop_test.go 覆盖客服 Agent 循环的编排与预算；适配器的选路与回落见 replier_test.go。
 
 package agent
 
@@ -207,75 +207,6 @@ func TestLoopOmitsToolsWhenToolSourceMissing(t *testing.T) {
 	}
 	if len(model.requests) != 1 || len(model.requests[0].Tools) != 0 {
 		t.Fatalf("无工具层时不得下发工具声明: %+v", model.requests)
-	}
-}
-
-// TestReplierReturnsAgentAnswerOnSuccess 验证循环成功时适配器直接返回 Agent 答复。
-func TestReplierReturnsAgentAnswerOnSuccess(t *testing.T) {
-	// model 是直接作答的模型替身。
-	model := &scriptedModel{results: []StepResult{{Content: "Agent 答复"}}}
-	// loop、_ 分别是待测试循环与订单端口替身。
-	loop, _ := newTestLoop(t, model, Budget{})
-	// fallback 是回落生成器替身，本用例中不应被调用。
-	fallback := &fakeGenerator{content: "回落答复"}
-	// replier 是待测试适配器。
-	replier := NewReplier(loop, sessionFor("cid-own", capability.PresetReadonly), fallback, nil)
-
-	// got、err 分别是适配器输出与失败原因。
-	got, err := replier.Generate(context.Background(), request())
-	if err != nil || got != "Agent 答复" {
-		t.Fatalf("循环成功时应返回 Agent 答复: got=%q err=%v", got, err)
-	}
-	if fallback.calls != 0 {
-		t.Fatalf("循环成功时不应触发回落: %d", fallback.calls)
-	}
-}
-
-// TestReplierFallsBackWhenLoopFails 验证预算耗尽与模型失败都回落到单次问答，买家不会静默无回复。
-func TestReplierFallsBackWhenLoopFails(t *testing.T) {
-	// cases 是两种必须回落的失败场景。
-	cases := []struct {
-		// name 是场景名称。
-		name string
-		// model 是该场景使用的模型替身。
-		model ModelClient
-		// budget 是该场景使用的循环预算。
-		budget Budget
-	}{
-		{name: "预算耗尽", model: &scriptedModel{results: []StepResult{
-			{ToolCalls: toolCallList(1)}, {ToolCalls: toolCallList(1)},
-		}}, budget: Budget{MaxRounds: 1, MaxCallsPerRound: 1}},
-		{name: "模型失败", model: &scriptedModel{stepErr: errors.New("模型不可用")}, budget: Budget{}},
-	}
-	// current 是当前待验证的场景。
-	for _, current := range cases {
-		// loop、_ 分别是当前场景的循环与订单端口替身。
-		loop, _ := newTestLoop(t, current.model, current.budget)
-		// fallback 是回落生成器替身。
-		fallback := &fakeGenerator{content: "回落答复"}
-		// replier 是当前场景的适配器。
-		replier := NewReplier(loop, sessionFor("cid-own", capability.PresetReadonly), fallback, nil)
-
-		// got、err 分别是适配器输出与失败原因。
-		got, err := replier.Generate(context.Background(), request())
-		if err != nil || got != "回落答复" {
-			t.Fatalf("场景[%s]应回落到单次问答: got=%q err=%v", current.name, got, err)
-		}
-		if fallback.calls != 1 {
-			t.Fatalf("场景[%s]回落生成器应被调用一次: %d", current.name, fallback.calls)
-		}
-	}
-}
-
-// TestReplierUsesDefaultFallbackGenerator 验证未注入回落生成器时使用 engine 的默认单次问答实现。
-func TestReplierUsesDefaultFallbackGenerator(t *testing.T) {
-	// loop 是不参与本用例断言的循环。
-	loop := NewLoop(&scriptedModel{}, nil, Budget{}, nil)
-	// replier 是未注入回落生成器的适配器。
-	replier := NewReplier(loop, sessionFor("cid-own", capability.PresetReadonly), nil, nil)
-	if // isDefault 表示回落生成器是否为 engine 的默认单次问答实现。
-	_, isDefault := replier.fallback.(engine.DefaultAIGenerator); !isDefault {
-		t.Fatalf("未注入回落生成器时应使用 engine 默认实现: %T", replier.fallback)
 	}
 }
 

@@ -54,6 +54,19 @@ type Message struct {
 	ToolCallID string
 }
 
+// SessionResolver 按账号解析客服 Agent 当前生效的会话配置。
+//
+// 端口由本包定义、由组合层投影实现：它回答「这个账号现在跑不跑、跑在哪一档」，
+// 运行时只消费结论，不解释配置来源。
+//
+// 解析发生在每次补全之前而不是账号启动时：管理界面的开关与档位是即时生效的配置项，
+// 若必须重启账号才能被观察到，那个开关就会在无声中失效。
+type SessionResolver interface {
+	// ResolveSession 返回账号当前生效的会话配置。
+	// enabled 为 false 表示不运行 Agent；err 非空表示配置不可解析，调用方必须按未启用处理。
+	ResolveSession(ctx context.Context, cookieID string) (session Session, enabled bool, err error)
+}
+
 // ToolSource 是客服 Agent 可调用的能力工具集合。
 type ToolSource interface {
 	// Schemas 返回当前会话档位下被放行（Decision 为 allow）的工具声明；
