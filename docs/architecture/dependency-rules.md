@@ -137,7 +137,7 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 `internal/server` 只保留 `/mcp` 的通用挂载缝：不得导入 `mcp-go`，也不得出现 JSON-RPC 协议语义。
 `/mcp` 是非业务协议端点，不进 OpenAPI 登记；管理员管理接口固定在 `/api/v1/mcp/*` 并登记进 `api/openapi.yaml`。
 `XIANYU_MCP_TOKEN` 是部署者通过进程环境注入的引导令牌，应用只从环境读取，不落库、不写日志。
-00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，三方言结构一致。
+00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，两种方言结构一致。
 
 ### 3.8 `internal/capability`（能力目录与访问策略）
 
