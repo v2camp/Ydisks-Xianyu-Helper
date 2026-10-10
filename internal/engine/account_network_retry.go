@@ -36,20 +36,25 @@ func (a *Account) retryDelay(errMsg string) time.Duration {
 	return withRetryJitter(time.Duration(secs) * time.Second)
 }
 
-// networkRetryDelay 封装network重试延迟业务协调。
-func (a *Account) networkRetryDelay() time.Duration {
+// networkRetryBase 返回不含抖动的退避基准：指数阶梯先叠加上限约束，再加账号专属错峰。
+// 与 networkRetryDelay 拆开是为了让「阶梯随失败次数增长」这一性质可被确定性验证——抖动是
+// 随机量，用它参与跨越两次采样的比较时结论不成立。
+func (a *Account) networkRetryBase() time.Duration {
 	a.runtimeMu.Lock()
-	// f 用于本次流程后续判断的f
+	// f 是当前累计的网络失败次数，小于 1 时按 1 档处理。
 	f := a.networkFailures
 	a.runtimeMu.Unlock()
 	if f < 1 {
 		f = 1
 	}
-	// base 是叠加账号错峰前的指数退避时长。
+	// base 是叠加账号错峰前的指数退避时长，上限 60s。
 	base := time.Duration(min(2+exponentialSeconds(f), 60)) * time.Second
-	// staggered 是加入账号专属错峰后的退避时长。
-	staggered := base + accountReconnectStagger(a.CookieID)
-	return withRetryJitter(staggered)
+	return base + accountReconnectStagger(a.CookieID)
+}
+
+// networkRetryDelay 返回实际使用的退避时长，在基准之上加 0-30% 抖动。
+func (a *Account) networkRetryDelay() time.Duration {
+	return withRetryJitter(a.networkRetryBase())
 }
 
 // accountReconnectStagger 返回账号专属的重连错峰量，取值落在 [1s, reconnectStaggerSpan]。

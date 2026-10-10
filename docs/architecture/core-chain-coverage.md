@@ -57,6 +57,24 @@ cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cov
 > 错误返回、`db/agent_config.go:46,71,104` 的读错误返回），属既有「仅外部环境」例外类别，
 > 未单列例外条目。
 
+> ⚠️ 2026-10-11 复核（修复 engine 退避测试假失败与 qqbot 格式遗留）：仍用逐包对照基线，
+> 基线 `main`＝`9fe5145`。执行环境：本机 `go1.27.1`，口径 `-count=1 -covermode=set`，命令见上。
+>
+> 五个链路包（语句加权）：automation 90.06%→**90.06%**、engine 90.43%→**90.82%**、
+> adapter 85.59%→**85.59%**、db 85.02%→**85.02%**、xianyu/ws 88.17%→**88.17%**；
+> 合计 87.31%→**87.38%**。下表 15 个具名文件**逐项不变**（本次未触及）。
+>
+> 过程记录：为修 `TestRecordNetworkFailureDrivesBackoff` 的假失败而抽出
+> `networkRetryBase`（纯重构，行为不变）后，`account_network_retry.go` 语句数由 108 降为
+> 105、未覆盖数仍为 2，engine 包一度落到 **90.42%**——正是 §2.4 要拦的「核心链路覆盖率
+> 回落」。按 §2.4 补测而非登记摊薄：新增
+> `TestHandleConnectFailureBacksOffTransientDialError`，覆盖此前**完全无测试**的
+> `handleConnectFailure` 瞬时故障分支（即 2026-09-15 停摆事故的生产侧路径），engine 回到
+> **90.82%**，净增 15 条已覆盖语句，核心链路合计净增 15 条。
+>
+> 本次未引入任何新的未覆盖语句。`account_network_retry.go` 自身的 2 条未覆盖语句已在
+> 下方例外登记表补录。
+
 最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
 
 | 文件 | 链路职责 | 未覆盖/总语句 | 覆盖率 | 门槛 |
@@ -99,3 +117,5 @@ cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cov
 | internal/automation/run_coordinator.go:118-122,141-152 | 7 | 仅外部环境 | 人工核对/求评价计数落库失败分支：需在动作成功与状态写入之间制造存储故障 | 2026-09-13 |
 | internal/automation/run_coordinator.go:341-348,358-361,369-371,395-401,413-416 | 13 | 仅外部环境 | 检查点推进与人工核对收口的存储故障分支：`StartRunAction` 与后续写入之间需数据库中途故障 | 2026-09-13 |
 | internal/db/automation_recovery.go:582-584,693-695 | 2 | 仅外部环境 | `rows.Err()` 迭代中断分支，需要数据库连接在扫描中途物理损坏才能触发 | 2026-09-13 |
+| internal/engine/account_network_retry.go:71 | 1 | 可证明不可达 | `accountReconnectStagger` 的 `sum = -sum`：`sum` 由 `(sum*31 + int(ch)) % reconnectStaggerSpan` 迭代得出，`int(ch)` 对 byte 恒在 [0,255]、初值 0，取模结果不可能为负 | 2026-10-11 |
+| internal/engine/account_network_retry.go:101 | 1 | 仅外部环境 | `withRetryJitter` 的 `crypto/rand.Int` 错误兜底：需系统熵源故障才能触发 | 2026-10-11 |

@@ -135,7 +135,7 @@ func TestRunRejectsInvalidSetup(t *testing.T) {
 	service, _, _, _ := newFixtureService()
 	// cases 是应判定为启动失败的输入。
 	cases := map[string]func() error{
-		"空上下文":/* 未注入生命周期上下文不得启动。 */ func() error {
+		"空上下文": /* 未注入生命周期上下文不得启动。 */ func() error {
 			// 刻意传 nil 验证 Run 拒绝空上下文的启动契约，属测试必需而非疏忽。
 			return NewGateway("id", "secret", service).Run(nil) //nolint:staticcheck // SA1012：契约要求验证 nil Context 被拒绝
 		},
