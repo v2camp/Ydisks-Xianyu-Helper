@@ -336,6 +336,9 @@ type Config struct {
 	ReplyReviewNotifier ReplyReviewNotifier
 	// GlobalBudget 可选：多账号共享的全局日发送预算；nil 表示不启用全局额度。
 	GlobalBudget *SendBudget
+	// AIGeneratorFactory 可选：按账号构造模型生成接缝；nil 或返回 nil 时使用默认单次问答。
+	// 客服 Agent 由组合层通过它注入，engine 不反向依赖 Agent 实现。
+	AIGeneratorFactory AIGeneratorFactory
 }
 
 // New 构造单账号运行时（未启动）。
@@ -396,7 +399,15 @@ func New(cfg Config) *Account {
 		if cfg.Store.Settings != nil {
 			settings = cfg.Store.Settings
 		}
-		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
+		// gens 是可选的模型生成接缝列表；工厂未装配或返回 nil 时留空，NewAIReplier 回落默认实现。
+		var gens []AIGenerator
+		if cfg.AIGeneratorFactory != nil {
+			// injected 是工厂为该账号构造的生成器。
+			if injected := cfg.AIGeneratorFactory(cfg.CookieID); injected != nil {
+				gens = append(gens, injected)
+			}
+		}
+		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger, gens...), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
 	}
 	a.messageDispatcher = newMessageDispatcher(messageDispatcherConfig{
 		CookieID:        cfg.CookieID,

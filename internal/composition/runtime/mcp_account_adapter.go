@@ -8,8 +8,8 @@ import (
 
 	accountapp "xianyu-go/internal/application/account"
 	automationapp "xianyu-go/internal/application/automation"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpAccountPorts 聚合账号域 MCP 工具需要的应用服务。
@@ -30,8 +30,8 @@ type mcpAccountPorts struct {
 	tasks *automationapp.Service
 }
 
-// 编译期断言适配器始终满足 mcp.AccountPorts。
-var _ mcp.AccountPorts = (*mcpAccountPorts)(nil)
+// 编译期断言适配器始终满足 capability.AccountPorts。
+var _ capability.AccountPorts = (*mcpAccountPorts)(nil)
 
 // newMCPAccountPorts 用 TransportPorts 中的账号应用服务构造 MCP 账号端口。
 func newMCPAccountPorts(ports composition.TransportPorts) *mcpAccountPorts {

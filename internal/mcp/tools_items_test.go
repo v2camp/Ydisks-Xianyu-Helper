@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	itemapp "xianyu-go/internal/application/items"
+
+	"xianyu-go/internal/capability"
 )
 
 // fakeItemPorts 是商品域假端口，记录平台与本地写入调用。
@@ -70,7 +72,7 @@ func (f *fakeItemPorts) SyncItemsPage(context.Context, itemapp.SyncQuery) (itema
 }
 
 // PublishSingle 记录发布标题并返回成功结果（模拟响应 Cookie 警告）。
-func (f *fakeItemPorts) PublishSingle(_ context.Context, input SinglePublishInput) (itemapp.PublishOutcome, error) {
+func (f *fakeItemPorts) PublishSingle(_ context.Context, input capability.SinglePublishInput) (itemapp.PublishOutcome, error) {
 	f.published = append(f.published, input.Title)
 	return itemapp.PublishOutcome{
 		Result:            &itemapp.PublishResult{ItemID: "new-1", ItemURL: "https://goofish.com/item/new-1", Title: input.Title, Quantity: input.Quantity},

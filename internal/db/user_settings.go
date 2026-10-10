@@ -61,3 +61,33 @@ func (s *UserSettings) SetForUser(ctx context.Context, userID int64, key, value 
 			}), userID, key, value)
 	return err
 }
+
+// SetManyForUser 在单个事务内保存多项用户设置，避免只落库一半配置。
+//
+// 空映射直接返回 nil：没有待写入的键时不应开启事务。
+func (s *UserSettings) SetManyForUser(ctx context.Context, userID int64, values map[string]string) error {
+	if len(values) == 0 {
+		return nil
+	}
+	// keyColumn 是当前 SQL 方言中安全引用的 key 列名。
+	keyColumn := dialectQuote(s.Dialect, "key")
+	// tx、err 是本次批量写入的事务与开启错误。
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// statement 是单项设置的 upsert 语句，键与值均走占位符。
+	statement := `INSERT INTO user_settings (user_id, ` + keyColumn + `, value, updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)` +
+		dialectUpsert(s.Dialect, []string{"user_id", keyColumn}, map[string]string{
+			"value": "EXCLUDED.value", "updated_at": "CURRENT_TIMESTAMP",
+		})
+	// key、value 是当前待写入的设置键值对。
+	for key, value := range values {
+		// execErr 是当前设置项的写入错误；任一项失败即整体回滚。
+		if _, execErr := tx.ExecContext(ctx, statement, userID, key, value); execErr != nil {
+			return execErr
+		}
+	}
+	return tx.Commit()
+}

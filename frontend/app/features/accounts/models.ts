@@ -494,3 +494,31 @@ export interface QRLoginVerificationResponse {
   /** 是否新建了本地账号。 */
   is_new_account?: boolean;
 }
+
+/** 单个档位的展示元数据；名单由服务端下发，前端不硬编码档位取值。 */
+export interface AccountAgentPresetOption {
+  /** 档位稳定标识，保存时原样回传服务端。 */
+  value: string;
+  /** 档位展示名称。 */
+  label: string;
+  /** 档位放行范围的说明文案。 */
+  description: string;
+}
+
+/** 账号级客服 Agent 覆盖值；两个字段各自可空，null 一律表示继承租户默认。 */
+export interface AccountAgentOverride {
+  /** 账号级启用覆盖；null 表示继承租户默认开关。 */
+  enabled: boolean | null;
+  /** 账号级档位覆盖；null 表示继承租户默认档位。 */
+  preset: string | null;
+}
+
+/** 账号级客服 Agent 授权 UI 模型：覆盖值、服务端解析出的生效值与可选档位名单。 */
+export interface AccountAgentSupport extends AccountAgentOverride {
+  /** 账号当前生效开关，由服务端按「账号覆盖 ?? 租户默认」解析。 */
+  effectiveEnabled: boolean;
+  /** 账号当前生效档位，账号未覆盖时即租户默认档位。 */
+  effectivePreset: string;
+  /** 服务端下发的可选档位名单，顺序即展示顺序。 */
+  presets: AccountAgentPresetOption[];
+}

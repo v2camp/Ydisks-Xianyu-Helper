@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sashabaranov/go-openai"
-
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/netguard"
 )
@@ -36,17 +34,27 @@ type AIReplierImpl struct {
 	cookieID string
 	store    *db.Store
 	logger   *slog.Logger
+	// gen 是模型生成接缝；默认实现为单次 chat completions，客服 Agent Loop 可替换它。
+	gen AIGenerator
 }
 
 // NewAIReplier 构造。
-func NewAIReplier(cookieID string, store *db.Store, logger *slog.Logger) *AIReplierImpl {
+// gens 是可选生成器，最多只取第一个：不传或传 nil 时使用默认单次补全实现，
+// 从而让既有调用点无需改动。
+func NewAIReplier(cookieID string, store *db.Store, logger *slog.Logger, gens ...AIGenerator) *AIReplierImpl {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	// gen 是本次使用的模型生成接缝。
+	gen := AIGenerator(NewDefaultAIGenerator())
+	if len(gens) > 0 && gens[0] != nil {
+		gen = gens[0]
 	}
 	return &AIReplierImpl{
 		cookieID: cookieID,
 		store:    store,
 		logger:   logger.With("account", cookieID, "subsys", "ai"),
+		gen:      gen,
 	}
 }
 
@@ -126,48 +134,28 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 		return nil, err
 	}
 
-	// 调 OpenAI 兼容接口。
-	clientCfg := openai.DefaultConfig(aiCfg.APIKey)
-	if aiCfg.BaseURL != "" {
-		clientCfg.BaseURL = aiCfg.BaseURL
-	}
-	clientCfg.HTTPClient, err = newAIHTTPClient(clientCfg.BaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("AI API 地址无效: %w", err)
-	}
-	// client 用于本次流程后续判断的client
-	client := openai.NewClientWithConfig(clientCfg)
-
-	// messages 用于本次流程后续判断的消息列表
-	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: systemPrompt}}
-	// message 表示当前遍历过程中的消息
+	// 调模型并取首个候选文本；生成器可替换（默认单次问答，客服 Agent 为带工具回合的 Loop）。
+	// historyTurns 是交给生成器的既有对话历史，保持时间正序。
+	historyTurns := make([]ConversationTurn, 0, len(history))
+	// message 是当前遍历到的历史消息。
 	for _, message := range history {
-		// role 用于本次流程后续判断的role
-		role := openai.ChatMessageRoleUser
-		if message.Role == "assistant" {
-			role = openai.ChatMessageRoleAssistant
-		}
-		messages = append(messages, openai.ChatCompletionMessage{Role: role, Content: truncateAIContent(message.Content)})
+		historyTurns = append(historyTurns, ConversationTurn{Role: message.Role, Content: message.Content})
 	}
-	messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: m.Text})
-
-	// aiCtx、cancel 用于本次流程后续判断的人工智能Ctx、cancel
-	aiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	// resp、err 用于本次流程后续判断的resp、err
-	resp, err := client.CreateChatCompletion(aiCtx, openai.ChatCompletionRequest{
+	// content、err 分别是模型返回的首个候选文本及其调用失败原因。
+	content, err := a.gen.Generate(ctx, GenerateRequest{
+		APIKey:      aiCfg.APIKey,
+		BaseURL:     aiCfg.BaseURL,
 		Model:       aiCfg.Model,
-		Messages:    messages,
-		Temperature: 0.7,
+		Temperature: defaultAIGeneratorTemperature,
+		System:      systemPrompt,
+		History:     historyTurns,
+		Current:     m.Text,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("AI 调用失败: %w", err)
+		return nil, err
 	}
-	if len(resp.Choices) == 0 {
-		return nil, nil
-	}
-	// reply 用于本次流程后续判断的回复
-	reply, markerPrice, markerOK := extractExecutableOffer(strings.TrimSpace(resp.Choices[0].Message.Content))
+	// reply 用于本次流程后续判断的回复；生成器返回空文本视为模型无可用产出。
+	reply, markerPrice, markerOK := extractExecutableOffer(content)
 	if reply == "" {
 		return nil, nil
 	}

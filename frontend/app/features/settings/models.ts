@@ -176,3 +176,31 @@ export interface MCPServiceMessage {
   /** 直接展示给管理员的中文提示文本。 */
   text: string;
 }
+
+/** 客服 Agent 能力档位选项 UI 模型；档位名单由服务端下发，前端不硬编码档位取值。 */
+export interface AgentPresetOption {
+  /** 档位稳定标识，保存时原样回传服务端。 */
+  value: string;
+  /** 档位展示名称。 */
+  label: string;
+  /** 档位放行范围的说明文案。 */
+  description: string;
+}
+
+/** 租户级客服 Agent 配置 UI 模型；账号未单独覆盖时按此生效。 */
+export interface AgentSupportSettings {
+  /** 租户默认是否开启客服 Agent。 */
+  enabled: boolean;
+  /** 租户默认能力档位稳定标识。 */
+  preset: string;
+  /** 服务端下发的可选档位名单，顺序即展示顺序。 */
+  presets: AgentPresetOption[];
+}
+
+/** 租户级客服 Agent 配置的保存载荷；两个字段都是全量替换语义。 */
+export interface AgentSupportSettingsUpdate {
+  /** 保存后的租户默认开关。 */
+  enabled: boolean;
+  /** 保存后的租户默认档位稳定标识。 */
+  preset: string;
+}

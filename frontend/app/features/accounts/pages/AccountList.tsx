@@ -75,9 +75,11 @@ const AccountList: React.FC = () => {
     bindingsLoading,
     bindingsLoadError,
     aiSettings,
+    agentSupport,
     saving,
     passwordLoginView,
     setAiSettings,
+    updateAgentSupport,
     setBindingsDirty,
     openEditModal,
     closeEditModal,
@@ -317,8 +319,10 @@ const AccountList: React.FC = () => {
         <AccountAISettingsModal
           account={editingAccount}
           settings={aiSettings}
+          agentSupport={agentSupport}
           saving={saving}
           onChange={setAiSettings}
+          onAgentChange={updateAgentSupport}
           onClose={closeAIModal}
           onSave={handleSaveAISettings}
         />

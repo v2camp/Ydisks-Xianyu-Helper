@@ -9,10 +9,12 @@ import (
 	"context"
 
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
+
+	"xianyu-go/internal/capability"
 )
 
 // RegisterDeliveryTemplateTools 注册发货模板域全部工具。
-func (e *Endpoint) RegisterDeliveryTemplateTools(p DeliveryTemplatePorts) {
+func (e *Endpoint) RegisterDeliveryTemplateTools(p capability.DeliveryTemplatePorts) {
 	if p == nil {
 		return
 	}

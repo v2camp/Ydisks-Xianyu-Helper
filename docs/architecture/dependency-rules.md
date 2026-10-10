@@ -125,19 +125,121 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 
 - 依赖标准库与 `github.com/mark3labs/mcp-go`；
 - 依赖 `internal/application/*` 的应用模型；
-- 在包内定义工具、资源与提示所需的最小消费者端口。
+- 依赖 `internal/capability` 的共享用例契约（`ports.go` 的领域端口）与危险等级；
+- 在包内定义只有本传输层使用的协议与装配端口：鉴权身份、调用审计、自身配置、
+  只读资源与提示所需的消费者端口。业务领域用例契约一律取自 `internal/capability`，
+  不在本包复数定义。
 
 禁止：
 
 - 导入 `internal/server`、`internal/db`、`internal/xianyu`、`internal/browser`；
 - 导入 `internal/automation`、`internal/engine`、`internal/adapter`、`internal/composition`；
 - 直接拼装 SQL、读取平台凭证、决定自动化规则或浏览器行为；
+- 自行声明工具的危险等级，或自行推导放行结论；
 - 使用万能服务容器或服务定位器，端口必须由组合层投影实现。
 
 `internal/server` 只保留 `/mcp` 的通用挂载缝：不得导入 `mcp-go`，也不得出现 JSON-RPC 协议语义。
 `/mcp` 是非业务协议端点，不进 OpenAPI 登记；管理员管理接口固定在 `/api/v1/mcp/*` 并登记进 `api/openapi.yaml`。
 `XIANYU_MCP_TOKEN` 是部署者通过进程环境注入的引导令牌，应用只从环境读取，不落库、不写日志。
-00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，三方言结构一致。
+00057 迁移建立 `mcp_tokens`（只存令牌哈希）与 `mcp_call_audit`（键级脱敏审计）两表，两种方言结构一致。
+
+### 3.8 `internal/capability`（能力目录与访问策略）
+
+`internal/capability` 定义平台能力的统一目录与访问策略：能力清单、危险等级、作用域与各调用方
+所需的确认方式。它是权限判断的唯一实现点，三个消费方（`internal/mcp` 承载的外部 Harness、
+`internal/qqbot` 承载的运营 Agent、`internal/agent` 承载的客服 Agent）都必须经它求值。
+它还承载被多个消费方共用的用例契约（`ports.go`），这是同名用例只有一个签名来源的保证。
+
+允许：
+
+- 依赖标准库；
+- 依赖 `internal/application/*` 的应用模型。
+
+禁止：
+
+- 导入 `internal/mcp`、`internal/server` 等传输层；
+- 导入 `internal/db`、`internal/xianyu`、`internal/browser`、`internal/automation`、`internal/engine`；
+- 导入 `internal/adapter`、`internal/composition`；
+- 在本包内执行能力或直接触达业务数据。
+
+边界说明：本包只回答「这次调用是否允许、需要何种确认」，不执行能力。
+执行由消费方在取得放行决策后调用应用层用例完成；消费方不得自行推导权限结论，
+也不得因本包返回拒绝而降级为「直接调用用例」。
+
+MCP 工具声明的危险等级必须取自本包的标注表（`tool_risk.go`），由传输层注册框架按名
+投影填入，传输层不得自行标注；未登记等级的工具不注册，不得按默认等级放行。
+标注表与决策目录 `PlatformCatalog` 是两张表：前者描述「动作危险到什么程度」，覆盖传输层
+实际暴露的全部工具；后者决定「谁现在可以调用」，只登记已接入消费方的能力。
+
+### 3.9 `internal/agent`（客服 Agent 运行时）
+
+`internal/agent` 承载面向单账号的客服 Agent 运行时：回合预算、步骤上限与转人工逃生阀。
+它是能力内核的消费方，也是模型生成接缝的实现方，不是传输层。
+
+允许：
+
+- 依赖标准库与模型 SDK（`github.com/sashabaranov/go-openai`）；
+- 依赖 `internal/netguard` 构造受控 HTTP 客户端；
+- 依赖 `internal/application/*` 的应用模型；
+- 依赖 `internal/capability` 取得放行决策与用例端口契约；
+- 依赖 `internal/engine` 的模型生成接缝（`AIGenerator` / `GenerateRequest`）。
+
+禁止：
+
+- 导入 `internal/db`、`internal/xianyu`、`internal/browser`、`internal/automation`；
+- 导入 `internal/mcp`、`internal/qqbot`、`internal/server` 等传输层；
+- 导入 `internal/adapter`、`internal/composition`；
+- 自行推导权限结论，或在本包返回拒绝后降级为直接调用用例。
+
+边界说明：
+
+- Agent 侧作用域被强制锁定为当前账号，无法跨账号；每次工具调用前都要经
+  `capability.ResolveAccountScope` 断言，禁止信任模型给出的账号参数。
+- 只实现 engine 的模型生成接缝，不得调用 engine 的消息收发、连接管理与凭证链路。
+  依赖方向由此固定为 `agent -> engine`，engine 不反向依赖 agent，注入由组合层完成。
+- 启用开关与档位由本包定义 `SessionResolver` 端口、组合层投影实现，并在**每次补全前**
+  解析而不是在构造期固定。理由是配置接口只写库、不重启账号：把档位冻结在构造期会让
+  网页上的开关在无声中失效（§3.10 边界说明的「配置项必须生效」）。
+- 回落策略由本包单点实现：未启用、配置不可解析、循环失败一律回落到 engine 的默认单次
+  问答，且回落路径不持有任何工具。组合层只负责在依赖缺失时让工厂返回 nil（该账号不启用），
+  不得把「缺依赖」降级为「按默认档位运行」。
+- `internal/agent/mcpclient` 承载对外第三方 MCP 客户端（如找书 MCP），与主循环同属本边界，
+  但必须独立故障域与超时；第三方 MCP 返回不得绕过业务护栏直接落到账号动作。
+
+### 3.10 `internal/application/agentadmin`（客服 Agent 配置用例）
+
+`internal/application/agentadmin` 只回答两个问题：这个账号跑不跑客服 Agent、跑在哪一档。
+平台级定义（有哪些能力、各属哪一档）不在这里，它是 `internal/capability` 的代码常量，
+用户不可增删；本包只负责在租户默认与账号覆盖之间选出最终生效值。
+
+配置分层的落点：
+
+| 层 | 载体 | 本包角色 |
+|---|---|---|
+| 平台级 | `internal/capability` 的代码常量 | 只读消费 |
+| 租户级 | `user_settings` 的 `agent.support.enabled` / `agent.support.preset` | 读写 |
+| 账号级 | `ai_reply_settings` 的 `agent_enabled` / `agent_preset`，NULL 表示继承 | 读写 |
+
+允许：
+
+- 依赖标准库；
+- 依赖 `internal/capability` 的档位常量与合法性判定。
+
+禁止：
+
+- 导入 `internal/db`、`internal/server`、`net/http`（应用层通用规则）；
+- 返回含模型凭证的持久化模型：账号级配置与 `api_key` 同表，传输模型必须单独定义，
+  禁止复用 `AIReplySettings`（AGENTS.md §1.7）；
+- 自行列举合法档位：判定单点是 `capability.Preset.Valid()`。
+
+边界说明：
+
+- 读写两条路径的失败策略刻意不同。库中遗留的非法档位在读取时回落只读档，让 Agent 以
+  最保守档位继续服务；写入时直接拒绝，避免「配了什么」与「生效什么」长期不一致。
+- 账号归属校验内嵌在用例内。账号不存在与不属于当前租户共用同一个错误，避免调用方接口
+  退化成账号枚举器；调用方不得把归属失败降级为「未配置」继续执行。
+- 日预算不在本期配置项内：它的执行语义（按账号按日计数与扣减）尚未实现，先暴露一个不
+  生效的开关与「配置项必须生效」的约定冲突。
 
 ## 4. 数据与秘密边界
 

@@ -11,8 +11,8 @@ import (
 	defaultreplyapp "xianyu-go/internal/application/defaultreply"
 	deliveryapp "xianyu-go/internal/application/deliverytemplate"
 	keywordsapp "xianyu-go/internal/application/keywords"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 )
 
 // mcpRulePorts 把规则应用服务投影为 MCP 规则端口。
@@ -22,7 +22,7 @@ type mcpRulePorts struct {
 }
 
 // 编译期断言适配器满足 MCP 规则端口。
-var _ mcp.RulePorts = (*mcpRulePorts)(nil)
+var _ capability.RulePorts = (*mcpRulePorts)(nil)
 
 // ListRules 透传规则全量列表用例。
 func (a *mcpRulePorts) ListRules(ctx context.Context, userID int64) ([]automationapp.Rule, error) {
@@ -71,7 +71,7 @@ type mcpDeliveryTemplatePorts struct {
 }
 
 // 编译期断言适配器满足 MCP 发货模板端口。
-var _ mcp.DeliveryTemplatePorts = (*mcpDeliveryTemplatePorts)(nil)
+var _ capability.DeliveryTemplatePorts = (*mcpDeliveryTemplatePorts)(nil)
 
 // ListTemplates 透传模板列表用例。
 func (a *mcpDeliveryTemplatePorts) ListTemplates(ctx context.Context, userID int64) ([]deliveryapp.Template, error) {
@@ -105,7 +105,7 @@ type mcpDefaultReplyPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 默认回复端口。
-var _ mcp.DefaultReplyPorts = (*mcpDefaultReplyPorts)(nil)
+var _ capability.DefaultReplyPorts = (*mcpDefaultReplyPorts)(nil)
 
 // ListDefaultReplies 透传默认回复列表用例。
 func (a *mcpDefaultReplyPorts) ListDefaultReplies(ctx context.Context, userID int64) ([]defaultreplyapp.Summary, error) {
@@ -139,7 +139,7 @@ type mcpKeywordPorts struct {
 }
 
 // 编译期断言适配器满足 MCP 关键词端口。
-var _ mcp.KeywordPorts = (*mcpKeywordPorts)(nil)
+var _ capability.KeywordPorts = (*mcpKeywordPorts)(nil)
 
 // ListKeywords 透传关键词列表用例。
 func (a *mcpKeywordPorts) ListKeywords(ctx context.Context, userID int64, cookieID string) ([]keywordsapp.Keyword, error) {

@@ -13,6 +13,7 @@ import (
 
 	"xianyu-go/internal/account"
 	"xianyu-go/internal/adapter"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	lifecycleapp "xianyu-go/internal/application/lifecycle"
 	orderapp "xianyu-go/internal/application/orders"
 	"xianyu-go/internal/auth"
@@ -41,7 +42,7 @@ func newTestServer(t *testing.T) (*Server, *db.Store, func()) { // newTestServer
 	// 具体测试可以在自己的请求流程中修改这些副本数据。
 
 	// mgr 是使用空处理器的测试账号管理器。
-	mgr := account.NewManager(store, noopHandler{}, nil)
+	mgr := account.NewManager(store, noopHandler{}, nil, account.ManagerOptions{})
 	// srv 是未启用聊天服务的基础测试 HTTP 服务。
 	// orderDependencies 保存订单应用服务专用的测试装配能力，确保 Server 不从通用容器回退读取订单依赖。
 	orderDependencies, orderDependencyErr := adapter.NewOrderDependencies(store)
@@ -148,7 +149,7 @@ func newUninitializedTestServer(t *testing.T) (*Server, *db.Store, func()) {
 	// store 是未初始化测试数据库的 repository 聚合入口。
 	store := db.NewStore(d, db.DialectSQLite)
 	// mgr 是未初始化测试使用的空处理器账号管理器。
-	mgr := account.NewManager(store, noopHandler{}, nil)
+	mgr := account.NewManager(store, noopHandler{}, nil, account.ManagerOptions{})
 	// srv 是未初始化测试使用的 HTTP 服务实例。
 	// orderDependencies 保存未初始化测试的订单专用装配能力。
 	orderDependencies, orderDependencyErr := adapter.NewOrderDependencies(store)
@@ -373,8 +374,34 @@ func testServerDependencies(authentication *auth.Service, databaseHealth Databas
 		DeliveryTemplates:      ports.DeliveryTemplates,
 		PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies, Keywords: ports.Keywords,
 		Settings: ports.Settings, Admin: ports.Admin,
-		MCPAdmin: ports.MCPAdmin,
+		MCPAdmin: ports.MCPAdmin, AgentSupport: testAgentSupportAdapter{service: ports.AgentSupport},
 	})}
+}
+
+// testAgentSupportAdapter 将组合层客服 Agent 配置服务适配为 Server 的测试 transport Port。
+type testAgentSupportAdapter struct {
+	// service 是测试组合根创建的客服 Agent 配置用例。
+	service *agentadminapp.Service
+}
+
+// TenantSettings 透传租户级默认配置读取用例。
+func (adapter testAgentSupportAdapter) TenantSettings(ctx context.Context, userID int64) (agentadminapp.TenantConfig, error) {
+	return adapter.service.TenantConfig(ctx, userID)
+}
+
+// UpdateTenantSettings 透传租户级默认配置保存用例。
+func (adapter testAgentSupportAdapter) UpdateTenantSettings(ctx context.Context, userID int64, config agentadminapp.TenantConfig) error {
+	return adapter.service.UpdateTenantConfig(ctx, userID, config)
+}
+
+// AccountSettings 透传账号级生效配置读取用例。
+func (adapter testAgentSupportAdapter) AccountSettings(ctx context.Context, userID int64, cookieID string) (agentadminapp.EffectiveConfig, error) {
+	return adapter.service.AccountConfig(ctx, userID, cookieID)
+}
+
+// UpdateAccountOverride 透传账号级覆盖保存用例。
+func (adapter testAgentSupportAdapter) UpdateAccountOverride(ctx context.Context, userID int64, cookieID string, override agentadminapp.AccountOverride) error {
+	return adapter.service.UpdateAccountOverride(ctx, userID, cookieID, override)
 }
 
 // newTestOrderReconciliationRecovery 以与进程组合根一致的路径构造订单补偿扫描应用服务。

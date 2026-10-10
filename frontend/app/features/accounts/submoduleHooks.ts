@@ -1,7 +1,7 @@
 import { useCallback,useEffect,useRef,useState,type Dispatch,type SetStateAction } from 'react';
-import type { AccountDetail,AIReplySettings,NotificationChannel } from './api';
+import type { AccountAgentOverride,AccountAgentSupport,AccountDetail,AIReplySettings,NotificationChannel } from './api';
 import { shouldSaveNotificationBindings } from './accountBindings';
-import { cancelPasswordLogin,checkPasswordLoginStatus,getAccountAISettings,getAccountBindings,getLongLoginSettings,getNotificationChannels,passwordLogin,setLongLoginSettings,updateAccountAISettings,updateAccountPauseDuration,updateAccountSettings } from './api';
+import { cancelPasswordLogin,checkPasswordLoginStatus,getAccountAISettings,getAccountAgentSupport,getAccountBindings,getLongLoginSettings,getNotificationChannels,passwordLogin,setLongLoginSettings,updateAccountAISettings,updateAccountAgentSupport,updateAccountPauseDuration,updateAccountSettings } from './api';
 import { buildAccountLoginInfoUpdate,isCurrentAccountRequest,passwordLoginViewFromStatus,shouldUpdateAccountPause } from './state';
 import type { AccountEditForm,LongLoginState,PasswordLoginView } from './types';
 
@@ -42,6 +42,10 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   const [bindingsLoadError, setBindingsLoadError] = useState('');
   // aiSettings 保存账号 AI 编辑草稿。
   const [aiSettings, setAiSettings] = useState<AIReplySettings>({ ai_enabled: false, auto_adjust_price_enabled: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
+  // agentSupport 保存账号级客服 Agent 授权草稿；读取失败时为 null。
+  const [agentSupport, setAgentSupport] = useState<AccountAgentSupport | null>(null);
+  // agentDirty 表示管理员是否改动过账号级客服 Agent 授权，未改动时不产生写入。
+  const [agentDirty, setAgentDirty] = useState(false);
   // saving 表示编辑、AI 或暂停动作是否正在保存。
   const [saving, setSaving] = useState(false);
   // passwordLoginView 保存密码登录刷新授权状态。
@@ -165,10 +169,16 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
     setActiveModal('ai-settings');
     setSaving(true);
     try {
-      // settings 保存当前账号的 AI 设置。
-      const settings = await getAccountAISettings(account.id, { signal: controller.signal });
+      // [settings, capability] 是并行读取的账号 AI 设置与账号级客服 Agent 授权。
+      const [settings, capability] = await Promise.all([
+        getAccountAISettings(account.id, { signal: controller.signal }),
+        // catch 让客服 Agent 授权读取失败只影响该分组，不阻断 AI 设置的编辑。
+        getAccountAgentSupport(account.id, { signal: controller.signal }).catch(/* 当前回调把客服 Agent 授权读取失败收敛为空值。 */ () => null),
+      ]);
       if (!isCurrentAccountRequest(sequence, aiSequence.current, account.id, account.id)) return;
       setAiSettings({ ai_enabled: settings.ai_enabled ?? false, auto_adjust_price_enabled: settings.auto_adjust_price_enabled ?? false, max_discount_percent: settings.max_discount_percent ?? 10, max_discount_amount: settings.max_discount_amount ?? 100, max_bargain_rounds: settings.max_bargain_rounds ?? 3, custom_prompts: settings.custom_prompts ?? '' });
+      setAgentSupport(capability);
+      setAgentDirty(false);
     } catch (/* error 保存 AI 设置读取请求的失败原因，过期请求不会更新当前界面。 */ error) {
       // error 保存 AI 设置读取失败原因。
       if (isCurrentAccountRequest(sequence, aiSequence.current, account.id, account.id)) console.error('加载 AI 设置失败:', error);
@@ -177,20 +187,33 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
     }
   }, [setActiveModal, setEditingAccount]);
 
-  /** 保存 AI 设置并刷新账号列表。 */
+  /** 保存 AI 设置与账号级客服 Agent 授权，并刷新账号列表。 */
   // handleSaveAISettingsCallback 是 AI 设置保存回调。
   const handleSaveAISettings = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (): Promise<void> => {
     if (!editingAccount || saving) return;
     setSaving(true);
     try {
+      // 先提交客服 Agent 授权：它失败时整个保存中止，避免出现「AI 策略已改、能力授权没改」的半途状态。
+      if (agentSupport && agentDirty) {
+        await updateAccountAgentSupport(editingAccount.id, { enabled: agentSupport.enabled, preset: agentSupport.preset });
+      }
       await updateAccountAISettings(editingAccount.id, aiSettings);
+      setAgentSupport(null);
+      setAgentDirty(false);
       setActiveModal(null);
       await loadAccounts();
     } catch (/* error 保存 AI 设置提交请求的失败原因，转换为通用错误提示。 */ error) {
       // error 保存 AI 设置保存失败原因。
       console.error('更新 AI 设置失败:', error);
     } finally { setSaving(false); }
-  }, [aiSettings, editingAccount, loadAccounts, saving, setActiveModal]);
+  }, [agentDirty, agentSupport, aiSettings, editingAccount, loadAccounts, saving, setActiveModal]);
+
+  /** 更新账号级客服 Agent 授权草稿并标记为已改动。 */
+  // updateAgentSupportCallback 是客服 Agent 授权草稿更新回调。
+  const updateAgentSupport = useCallback(/* 当前回调把补丁合并进客服 Agent 授权草稿。 */ (patch: Partial<AccountAgentOverride>) => {
+    setAgentSupport(/* current 是合并补丁前的授权草稿，缺失时保持为空。 */ current => current ? { ...current, ...patch } : current);
+    setAgentDirty(true);
+  }, []);
 
   /** 保存账号编辑表单和通知绑定。 */
   // handleSaveEditCallback 是账号编辑表单保存回调。
@@ -330,6 +353,8 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   const closeAIModal = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ () => {
     aiSequence.current += 1;
     aiAbort.current?.abort();
+    setAgentSupport(null);
+    setAgentDirty(false);
     setActiveModal(null);
   }, [setActiveModal]);
 
@@ -344,7 +369,7 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
 
   return {
     longLogin, notifChannels, selectedChannelIds, bindingsLoaded, bindingsLoading, bindingsDirty, bindingsLoadError,
-    aiSettings, saving, passwordLoginView, setAiSettings, setBindingsDirty, setEditForm, openEditModal,
+    aiSettings, agentSupport, agentDirty, saving, passwordLoginView, setAiSettings, updateAgentSupport, setBindingsDirty, setEditForm, openEditModal,
     closeEditModal, openAIModal, closeAIModal, loadNotificationBindings, toggleNotificationChannel,
     handleLongLoginToggle, handleSaveAISettings, handleSaveEdit, handleRestartPause, handlePasswordLogin,
     handleCancelPasswordLogin,

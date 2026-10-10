@@ -17,4 +17,7 @@ func TestAdminSettingsDependenciesNilReceiverGuards(t *testing.T) {
 	if dependencies.NewAdminRepository() != nil || dependencies.NewSettingsRepository() != nil {
 		t.Fatal("nil 管理员设置依赖不应创建下游适配器")
 	}
+	if dependencies.NewAgentSupportRepository() != nil {
+		t.Fatal("nil 管理员设置依赖不应创建客服 Agent 配置端口")
+	}
 }

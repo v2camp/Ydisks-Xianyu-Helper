@@ -68,7 +68,7 @@ func TestAccountWatchdogNextDelayClampsToLastStep(t *testing.T) {
 // 账号会被收集，正在停止、处于删除 fencing 或全局关闭中的实例都不会被看门狗重启。
 func TestExitedAccountIDsOnlyCollectsRecoverable(t *testing.T) {
 	// manager 是不带仓储的管理器，仅用于验证实例筛选逻辑。
-	manager := NewManager(nil, noopHandler{}, nil)
+	manager := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	// exitedAcc 是模拟已退出协程的账号实例。
 	exitedAcc := engine.New(engine.Config{CookieID: "exited-account", CookieStr: "unb=1"})
 	// exitedDone 是已关闭的运行结束信号，代表账号协程已退出。

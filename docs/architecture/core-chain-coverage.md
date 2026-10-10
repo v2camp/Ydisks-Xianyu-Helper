@@ -10,13 +10,21 @@
 - 报告是生成文件，禁止提交（`cover*.out` 已被 `.gitignore` 忽略）。
 
 ```bash
-DOCKER=/Applications/Docker.app/Contents/Resources/bin/docker
-REPO=/Users/wanghui/Code/oss-research/Ydisks-Xianyu-Helper
-"$DOCKER" run --rm -v "$REPO":/src -w /src -v ydisks-gomod:/go/pkg/mod \
-  golang:1.26 sh -c 'go test -coverprofile=cover-core.out \
-    ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws \
-    && go tool cover -func=cover-core.out | tail -1'
+# 本机执行：AGENTS.md §0.1「合并到 main 以本机门禁为准」，且 §2.4 禁止为门禁启动数据库容器。
+go test -count=1 -covermode=set -coverprofile=/tmp/cover-core.out \
+  ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws \
+  && go tool cover -func=/tmp/cover-core.out | tail -1
+
+# 需要与基线逐包对照时（判断「本轮改动是否拉低覆盖率」）：
+# 1) 在基线的 detached worktree 里跑同一条命令，输出另一份 profile；
+# 2) 对两份 profile 分别做语句加权求和（cover 的 total 行只是整体合计，不给逐包值）：
+#    awk 累加每行第三个字段（语句数）与第四个字段（命中数）即可得到逐包逐文件覆盖率。
+git worktree add --detach /tmp/cover-baseline <基线commit>
+cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cover-base.out \
+  ./internal/automation ./internal/engine ./internal/adapter ./internal/db ./internal/xianyu/ws
 ```
+
+`-count=1` 是刻意的：它禁用测试结果缓存，保证每次拿到的都是本次真实执行的 profile。
 
 ## 核心链路定义
 
@@ -29,6 +37,25 @@ REPO=/Users/wanghui/Code/oss-research/Ydisks-Xianyu-Helper
 > run_coordinator.go 86.4%、scheduler.go 85.4%、center.go 88.4%、action_executor.go 91.1%。
 > 与基线 a2ae5ea（本轮批次之前）逐项持平，说明**本轮本地改动未拉低核心链路覆盖率**，
 > 与下表 09-13 数值的差额来自上游合并。表格待下次整体统计时刷新。
+
+> ⚠️ 2026-10-10 复核（客服 Agent 能力内核合并前，分支 commit `016499c`）：下表 09-13 数值距本次
+> 已隔约 20 次上游合并，绝对值不可直接比，因此本轮改用**逐包对照基线**：基线 `main`＝`28c2473`
+> （与本分支同源、无分叉）。执行环境：本机 `go1.27.1`（容器口径见 §0.1 豁免说明），
+> 口径 `-count=1 -covermode=set`，命令见上。
+>
+> 五个链路包（语句加权）：automation 90.06%→**90.06%**、engine 90.30%→**90.43%**、
+> adapter 85.55%→**85.59%**、db 84.94%→**85.02%**、xianyu/ws 88.17%→**88.17%**；
+> 合计 87.25%→**87.31%**。下表 15 个具名文件**逐项不变**（无一个被本次改动触及）。
+>
+> 结论：**本轮改动未拉低核心链路覆盖率**。过程记录：首次测量时 adapter 曾落到 85.4%，
+> 原因是新增的 `internal/adapter/agent_support_repository.go`（10 语句）与
+> `NewAgentSupportRepository` 的 nil 分支未配套测试——这正是 §2.4「核心链路新增代码必须与
+> 测试同批提交」要拦的情形，已补测（`internal/adapter/agent_support_repository_test.go`）
+> 后回到 85.59%，该文件自身 100%。
+>
+> 本轮新增代码的未覆盖项全为存储故障分支（`db/user_settings.go:21,31,77,89` 的查询/扫描
+> 错误返回、`db/agent_config.go:46,71,104` 的读错误返回），属既有「仅外部环境」例外类别，
+> 未单列例外条目。
 
 最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
 

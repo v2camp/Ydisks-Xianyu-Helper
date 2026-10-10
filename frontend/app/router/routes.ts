@@ -1,5 +1,5 @@
-/** AppRoute 表示认证后可通过浏览器地址直接访问的业务页面；ai-settings 为管理员专用 AI 设置页。 */
-export type AppRoute = 'dashboard' | 'accounts' | 'chat' | 'orders' | 'cards' | 'items' | 'rules' | 'delivery-templates' | 'notifications' | 'settings' | 'ai-settings';
+/** AppRoute 表示认证后可通过浏览器地址直接访问的业务页面；ai-settings 与 agent-center 为管理员专用配置页。 */
+export type AppRoute = 'dashboard' | 'accounts' | 'chat' | 'orders' | 'cards' | 'items' | 'rules' | 'delivery-templates' | 'notifications' | 'settings' | 'ai-settings' | 'agent-center';
 
 /** routeByPath 保存浏览器地址到业务路由标识的唯一映射，避免页面各自解析 URL。 */
 export const routeByPath: Readonly<Record<string, AppRoute>> = {
@@ -14,6 +14,7 @@ export const routeByPath: Readonly<Record<string, AppRoute>> = {
   '/app/notifications': 'notifications',
   '/app/settings': 'settings',
   '/app/ai-settings': 'ai-settings',
+  '/app/agent-center': 'agent-center',
 };
 
 /** pathByRoute 保存业务路由标识的规范 URL，所有应用内跳转都使用该映射。 */

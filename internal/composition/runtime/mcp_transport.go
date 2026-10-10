@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/mcp"
@@ -133,12 +134,18 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 	}
 	// audit 是同时支持写入与分页查询的审计适配器。
 	audit := mcpAuditAdapter{store: store.MCP}
+	// toolRisks、risksErr 是平台工具危险等级标注表及其构造错误；表本身是代码常量。
+	toolRisks, risksErr := capability.PlatformToolRisks()
+	if risksErr != nil {
+		return nil, server.ExtraRoute{}, fmt.Errorf("构造平台工具危险等级表失败: %w", risksErr)
+	}
 	// endpoint、err 是协议端点及其构造错误。
 	endpoint, err := mcp.NewEndpoint(mcp.EndpointConfig{
 		Config:           mcpConfigAdapter{store: store.MCP},
 		Identity:         &mcpIdentityAdapter{users: store.Users},
 		Audit:            audit,
 		AuditLister:      audit,
+		ToolRisks:        toolRisks,
 		SystemVersion:    appversion.Version,
 		EnvironmentToken: environmentToken,
 	})
@@ -155,25 +162,25 @@ func BuildMCPEndpoint(store *db.Store, environmentToken string) (*mcp.Endpoint, 
 // RegisterMCPTools 在应用服务集合就绪后注册全部域工具；每域端口为 nil 时跳过该域。
 // lifecycleContext 为需要脱离请求生命周期的后台 worker（如订单刷新任务）提供进程级 Context。
 // backgroundTasks 返回进程后台任务快照，由 HTTP 服务在构造完成后提供；为空时总览返回空列表。
-func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context, backgroundTasks func() []mcp.BackgroundTask) {
+func RegisterMCPTools(endpoint *mcp.Endpoint, ports composition.TransportPorts, lifecycleContext func() context.Context, backgroundTasks func() []capability.BackgroundTask) {
 	if endpoint == nil {
 		return
 	}
 	// 账号域端口投影。
 	endpoint.RegisterAccountTools(newMCPAccountPorts(ports))
 	// 订单、分析与异常域端口投影；任一服务缺失时对应适配器为 nil，注册自动跳过。
-	var analytics mcp.AnalyticsPorts
+	var analytics capability.AnalyticsPorts
 	if ports.Analytics != nil {
 		analytics = &mcpAnalyticsPorts{service: ports.Analytics}
 	}
 	// issues 是自动化异常处理端口；服务缺失时保持 nil，工具注册自动跳过。
-	var issues mcp.IssuePorts
+	var issues capability.IssuePorts
 	if ports.AutomationIssues != nil {
 		issues = &mcpIssuePorts{service: ports.AutomationIssues}
 	}
-	endpoint.RegisterOrderTools(newMCPOrderPorts(ports, lifecycleContext), analytics, issues)
+	endpoint.RegisterOrderTools(newOrderPorts(ports, lifecycleContext), analytics, issues)
 	// 商品域工具：账号端口同时用于本地商品写入前的归属复核。
-	endpoint.RegisterItemTools(newMCPAccountPorts(ports), newMCPItemPorts(ports))
+	endpoint.RegisterItemTools(newMCPAccountPorts(ports), newItemPorts(ports))
 	// 卡密库存域工具：明文卡密与 API 模板只在应用层内流转，MCP 侧仅注册非敏感视图与只写入口。
 	endpoint.RegisterCardTools(newMCPCardPorts(ports))
 	// 自动化配置域工具：规则校验与模板变量契约完全复用应用服务，MCP 只做透传。

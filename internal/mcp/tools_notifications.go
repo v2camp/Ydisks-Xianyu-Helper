@@ -11,6 +11,8 @@ import (
 	"context"
 
 	notificationsapp "xianyu-go/internal/application/notifications"
+
+	"xianyu-go/internal/capability"
 )
 
 // notificationChannelDTO 是通知渠道的非敏感摘要视图；不含配置 JSON。
@@ -118,7 +120,7 @@ type notificationUncertainListResult struct {
 }
 
 // RegisterNotificationTools 注册通知渠道、绑定与不确定通知域全部工具。
-func (e *Endpoint) RegisterNotificationTools(channels NotificationChannelPorts, uncertain UncertainNotificationPorts) {
+func (e *Endpoint) RegisterNotificationTools(channels capability.NotificationChannelPorts, uncertain capability.UncertainNotificationPorts) {
 	if channels != nil {
 		e.registerNotificationChannelTools(channels)
 		e.registerNotificationBindingTools(channels)
@@ -129,7 +131,7 @@ func (e *Endpoint) RegisterNotificationTools(channels NotificationChannelPorts, 
 }
 
 // registerNotificationChannelTools 注册通知渠道 CRUD 与测试发送工具。
-func (e *Endpoint) registerNotificationChannelTools(p NotificationChannelPorts) {
+func (e *Endpoint) registerNotificationChannelTools(p capability.NotificationChannelPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "notification_channel_list",
@@ -273,7 +275,7 @@ func (e *Endpoint) registerNotificationChannelTools(p NotificationChannelPorts) 
 }
 
 // registerNotificationBindingTools 注册账号渠道绑定工具。
-func (e *Endpoint) registerNotificationBindingTools(p NotificationChannelPorts) {
+func (e *Endpoint) registerNotificationBindingTools(p capability.NotificationChannelPorts) {
 	// accountArg 是绑定工具通用的账号入参定义。
 	accountArg := ArgSpec{Name: "account_id", Type: ArgString, Required: true, Description: "账号标识。"}
 	e.RegisterTools(
@@ -411,7 +413,7 @@ func (e *Endpoint) registerNotificationBindingTools(p NotificationChannelPorts) 
 }
 
 // registerNotificationUncertainTools 注册不确定通知的用户视图与管理员全局视图工具。
-func (e *Endpoint) registerNotificationUncertainTools(p UncertainNotificationPorts) {
+func (e *Endpoint) registerNotificationUncertainTools(p capability.UncertainNotificationPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "notification_uncertain_list",

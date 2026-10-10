@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	settingsapp "xianyu-go/internal/application/settings"
+
+	"xianyu-go/internal/capability"
 )
 
 // mcpStateSettingEnabled 是 MCP 服务启用开关的系统设置键，只能由 MCP 专用用例修改。
@@ -61,7 +63,7 @@ type userSettingValueResult struct {
 }
 
 // RegisterSettingsTools 注册系统设置与用户设置域全部工具。
-func (e *Endpoint) RegisterSettingsTools(p SettingsPorts) {
+func (e *Endpoint) RegisterSettingsTools(p capability.SettingsPorts) {
 	if p == nil {
 		return
 	}
@@ -70,7 +72,7 @@ func (e *Endpoint) RegisterSettingsTools(p SettingsPorts) {
 }
 
 // registerSystemSettingsTools 注册系统设置读取与写入工具。
-func (e *Endpoint) registerSystemSettingsTools(p SettingsPorts) {
+func (e *Endpoint) registerSystemSettingsTools(p capability.SettingsPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "settings_get_system",
@@ -167,7 +169,7 @@ func (e *Endpoint) registerSystemSettingsTools(p SettingsPorts) {
 }
 
 // registerUserSettingsTools 注册用户偏好设置工具。
-func (e *Endpoint) registerUserSettingsTools(p SettingsPorts) {
+func (e *Endpoint) registerUserSettingsTools(p capability.SettingsPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "settings_user_list",
@@ -229,7 +231,7 @@ func (e *Endpoint) registerUserSettingsTools(p SettingsPorts) {
 
 // guardSingleSettingKey 拒绝经通用设置入口修改 MCP 自身状态键。
 // 敏感键允许通过：应用服务会按其三态命令语义校验并记录审计。
-func guardSingleSettingKey(_ SettingsPorts, key string) error {
+func guardSingleSettingKey(_ capability.SettingsPorts, key string) error {
 	// normalized 是去除空白的设置键。
 	normalized := strings.TrimSpace(key)
 	if normalized == mcpStateSettingEnabled || normalized == mcpStateSettingAllowNonLoopback {
@@ -256,7 +258,7 @@ func guardSystemSettingKeys(values map[string]string, secrets map[string]setting
 }
 
 // sensitiveSettingKeys 从脱敏设置值中识别敏感键名；失败时返回空切片。
-func sensitiveSettingKeys(p SettingsPorts, values map[string]string) []string {
+func sensitiveSettingKeys(p capability.SettingsPorts, values map[string]string) []string {
 	// keys 收集当前系统中存在的敏感键名。
 	keys := make([]string, 0, len(values))
 	// key 是当前遍历到的设置键名。

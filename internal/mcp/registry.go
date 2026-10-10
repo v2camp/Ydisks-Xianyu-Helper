@@ -15,6 +15,8 @@ import (
 	"time"
 
 	mcpproto "github.com/mark3labs/mcp-go/mcp"
+
+	"xianyu-go/internal/capability"
 )
 
 // ArgType 是工具入参的 JSON Schema 基础类型。
@@ -72,6 +74,10 @@ type ToolDef struct {
 	Description string
 	// Destructive 为 true 时自动补 confirm 入参、标记 destructiveHint 且调用前强制确认。
 	Destructive bool
+	// Risk 是该工具的危险等级，由注册框架按名从平台标注表投影填入。
+	// 声明处填写的值会被覆盖：等级只有一个来源，否则同一动作会在
+	// 「平台标注表」与「传输层声明」之间出现两份互相矛盾的说法。
+	Risk capability.Risk
 	// Args 是工具业务入参定义（confirm 由框架自动追加，无需声明）。
 	Args []ArgSpec
 	// Handler 是工具业务处理器。
@@ -281,8 +287,16 @@ func (e *Endpoint) ToolDefs() []ToolDef {
 	return defs
 }
 
-// registerOne 注册单个工具：生成 schema、注解并包装确认/审计/错误归一逻辑。
+// registerOne 注册单个工具：投影危险等级、生成 schema、注解并包装确认/审计/错误归一逻辑。
+// 未登记危险等级的工具不注册：宁可少一个工具，也不能暴露一个等级未知的动作。
 func (e *Endpoint) registerOne(def ToolDef) {
+	// risk、registered 是从平台标注表投影出的危险等级与命中标志。
+	risk, registered := e.toolRisks.Lookup(def.Name)
+	if !registered {
+		slog.Error("跳过未登记危险等级的 MCP 工具", "tool", def.Name)
+		return
+	}
+	def.Risk = risk
 	// options 是工具描述与入参 schema 选项。
 	options := []mcpproto.ToolOption{mcpproto.WithDescription(def.Description)}
 	// spec 是当前业务入参定义；必填标记作为属性级选项挂在该属性上。

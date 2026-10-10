@@ -1,6 +1,7 @@
 import {
 AIReplySettings,
 AIReplySettingsResponse,
+AccountAgentOverride,AccountAgentPresetOption,AccountAgentSupport,
 AccountBindingsResponse,
 AccountDetail,AccountItemOption,AccountSummaryResponse,
 AccountTaskRunResponseEnvelope,
@@ -417,3 +418,34 @@ export const getAccountBindings = async (cookieId: string, options?: RequestCont
   const result = objectFrom<Partial<AccountBindingsResponse>>(response, ['data', 'result']) || {};
   return Array.isArray(result.channel_ids) ? result.channel_ids : [];
 }
+
+// parseAgentPresetOptions 把服务端下发的档位名单归一为 UI 模型；缺少稳定标识的条目无法回传，直接丢弃。
+const parseAgentPresetOptions = (payload: unknown): AccountAgentPresetOption[] => collectionFrom<Record<string, unknown>>(payload, ['presets'])
+  .filter(/* entry 是当前待校验的档位条目，value 缺失或为空串的条目一律不作候选。 */ entry => typeof entry?.value === 'string' && entry.value !== '')
+  .map(/* entry 是当前档位条目，逐字段归一为可供界面渲染的选项模型。 */ entry => ({
+    value: String(entry.value),
+    label: String(entry.label ?? ''),
+    description: String(entry.description ?? ''),
+  }));
+
+/** 读取指定账号的客服 Agent 授权：账号覆盖值、服务端解析出的生效值与可选档位名单。 */
+export const getAccountAgentSupport = async (cookieId: string, options?: RequestControlOptions): Promise<AccountAgentSupport> => {
+  // response 是 OpenAPI 约束的账号级客服 Agent 授权响应。
+  const response = await runContractRequest(/* signal 控制账号级客服 Agent 授权读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/support/accounts/{cookie_id}', { params: { path: { cookie_id: cookieId } }, signal }), options);
+  return {
+    enabled: typeof response.account_enabled === 'boolean' ? response.account_enabled : null,
+    preset: typeof response.account_preset === 'string' ? response.account_preset : null,
+    effectiveEnabled: response.enabled === true,
+    effectivePreset: typeof response.preset === 'string' ? response.preset : '',
+    presets: parseAgentPresetOptions(response.presets),
+  };
+};
+
+/** 保存指定账号的客服 Agent 授权覆盖；两个字段传 null 表示恢复继承租户默认。 */
+export const updateAccountAgentSupport = async (cookieId: string, override: AccountAgentOverride, options?: RequestControlOptions): Promise<void> => {
+  await runContractRequest(/* signal 控制账号级客服 Agent 授权保存的取消和超时。 */ signal => contractClient.PUT('/api/v1/agent/support/accounts/{cookie_id}', {
+    params: { path: { cookie_id: cookieId } },
+    body: { enabled: override.enabled, preset: override.preset },
+    signal,
+  }), options);
+};

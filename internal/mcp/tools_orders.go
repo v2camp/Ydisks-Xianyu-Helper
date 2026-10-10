@@ -12,6 +12,8 @@ import (
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	orderapp "xianyu-go/internal/application/orders"
+
+	"xianyu-go/internal/capability"
 )
 
 // orderRowDTO 是订单列表的非敏感行视图（不含收货地址详情）。
@@ -170,7 +172,7 @@ type issueListResult struct {
 }
 
 // RegisterOrderTools 注册订单、分析与异常域全部工具。
-func (e *Endpoint) RegisterOrderTools(orders OrderPorts, analytics AnalyticsPorts, issues IssuePorts) {
+func (e *Endpoint) RegisterOrderTools(orders capability.OrderPorts, analytics capability.AnalyticsPorts, issues capability.IssuePorts) {
 	if orders != nil {
 		e.registerOrderTools(orders)
 	}
@@ -184,7 +186,7 @@ func (e *Endpoint) RegisterOrderTools(orders OrderPorts, analytics AnalyticsPort
 
 // registerOrderTools 注册订单查询与履约动作工具，按查询、刷新任务与手动发货三组装配。
 // p 是订单应用用例端口。
-func (e *Endpoint) registerOrderTools(p OrderPorts) {
+func (e *Endpoint) registerOrderTools(p capability.OrderPorts) {
 	e.registerOrderQueryTools(p)
 	e.registerOrderRefreshTools(p)
 	e.registerOrderFulfillmentTools(p)
@@ -192,7 +194,7 @@ func (e *Endpoint) registerOrderTools(p OrderPorts) {
 
 // registerOrderQueryTools 注册订单列表与详情查询工具。
 // p 是订单应用用例端口。
-func (e *Endpoint) registerOrderQueryTools(p OrderPorts) {
+func (e *Endpoint) registerOrderQueryTools(p capability.OrderPorts) {
 	// accountIDArg 是订单工具通用的可选账号过滤参数。
 	accountIDArg := ArgSpec{Name: "account_id", Type: ArgString, Description: "按账号标识过滤。"}
 	e.RegisterTools(
@@ -252,7 +254,7 @@ func (e *Endpoint) registerOrderQueryTools(p OrderPorts) {
 
 // registerOrderRefreshTools 注册订单平台刷新与后台刷新任务管理工具。
 // p 是订单应用用例端口。
-func (e *Endpoint) registerOrderRefreshTools(p OrderPorts) {
+func (e *Endpoint) registerOrderRefreshTools(p capability.OrderPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "order_refresh_single",
@@ -371,7 +373,7 @@ func (e *Endpoint) registerOrderRefreshTools(p OrderPorts) {
 
 // registerOrderFulfillmentTools 注册订单手动发货工具。
 // p 是订单应用用例端口。
-func (e *Endpoint) registerOrderFulfillmentTools(p OrderPorts) {
+func (e *Endpoint) registerOrderFulfillmentTools(p capability.OrderPorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name: "order_manual_ship",
@@ -408,7 +410,7 @@ func (e *Endpoint) registerOrderFulfillmentTools(p OrderPorts) {
 }
 
 // registerAnalyticsTools 注册仪表盘与分析工具。
-func (e *Endpoint) registerAnalyticsTools(p AnalyticsPorts) {
+func (e *Endpoint) registerAnalyticsTools(p capability.AnalyticsPorts) {
 	// dateRangeArgs 是分析工具通用的起止日期参数。
 	dateRangeArgs := []ArgSpec{
 		{Name: "start_date", Type: ArgString, Description: "起始日期，格式 YYYY-MM-DD（本地时区）。"},
@@ -476,7 +478,7 @@ func (e *Endpoint) registerAnalyticsTools(p AnalyticsPorts) {
 }
 
 // registerIssueTools 注册自动化异常查询与人工处理工具。
-func (e *Endpoint) registerIssueTools(p IssuePorts) {
+func (e *Endpoint) registerIssueTools(p capability.IssuePorts) {
 	e.RegisterTools(
 		ToolDef{
 			Name:        "issue_list",

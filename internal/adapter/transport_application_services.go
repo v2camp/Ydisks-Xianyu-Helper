@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	adminapp "xianyu-go/internal/application/admin"
+	agentadminapp "xianyu-go/internal/application/agentadmin"
 	analyticsapp "xianyu-go/internal/application/analytics"
 	automationapp "xianyu-go/internal/application/automation"
 	cardsapp "xianyu-go/internal/application/cards"
@@ -71,6 +72,8 @@ type TransportApplicationServices struct {
 	Keywords *keywordsapp.Service
 	// MCPAdmin 提供 MCP 服务管理用例：状态、令牌生命周期与调用审计查询。
 	MCPAdmin *mcpadminapp.Service
+	// AgentSupport 提供客服 Agent 的租户级默认与账号级覆盖配置用例。
+	AgentSupport *agentadminapp.Service
 }
 
 // NewTransportApplicationServices 在进程启动期构造不依赖 Server callback 的 transport-facing 应用服务集合。
@@ -112,6 +115,7 @@ func NewTransportApplicationServices(options TransportApplicationServiceOptions)
 		DefaultReplies:         defaultreplyapp.NewService(options.AutomationDependencies.NewDefaultReplyRepository()),
 		Keywords:               keywordsapp.NewService(options.AutomationDependencies.NewKeywordRepository()),
 		MCPAdmin:               mcpadminapp.NewService(options.AdminSettingsDependencies.NewMCPAdminRepository(), options.MCPInvalidator),
+		AgentSupport:           agentadminapp.NewService(options.AdminSettingsDependencies.NewAgentSupportRepository()),
 	}
 	// validationErr 表示服务集合字段缺失或半初始化，启动流程必须立即终止。
 	if validationErr := services.Validate(); validationErr != nil {
@@ -125,7 +129,7 @@ func (services *TransportApplicationServices) Validate() error {
 	if services == nil {
 		return fmt.Errorf("transport 应用服务集合不能为空")
 	}
-	if services.Settings == nil || services.Admin == nil || services.AccountTasks == nil || services.UncertainNotifications == nil || services.NotificationChannels == nil || services.Analytics == nil || services.AutomationIssues == nil || services.AutomationRules == nil || services.DeliveryTemplates == nil || services.Cards == nil || services.APICardTester == nil || services.PublishAutomationRules == nil || services.DefaultReplies == nil || services.Keywords == nil || services.MCPAdmin == nil {
+	if services.Settings == nil || services.Admin == nil || services.AccountTasks == nil || services.UncertainNotifications == nil || services.NotificationChannels == nil || services.Analytics == nil || services.AutomationIssues == nil || services.AutomationRules == nil || services.DeliveryTemplates == nil || services.Cards == nil || services.APICardTester == nil || services.PublishAutomationRules == nil || services.DefaultReplies == nil || services.Keywords == nil || services.MCPAdmin == nil || services.AgentSupport == nil {
 		return fmt.Errorf("transport 应用服务集合存在未装配服务")
 	}
 	return nil

@@ -332,7 +332,7 @@ func TestChatReadReporterAndSenderProviderUseStartedRuntime(t *testing.T) {
 	store, cleanup := newAdapterTestStore(t)
 	defer cleanup()
 	// manager 保存只用于测试运行时句柄解析的账号管理器。
-	manager := accountmanager.NewManager(store, &Adapter{}, nil)
+	manager := accountmanager.NewManager(store, &Adapter{}, nil, accountmanager.ManagerOptions{})
 	// ctx、cancel 保存账号运行时的生命周期上下文。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -368,7 +368,7 @@ func TestChatReadReporterAndSenderProviderUseStartedRuntime(t *testing.T) {
 // TestChatReadReporterAndSenderProviderRejectMissingRuntime 验证管理器存在但账号未启动时保持无副作用。
 func TestChatReadReporterAndSenderProviderRejectMissingRuntime(t *testing.T) {
 	// manager 保存没有任何运行实例的账号管理器。
-	manager := accountmanager.NewManager(nil, nil, nil)
+	manager := accountmanager.NewManager(nil, nil, nil, accountmanager.ManagerOptions{})
 	// reporter 保存绑定空运行实例表的已读上报适配器。
 	reporter := NewChatReadReporter(manager)
 	// reportErr 保存不存在账号的已读上报结果。

@@ -153,11 +153,20 @@ cd ".worktree/<任务名>"
 - 两者禁止直接写业务数据或决定自动化规则。
 - 两者禁止依赖 HTTP 层与应用层。
 - internal/engine 与 internal/automation 必须独立于 Server。
+- internal/capability 是能力目录与访问策略的唯一实现点。
+- internal/capability 只依赖标准库与应用层模型。
+- 消费方必须先取 capability 放行决策，再执行用例。
+- 禁止在传输层或 Agent 层复制权限判断。
+- internal/agent 是客服 Agent 运行时，管回合预算与转人工逃生阀。
+- internal/agent 只依赖标准库、模型 SDK、应用层模型、internal/capability 与 engine 生成接缝。
+- internal/agent 禁止依赖 db、平台、浏览器、自动化、mcp、qqbot、server 与 adapter。
+- internal/agent 只实现 engine 的模型生成接缝，禁止调用其消息、连接与凭证链路。
+- internal/application/agentadmin 只管客服 Agent 的开关与档位，不管能力清单。
 - internal/mcp 是与 internal/server 并列的第二传输层。
 - internal/mcp 只依赖标准库、mcp-go 与应用层模型。
 - internal/mcp 禁止依赖 db、server、平台、浏览器、自动化与引擎。
 - internal/mcp 禁止依赖 internal/adapter 与 internal/composition。
-- internal/mcp 的用例接口由包内定义并由组合层投影实现。
+- 跨消费方共用的用例契约放 internal/capability，单消费方专用的放包内。
 - server 只保留 /mcp 通用挂载缝，不写 MCP 协议实现。
 - server 禁止引入 mcp-go 依赖或 JSON-RPC 语义。
 - 新增可变并发状态要有归属、锁与关停文档，并配套测试。

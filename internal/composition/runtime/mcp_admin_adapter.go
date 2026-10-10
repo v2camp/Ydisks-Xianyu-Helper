@@ -8,8 +8,8 @@ import (
 	"context"
 
 	adminapp "xianyu-go/internal/application/admin"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
-	"xianyu-go/internal/mcp"
 	"xianyu-go/internal/server"
 )
 
@@ -18,11 +18,11 @@ type mcpAdminPorts struct {
 	// service 是管理员用户与统计应用服务。
 	service *adminapp.Service
 	// backgroundTasks 返回进程后台任务快照；HTTP 服务未构造完成时为空。
-	backgroundTasks func() []mcp.BackgroundTask
+	backgroundTasks func() []capability.BackgroundTask
 }
 
 // 编译期断言适配器满足 MCP 管理员端口。
-var _ mcp.AdminPorts = (*mcpAdminPorts)(nil)
+var _ capability.AdminPorts = (*mcpAdminPorts)(nil)
 
 // ListUsers 透传用户摘要列表用例。
 func (a *mcpAdminPorts) ListUsers(ctx context.Context) ([]adminapp.UserSummary, error) {
@@ -40,7 +40,7 @@ func (a *mcpAdminPorts) Stats(ctx context.Context) (adminapp.Stats, error) {
 }
 
 // BackgroundTasks 返回进程后台任务快照；提供器缺失时返回空切片。
-func (a *mcpAdminPorts) BackgroundTasks() []mcp.BackgroundTask {
+func (a *mcpAdminPorts) BackgroundTasks() []capability.BackgroundTask {
 	if a.backgroundTasks == nil {
 		return nil
 	}
@@ -48,7 +48,7 @@ func (a *mcpAdminPorts) BackgroundTasks() []mcp.BackgroundTask {
 }
 
 // newMCPAdminPorts 构造 MCP 管理员端口；管理员服务缺失时返回 nil。
-func newMCPAdminPorts(ports composition.TransportPorts, backgroundTasks func() []mcp.BackgroundTask) *mcpAdminPorts {
+func newMCPAdminPorts(ports composition.TransportPorts, backgroundTasks func() []capability.BackgroundTask) *mcpAdminPorts {
 	if ports.Admin == nil {
 		return nil
 	}
@@ -57,13 +57,13 @@ func newMCPAdminPorts(ports composition.TransportPorts, backgroundTasks func() [
 
 // mcpBackgroundTasksFromSnapshots 把 HTTP 服务的后台任务快照转换为 MCP 传输模型。
 // 时间统一转为 Unix 毫秒；零值时间保持为零，由调用方按“未知”语义处理。
-func mcpBackgroundTasksFromSnapshots(snapshots []server.BackgroundTaskSnapshot) []mcp.BackgroundTask {
+func mcpBackgroundTasksFromSnapshots(snapshots []server.BackgroundTaskSnapshot) []capability.BackgroundTask {
 	// tasks 是转换后的任务列表。
-	tasks := make([]mcp.BackgroundTask, 0, len(snapshots))
+	tasks := make([]capability.BackgroundTask, 0, len(snapshots))
 	// snapshot 是当前待转换的任务快照。
 	for _, snapshot := range snapshots {
 		// task 是转换中的 MCP 任务视图。
-		task := mcp.BackgroundTask{
+		task := capability.BackgroundTask{
 			ID: snapshot.ID, Name: snapshot.Name, State: snapshot.State,
 			StartedAtUnixMilli: snapshot.StartedAt.UnixMilli(),
 		}

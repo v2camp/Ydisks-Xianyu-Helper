@@ -20,6 +20,7 @@
 | 自动化 `automation.Scheduler` | `lifecycle.Coordinator`（由 `cmd/server` 装配） | 协调器共享应用生命周期 Context；nil Context 明确拒绝启动 | 协调器逆序取消 Context 并调用 `WaitContext` | `WaitContext` | scheduler、nil 输入与结果收口测试 | 自动化外部动作语义归属由正式总计划决定，不改变调度器 owner |
 | 通知 outbox worker | `lifecycle.Coordinator`（由 `cmd/server` 装配） | 协调器共享应用生命周期 Context | 协调器逆序调用 `WaitContext`，由共享 Context 停止拉取与发送 | `WaitContext`、uncertain 状态查询 | notify worker、uncertain 状态和三库测试 | 运维重试与人工核对流程属于通知业务迭代 |
 | WebSocket/聊天后台发送任务 | `chat.Service` 与请求级连接 owner | 请求 Context 和连接关闭信号；不继承 Server 业务 worker Context | 请求取消或连接关闭时先取消发送/读取任务，再由连接 owner 等待 Join | WebSocket handler 显式等待读取 goroutine，发送结果和连接状态保留可观测字段 | WebSocket 事件流测试、Server race；`chatWebSocket` 已显式 Wait/Join 读取任务 | 更细的消息分发状态由正式总计划安排，不新增 Server 生命周期入口 |
+| QQ 入站命令网关 `qqbot.Gateway` | `lifecycle.Coordinator`（由 `internal/composition/runtime` 的 `addQQBotGatewayComponent` 登记为 `qqbot-gateway`） | 登记时取 `coordinator.Context()`；`NewQQBotGateway` 用同一 Context 读取系统设置与机器人凭据 | 取消共享 Context；该组件 `CloseFunc` 不释放资源，改由 Context 取消让运行协程自行收束 | 仅日志观测：`serveWithRestart` 记录每次异常退出与重连间隔 | `internal/qqbot` 的 inbound/service/commands 测试；未启用或凭据不完整时不登记组件，默认零外部连接 | 守护协程由 `go func()` 启动且未登记等待，`Close` 立即返回，无 Join 完成信号；真实机器人凭据联调仍未完成 |
 
 ## 外部调用取消与超时审计
 

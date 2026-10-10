@@ -16,11 +16,14 @@ type salesReaderFake struct {
 	err error
 	// gotUserID 记录最近一次调用传入的管理员标识。
 	gotUserID int64
+	// calls 记录调用次数，用于断言策略拒绝时不触达读取端口。
+	calls int
 }
 
 // TodaySales 返回预设快照并记录调用参数。
 func (f *salesReaderFake) TodaySales(_ context.Context, adminUserID int64) (SalesSnapshot, error) {
 	f.gotUserID = adminUserID
+	f.calls++
 	return f.snapshot, f.err
 }
 
@@ -30,10 +33,13 @@ type healthReaderFake struct {
 	snapshot HealthSnapshot
 	// err 是预设返回的错误。
 	err error
+	// calls 记录调用次数，用于断言策略拒绝时不触达读取端口。
+	calls int
 }
 
 // Snapshot 返回预设快照。
 func (f *healthReaderFake) Snapshot(_ context.Context, _ int64) (HealthSnapshot, error) {
+	f.calls++
 	return f.snapshot, f.err
 }
 
@@ -45,11 +51,14 @@ type chatsReaderFake struct {
 	err error
 	// gotPerAccount 记录最近一次调用传入的每账号会话数。
 	gotPerAccount int
+	// calls 记录调用次数，用于断言策略拒绝时不触达读取端口。
+	calls int
 }
 
 // RecentChats 返回预设摘要并记录调用参数。
 func (f *chatsReaderFake) RecentChats(_ context.Context, _ int64, perAccount int) (ChatDigest, error) {
 	f.gotPerAccount = perAccount
+	f.calls++
 	return f.digest, f.err
 }
 
@@ -86,7 +95,7 @@ func (f *authorizerFake) Allowed(_ context.Context, openID string) bool {
 }
 
 // newTestService 构造注入全部替身的命令服务，返回服务与各替身便于断言。
-func newTestService() (*Service, *salesReaderFake, *healthReaderFake, *chatsReaderFake) {
+func newFixtureService() (*Service, *salesReaderFake, *healthReaderFake, *chatsReaderFake) {
 	// sales 是销量替身。
 	sales := &salesReaderFake{}
 	// health 是健康替身。
@@ -94,7 +103,7 @@ func newTestService() (*Service, *salesReaderFake, *healthReaderFake, *chatsRead
 	// chats 是会话替身。
 	chats := &chatsReaderFake{}
 	// service 是注入替身后构造的命令服务。
-	service := NewService(sales, health, chats, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true})
+	service := newTestService(sales, health, chats, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true})
 	// fixed 是固定时间源，保证健康文案时刻稳定。
 	fixed := time.Date(2026, 10, 8, 0, 55, 0, 0, time.Local)
 	service.now = /* 固定时间源避免测试受运行时钟影响。 */ func() time.Time { return fixed }
@@ -104,7 +113,7 @@ func newTestService() (*Service, *salesReaderFake, *healthReaderFake, *chatsRead
 // TestHandleDisabledReturnsErrCommandsDisabled 验证开关关闭时不产出任何回复。
 func TestHandleDisabledReturnsErrCommandsDisabled(t *testing.T) {
 	// service 是开关关闭的命令服务。
-	service := NewService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: false, allowed: true})
+	service := newTestService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: false, allowed: true})
 	// reply 是返回的回复文本。
 	// err 是返回的错误。
 	reply, err := service.Handle(context.Background(), "openid-1", "销量")
@@ -116,7 +125,7 @@ func TestHandleDisabledReturnsErrCommandsDisabled(t *testing.T) {
 // TestHandleUnauthorizedReturnsErrUnauthorized 验证白名单外的发送者被拒绝且不下读数据。
 func TestHandleUnauthorizedReturnsErrUnauthorized(t *testing.T) {
 	// service 是白名单不命中的命令服务。
-	service, sales, _, _ := newTestService()
+	service, sales, _, _ := newFixtureService()
 	service.authorizer = &authorizerFake{enabled: true, allowed: false}
 	// reply 是返回的回复文本。
 	// err 是返回的错误。
@@ -132,7 +141,7 @@ func TestHandleUnauthorizedReturnsErrUnauthorized(t *testing.T) {
 // TestHandleSalesCommand 验证销量命令透传管理员身份并渲染快照。
 func TestHandleSalesCommand(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, sales, _, _ := newTestService()
+	service, sales, _, _ := newFixtureService()
 	sales.snapshot = SalesSnapshot{Date: "2026-10-08", Accounts: []AccountSales{{AccountID: "a", AccountName: "主力号", Orders: 2, AmountFen: 9900}}, TotalOrders: 2, AmountFen: 9900}
 	// reply 是返回的回复文本。
 	reply, err := service.Handle(context.Background(), "openid-1", "销量")
@@ -150,7 +159,7 @@ func TestHandleSalesCommand(t *testing.T) {
 // TestHandleHealthCommand 验证健康命令渲染四维快照。
 func TestHandleHealthCommand(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, health, _ := newTestService()
+	service, _, health, _ := newFixtureService()
 	health.snapshot = HealthSnapshot{DatabaseOK: true, Accounts: []AccountHealth{{AccountID: "a", AccountName: "主力号", State: "online", Connected: true}}, SilenceMinutes: 5, SilenceThreshold: 180}
 	// reply 是返回的回复文本。
 	reply, err := service.Handle(context.Background(), "openid-1", "健康度")
@@ -165,7 +174,7 @@ func TestHandleHealthCommand(t *testing.T) {
 // TestHandleChatsCommandUsesDefaultPerAccount 验证会话命令使用默认的每账号会话数。
 func TestHandleChatsCommandUsesDefaultPerAccount(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, _, chats := newTestService()
+	service, _, _, chats := newFixtureService()
 	chats.digest = ChatDigest{Accounts: []AccountChats{{AccountID: "a", AccountName: "主力号", Chats: []ChatBrief{{ChatID: "c", PeerName: "张三", ItemTitle: "商品", Turns: []ChatTurn{{Direction: "incoming", Content: "在吗"}}}}}}}
 	// reply 是返回的回复文本。
 	reply, err := service.Handle(context.Background(), "openid-1", "会话")
@@ -183,7 +192,7 @@ func TestHandleChatsCommandUsesDefaultPerAccount(t *testing.T) {
 // TestHandleUnknownCommandReturnsHelp 验证未知输入回退到命令清单。
 func TestHandleUnknownCommandReturnsHelp(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	// reply 是返回的回复文本。
 	reply, err := service.Handle(context.Background(), "openid-1", "今天天气怎么样")
 	if err != nil {
@@ -197,7 +206,7 @@ func TestHandleUnknownCommandReturnsHelp(t *testing.T) {
 // TestHandleAdminResolveFailure 验证管理员身份不可用时不产出回复。
 func TestHandleAdminResolveFailure(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	service.identity = &identityFake{userID: 0, err: errors.New("管理员不存在")}
 	// reply 是返回的回复文本。
 	// err 是返回的错误。
@@ -210,7 +219,7 @@ func TestHandleAdminResolveFailure(t *testing.T) {
 // TestHandleReaderErrorPropagates 验证数据读取失败时错误透传给调用方。
 func TestHandleReaderErrorPropagates(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, sales, _, _ := newTestService()
+	service, sales, _, _ := newFixtureService()
 	sales.err = errors.New("查询失败")
 	// reply 是返回的回复文本。
 	// err 是返回的错误。
@@ -229,11 +238,11 @@ func TestHandleMissingPortsReportUnavailable(t *testing.T) {
 		// command 是该服务必然执行失败的命令文本。
 		command string
 	}{
-		"缺销量": {NewService(nil, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "销量"},
-		"缺健康": {NewService(&salesReaderFake{}, nil, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "健康"},
-		"缺会话": {NewService(&salesReaderFake{}, &healthReaderFake{}, nil, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "会话"},
-		"缺身份": {NewService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, nil, &authorizerFake{enabled: true, allowed: true}), "销量"},
-		"缺授权": {NewService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, nil), "销量"},
+		"缺销量": {newTestService(nil, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "销量"},
+		"缺健康": {newTestService(&salesReaderFake{}, nil, &chatsReaderFake{}, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "健康"},
+		"缺会话": {newTestService(&salesReaderFake{}, &healthReaderFake{}, nil, &identityFake{userID: 7}, &authorizerFake{enabled: true, allowed: true}), "会话"},
+		"缺身份": {newTestService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, nil, &authorizerFake{enabled: true, allowed: true}), "销量"},
+		"缺授权": {newTestService(&salesReaderFake{}, &healthReaderFake{}, &chatsReaderFake{}, &identityFake{userID: 7}, nil), "销量"},
 	}
 	// name 是用例名称。
 	// item 是当前待验证的服务与命令组合。
@@ -265,4 +274,12 @@ func TestFormatFailureHidesInternalDetails(t *testing.T) {
 	if !strings.Contains(got, "命令执行失败") || strings.Contains(got, "sql") || strings.Contains(got, "SELECT") {
 		t.Fatalf("失败文案不应泄露内部细节，实际=%q", got)
 	}
+}
+
+// newTestService 用给定端口构造带恒放行策略的入站命令服务。
+//
+// 策略放行是既有命令行为不变的前提：本文件的断言全部针对授权、读取与渲染，
+// 策略本身的判定单独由 policy_test.go 覆盖。
+func newTestService(sales SalesReader, health HealthReader, chats ChatReader, identity IdentityResolver, authorizer Authorizer) *Service {
+	return NewService(sales, health, chats, identity, authorizer, allowAllPolicy{})
 }

@@ -194,6 +194,15 @@ func checkGoFile(root, relativePath string, fset *token.FileSet, activeStage int
 				message: fmt.Sprintf("MCP 传输包禁止依赖实现层或装配根 %q；必须消费包内最小端口并由组合层投影", importedPath),
 			})
 		}
+		if isForbiddenAgentImport(importPath, normalizedImport) {
+			// line 是客服 Agent 运行时依赖实现层、其它传输层或装配根所在的源码行号。
+			line := fset.Position(imp.Pos()).Line
+			violations = append(violations, violation{
+				file:    filepath.ToSlash(relativePath),
+				line:    line,
+				message: fmt.Sprintf("客服 Agent 运行时禁止依赖实现层、其它传输层或装配根 %q；用例端口必须由组合层投影实现", importedPath),
+			})
+		}
 	}
 	violations = append(violations, checkServerMCPProtocolIsolation(filepath.ToSlash(relativePath), syntax, source, fset)...)
 	violations = append(violations, checkApplicationTypeLeaks(relativePath, syntax, fset)...)

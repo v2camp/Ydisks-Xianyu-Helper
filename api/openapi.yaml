@@ -1508,6 +1508,194 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/support/settings":
+    get:
+      operationId: getApiV1AgentSupportSettings
+      summary: getApiV1AgentSupportSettings
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSupportSettingsResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: putApiV1AgentSupportSettings
+      summary: putApiV1AgentSupportSettings
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSupportSettingsUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/support/accounts/{cookie_id}":
+    get:
+      operationId: getApiV1AgentSupportAccount
+      summary: getApiV1AgentSupportAccount
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: cookie_id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSupportAccountResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: putApiV1AgentSupportAccount
+      summary: putApiV1AgentSupportAccount
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: cookie_id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSupportAccountUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/v1/admin/tasks":
     get:
       operationId: getApiV1AdminTasks
@@ -7461,6 +7649,46 @@ components:
       in: cookie
       name: session
   schemas:
+    AgentPresetResponse:
+      type: object
+      required: [value, label, description]
+      properties:
+        value: {type: string, description: 档位稳定标识；取值由同一响应中的 presets 名单定义}
+        label: {type: string}
+        description: {type: string}
+    AgentSupportSettingsResponse:
+      type: object
+      required: [enabled, preset, presets]
+      properties:
+        enabled: {type: boolean}
+        preset: {type: string, description: 当前租户默认档位；取值属于 presets 名单}
+        presets:
+          type: array
+          items: {$ref: '#/components/schemas/AgentPresetResponse'}
+    AgentSupportSettingsUpdateRequest:
+      type: object
+      required: [enabled, preset]
+      properties:
+        enabled: {type: boolean}
+        preset: {type: string, description: 目标档位；不属于 presets 名单时返回 400}
+    AgentSupportAccountResponse:
+      type: object
+      required: [cookie_id, enabled, preset, account_enabled, account_preset, presets]
+      properties:
+        cookie_id: {type: string}
+        enabled: {type: boolean}
+        preset: {type: string, description: 账号当前生效档位；账号未覆盖时即租户默认档位}
+        account_enabled: {type: boolean, nullable: true}
+        account_preset: {type: string, nullable: true, description: 账号级档位覆盖；null 表示继承租户默认}
+        presets:
+          type: array
+          items: {$ref: '#/components/schemas/AgentPresetResponse'}
+    AgentSupportAccountUpdateRequest:
+      type: object
+      required: [enabled, preset]
+      properties:
+        enabled: {type: boolean, nullable: true}
+        preset: {type: string, nullable: true, description: 账号级档位覆盖；null 表示继承租户默认；不属于 presets 名单时返回 400}
     ApiResponse:
       type: object
       required: [success]

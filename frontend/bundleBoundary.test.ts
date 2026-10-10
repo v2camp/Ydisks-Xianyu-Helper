@@ -9,13 +9,15 @@ const indexHtml = readFileSync(resolve(staticRoot, 'index.html'), 'utf8');
 // PAGE_CHUNK_BUDGETS 定义每个业务页面动态分片允许的原始字节上限。
 const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Dashboard: 30 * 1024,
-  // AccountList 页面接入全局居中对话框服务后实测 71813 字节，预算随之上调。
-  AccountList: 72 * 1024,
+  // AccountList 页面承载账号编辑弹窗、全局居中对话框服务与账号级客服 Agent 授权控件，实测 75242 字节，预算随之上调。
+  AccountList: 76 * 1024,
   OrderList: 40 * 1024,
   CardList: 45 * 1024,
   ItemList: 65 * 1024,
   // Settings 页面承载 QQ 连接器配置卡与入站命令白名单，实测 33438 字节，预算随之上调。
   Settings: 35 * 1024,
+  // AgentCenter 页面承载三类 Agent 的入口与租户级客服 Agent 授权，实测 7834 字节。
+  AgentCenter: 10 * 1024,
   // Rules 页面包含模板发货模式入口、模板变量编辑器与全局居中对话框调用点。
   Rules: 73 * 1024,
   // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12618 字节，预算随之上调。
@@ -38,10 +40,10 @@ describe('frontend production bundle boundary', /* 当前回调验证生产入�
     expect(preloadedAssets.some(/* 当前回调判断图表依赖是否被首屏预加载。 */ asset => asset.startsWith('charts-vendor-'))).toBe(false);
   });
 
-  test('十个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
+  test('十一个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
     // pageChunkNames 保存 Vite 输出的业务页面 chunk 文件名。
-    const pageChunkNames = readdirSync(resolve(staticRoot, 'assets')).filter(/* 当前回调筛选业务页面分片文件。 */ fileName => /^(Dashboard|AccountList|OrderList|CardList|ItemList|Settings|Rules|Notifications|Chat|DeliveryTemplates)-.+\.js$/.test(fileName));
-    expect(pageChunkNames).toHaveLength(10);
+    const pageChunkNames = readdirSync(resolve(staticRoot, 'assets')).filter(/* 当前回调筛选业务页面分片文件。 */ fileName => /^(Dashboard|AccountList|OrderList|CardList|ItemList|Settings|Rules|Notifications|Chat|DeliveryTemplates|AgentCenter)-.+\.js$/.test(fileName));
+    expect(pageChunkNames).toHaveLength(11);
   });
 
   test('每个业务页面 chunk 都保持在独立预算内', /* 当前回调验证单个页面不会重新膨胀首屏后的按需下载。 */ () => {
