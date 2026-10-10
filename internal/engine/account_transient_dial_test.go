@@ -63,31 +63,47 @@ func TestIsTransientDialErrorPrefersAuthenticationRejection(t *testing.T) {
 	}
 }
 
-// TestRecordNetworkFailureDrivesBackoff 验证网络失败计数递增会推动退避时长增长。
+// TestRecordNetworkFailureDrivesBackoff 验证网络失败计数递增会推动退避阶梯增长，
+// 并验证抖动只放大不缩小、且始终落在 30% 上限之内。
+//
+// 回归背景：原断言直接比较两次 networkRetryDelay 采样的大小，但该值含随机抖动。
+// 以 CookieID "backoff" 为例，账号错峰量为 12s，使抖动幅度（3.6s 与 5.4s）与阶梯
+// 增量（4s→6s）同量级：1 次失败落在 [16s,20.8s)，2 次落在 [18s,23.4s)，两个区间
+// 重叠，"第二次一定更大" 并不被实现保证，`-count=100` 实测假失败 11 次。原上限断言
+// 同样漏算了抖动作用在错峰量上的份额，实际上限是 (60s+错峰)×1.3 而非 80s+错峰。
+// 现改为：阶梯增长断言无抖动的 networkRetryBase，边界与上限断言含抖动的实际值，
+// 三者均为可证明的性质。
 func TestRecordNetworkFailureDrivesBackoff(t *testing.T) {
 	// account 是仅用于验证退避阶梯的本地账号。
 	account := New(Config{CookieID: "backoff", CookieStr: "unb=1"})
 	// 退避在失败计数小于 1 时按 1 处理，因此基准必须先记录一次失败，否则两次采样落在同一档。
 	account.recordNetworkFailure()
-	// first 是首次失败后的退避时长。
-	first := account.networkRetryDelay()
+	// first 是首次失败后的退避基准，不含抖动。
+	first := account.networkRetryBase()
 	account.recordNetworkFailure()
-	// second 是递增一次后的退避时长。
-	second := account.networkRetryDelay()
+	// second 是递增一次后的退避基准，不含抖动。
+	second := account.networkRetryBase()
 	if second <= first {
-		t.Fatalf("网络失败计数递增后退避应增长: first=%v second=%v", first, second)
+		t.Fatalf("网络失败计数递增后退避基准应增长: first=%v second=%v", first, second)
 	}
 	if account.networkFailures != 2 {
 		t.Fatalf("networkFailures 期望 2，实际 %d", account.networkFailures)
+	}
+	// base 是当前档位的无抖动退避基准。
+	base := account.networkRetryBase()
+	// delay 是叠加抖动后的实际退避时长。
+	delay := account.networkRetryDelay()
+	// 抖动只做加法：实际值必须不小于基准，且必须小于 30% 抖动上限。
+	if delay < base || delay >= base+base*3/10 {
+		t.Fatalf("抖动应落在 [%v, %v) 内，实际 %v", base, base+base*3/10, delay)
 	}
 	// 连续递增后仍必须被上限约束，避免永久失去重连机会。
 	for i := 0; i < 20; i++ {
 		account.recordNetworkFailure()
 	}
-	// cappedDelay 是连续失败后的退避时长，必须仍被上限约束。
-	// 上限为 60s 基础值 + 账号错峰 + 30% 抖动；断言加上错峰与 20s 余量以容纳边界。
-	if cappedDelay := account.networkRetryDelay(); cappedDelay > 80*time.Second+accountReconnectStagger(account.CookieID) {
-		t.Fatalf("退避时长应被上限约束，实际 %v", cappedDelay)
+	// capping 是阶梯被截断后的退避基准；60s 之上只应保留账号错峰量。
+	if capping := account.networkRetryBase(); capping > 60*time.Second+accountReconnectStagger(account.CookieID) {
+		t.Fatalf("退避基准应被 60s 上限约束，实际 %v", capping)
 	}
 }
 
