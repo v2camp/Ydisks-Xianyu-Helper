@@ -505,4 +505,41 @@ func TestServiceTestSavedAPI(t *testing.T) {
 	}
 }
 
+// TestServiceCreateExtractsDeliveryChannels 验证贴入卡密时就地提取网盘渠道：
+// data 取库存正文、text 取发货文本，双盘并列，图片类型与无线索正文留空。
+// 渠道在创建时算一次并落库，AI 回答「有夸克吗」时直接读确定值，不再每次扫描。
+func TestServiceCreateExtractsDeliveryChannels(t *testing.T) {
+	// cases 覆盖各类型与多渠道组合的提取结果。
+	cases := []struct {
+		// name 是当前场景名称。
+		name string
+		// draft 是当前场景提交的卡券输入。
+		draft Draft
+		// want 是期望落库的渠道串。
+		want string
+	}{
+		{name: "data 双盘按域名识别", draft: Draft{Name: "a", Type: "data", DataContent: "https://pan.baidu.com/s/1x\nhttps://pan.quark.cn/s/1y"}, want: "百度网盘,夸克网盘"},
+		{name: "data 关键词兜底", draft: Draft{Name: "b", Type: "data", DataContent: "夸克网盘发货"}, want: "夸克网盘"},
+		{name: "text 发货文本", draft: Draft{Name: "c", Type: "text", TextContent: "发你百度网盘"}, want: "百度网盘"},
+		{name: "data 无线索留空", draft: Draft{Name: "d", Type: "data", DataContent: "code-1\ncode-2"}, want: ""},
+		{name: "image 不识别", draft: Draft{Name: "e", Type: "image", ImageURL: "https://pan.baidu.com/card.png"}, want: ""},
+	}
+	// testCase 表示当前待验证的提取场景。
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// repository 是记录创建输入的持久化替身。
+			repository := &cardRepositoryStub{createdID: 1}
+			// service 是待验证的卡券应用服务。
+			service := NewService(repository)
+			// err 表示创建卡券时的业务校验或持久化错误。
+			if _, err := service.Create(context.Background(), 7, testCase.draft); err != nil {
+				t.Fatalf("创建卡券失败: %v", err)
+			}
+			if repository.createdCard.DeliveryChannels != testCase.want {
+				t.Fatalf("渠道提取不符 got=%q want=%q", repository.createdCard.DeliveryChannels, testCase.want)
+			}
+		})
+	}
+}
+
 var _ APIRequestTester = (*apiTesterStub)(nil)

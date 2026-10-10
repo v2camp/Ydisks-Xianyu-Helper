@@ -525,6 +525,9 @@ type CardFull struct {
 	SpecName         string                `json:"spec_name"`
 	SpecValue        string                `json:"spec_value"`
 	UserID           int64                 `json:"user_id"`
+	// DeliveryChannels 是卡密正文或发货文本中识别出的网盘渠道，逗号连接；
+	// 由应用层在保存时自动提取，不接收外部提交值。空串表示未识别。
+	DeliveryChannels string `json:"delivery_channels"`
 }
 
 // ExistsOwned 判断卡密组是否属于指定用户。
@@ -621,11 +624,12 @@ func (c *Cards) Create(ctx context.Context, cf *CardFull) (int64, error) {
 	}
 	return insertReturningID(ctx, c.DB, c.Dialect,
 		`INSERT INTO cards (name, type, api_config, text_content, data_content, image_url, description,
-		    enabled, delay_seconds, is_multi_spec, spec_name, spec_value, user_id)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		    enabled, delay_seconds, is_multi_spec, spec_name, spec_value, user_id, delivery_channels)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		cf.Name, cf.Type, nullable(apiConfig), nullable(cf.TextContent), nullable(cf.DataContent),
 		nullable(cf.ImageURL), nullable(cf.Description), boolToInt(cf.Enabled), cf.DelaySeconds,
-		boolToInt(cf.IsMultiSpec), nullable(cf.SpecName), nullable(cf.SpecValue), cf.UserID)
+		boolToInt(cf.IsMultiSpec), nullable(cf.SpecName), nullable(cf.SpecValue), cf.UserID,
+		cf.DeliveryChannels)
 }
 
 // Update 更新卡券。
@@ -638,12 +642,57 @@ func (c *Cards) Update(ctx context.Context, cf *CardFull) error {
 	// err 用于本次流程后续判断的err
 	_, err = c.DB.ExecContext(ctx,
 		`UPDATE cards SET name=?, type=?, api_config=?, text_content=?, data_content=?, image_url=?,
-		    description=?, enabled=?, delay_seconds=?, is_multi_spec=?, spec_name=?, spec_value=?, updated_at=CURRENT_TIMESTAMP
+		    description=?, enabled=?, delay_seconds=?, is_multi_spec=?, spec_name=?, spec_value=?,
+		    delivery_channels=?, updated_at=CURRENT_TIMESTAMP
 		 WHERE id=?`,
 		cf.Name, cf.Type, nullable(apiConfig), nullable(cf.TextContent), nullable(cf.DataContent),
 		nullable(cf.ImageURL), nullable(cf.Description), boolToInt(cf.Enabled), cf.DelaySeconds,
-		boolToInt(cf.IsMultiSpec), nullable(cf.SpecName), nullable(cf.SpecValue), cf.ID)
+		boolToInt(cf.IsMultiSpec), nullable(cf.SpecName), nullable(cf.SpecValue),
+		cf.DeliveryChannels, cf.ID)
 	return err
+}
+
+// DeliveryChannelsByIDs 批量读取卡券已识别的网盘渠道，返回去重后的展示名。
+// 仅返回非空渠道，未知 ID 直接跳过；查询失败返回错误由调用方按降级处理。
+func (c *Cards) DeliveryChannelsByIDs(ctx context.Context, cardIDs []int64) ([]string, error) {
+	// out 是去重后的渠道展示名。
+	out := make([]string, 0, len(cardIDs))
+	// seen 记录已加入的渠道，避免多张卡券重复输出同一渠道。
+	seen := make(map[string]struct{}, len(cardIDs))
+	// cardID 表示当前遍历到的卡券标识。
+	for _, cardID := range cardIDs {
+		if cardID <= 0 {
+			continue
+		}
+		// stored 是该卡券落库的渠道存储值。
+		var stored string
+		// err 表示读取渠道字段时的数据库错误。
+		if err := c.DB.QueryRowContext(ctx,
+			`SELECT COALESCE(delivery_channels,'') FROM cards WHERE id=?`, cardID).Scan(&stored); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+		// channel 表示当前遍历到的渠道展示名。
+		for _, channel := range strings.Split(stored, ",") {
+			// name 是去空白后的渠道展示名。
+			name := strings.TrimSpace(channel)
+			if name == "" {
+				continue
+			}
+			// ok 表示该渠道是否已加入过，避免多张卡券重复输出同一渠道。
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 // UpdateDataMetadata 只更新 data 卡券的元数据，避免覆盖自动发货并发消费后的库存正文。
