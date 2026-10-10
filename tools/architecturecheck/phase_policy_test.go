@@ -85,6 +85,24 @@ func TestLifecycleArchitectureGate(t *testing.T) {
 	if writeErr := os.WriteFile(workerPath, []byte("package engine\nimport (\"context\"; \"time\")\nvar _ = context.Background()\nvar _ = context.WithTimeout(context.Background(), time.Second)\n"), 0o600); writeErr != nil {
 		t.Fatal(writeErr)
 	}
+	// extraWorkerRoots 是必须与 engine 同受生命周期门禁约束的新增后台组件包前缀。
+	extraWorkerRoots := map[string]string{
+		"internal/agent/worker.go": "package agent\nimport \"context\"\nvar _ = context.Background()\n",
+		"internal/qqbot/worker.go": "package qqbot\nimport \"context\"\nvar _ = context.Background()\n",
+	}
+	// relativeWorkerPath、workerSource 分别是当前新增样例的仓库相对路径与源码。
+	for relativeWorkerPath, workerSource := range extraWorkerRoots {
+		// workerSamplePath 是当前新增样例在临时仓库中的完整路径。
+		workerSamplePath := filepath.Join(root, filepath.FromSlash(relativeWorkerPath))
+		// mkdirErr 表示创建当前新增样例目录失败的文件系统原因。
+		if mkdirErr := os.MkdirAll(filepath.Dir(workerSamplePath), 0o755); mkdirErr != nil {
+			t.Fatal(mkdirErr)
+		}
+		// writeErr 表示写入当前新增根 Context 违规样例失败的文件系统原因。
+		if writeErr := os.WriteFile(workerSamplePath, []byte(workerSource), 0o600); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
 	// inventoryPath 是模拟生命周期清单位置。
 	inventoryPath := filepath.Join(root, "docs", "architecture", "lifecycle-inventory.md")
 	// mkdirErr 表示创建临时生命周期清单目录失败的文件系统原因。
@@ -99,8 +117,22 @@ func TestLifecycleArchitectureGate(t *testing.T) {
 	}
 	// violations 是生命周期门禁对根 Context 的阻断结果。
 	violations := checkLifecycleArchitecture(root)
-	if len(violations) != 1 || !strings.Contains(violations[0].message, "根 Context") {
+	// messages 保存违规文件到诊断文本的映射，用来断言覆盖范围而不依赖目录遍历顺序。
+	messages := make(map[string]string, len(violations))
+	// finding 是当前待记录的生命周期边界违规。
+	for _, finding := range violations {
+		messages[finding.file] = finding.message
+	}
+	// expectedWorkerFiles 是必须被根 Context 规则命中的后台组件样例路径。
+	expectedWorkerFiles := []string{"internal/agent/worker.go", "internal/engine/worker.go", "internal/qqbot/worker.go"}
+	if len(messages) != len(expectedWorkerFiles) {
 		t.Fatalf("violations=%+v", violations)
+	}
+	// expectedWorkerFile 是当前待确认已被阻断的后台组件样例。
+	for _, expectedWorkerFile := range expectedWorkerFiles {
+		if !strings.Contains(messages[expectedWorkerFile], "根 Context") {
+			t.Fatalf("样例未被生命周期门禁阻断: %s violations=%+v", expectedWorkerFile, violations)
+		}
 	}
 }
 
@@ -160,6 +192,8 @@ func TestDatabaseArchitectureGate(t *testing.T) {
 		"internal/application/orders/transaction.go": "package orders\ntype unit struct{}\nfunc (unit) BeginTx() {}\nfunc run(transaction unit) { transaction.BeginTx() }\n",
 		"internal/application/orders/broken.go":      "package orders\nfunc broken( {\n",
 		"internal/adapter/store.go":                  "package adapter\nimport persistence \"xianyu-go/internal/db\"\ntype repository struct { store *persistence.Store }\n",
+		"internal/agent/runtime.go":                  "package agent\nimport persistence \"xianyu-go/internal/db\"\nfunc run(store *persistence.Store) { _ = store.DB }\n",
+		"internal/qqbot/gateway.go":                  "package qqbot\nimport persistence \"xianyu-go/internal/db\"\nfunc run(store *persistence.Store) { _ = store.DB }\n",
 	}
 	// relativePath、source 分别是当前样例的仓库相对路径和源代码。
 	for relativePath, source := range samples {
@@ -182,8 +216,19 @@ func TestDatabaseArchitectureGate(t *testing.T) {
 	for _, finding := range violations {
 		messages[finding.file] = finding.message
 	}
-	if len(messages) != 4 || !strings.Contains(messages["internal/application/orders/sql_alias.go"], "上层生产代码") || !strings.Contains(messages["internal/server/store.go"], "Store.DB") || !strings.Contains(messages["internal/application/orders/transaction.go"], "事务") || !strings.Contains(messages["internal/application/orders/broken.go"], "无法解析") {
+	// upperLeakFiles 是必须被裸数据库规则命中的上层生产文件路径。
+	upperLeakFiles := []string{
+		"internal/agent/runtime.go", "internal/application/orders/sql_alias.go",
+		"internal/application/orders/transaction.go", "internal/qqbot/gateway.go", "internal/server/store.go",
+	}
+	if len(messages) != 6 || !strings.Contains(messages["internal/application/orders/broken.go"], "无法解析") {
 		t.Fatalf("violations=%+v", violations)
+	}
+	// upperLeakFile 是当前待确认已被阻断的上层裸数据库样例。
+	for _, upperLeakFile := range upperLeakFiles {
+		if !strings.Contains(messages[upperLeakFile], "上层生产代码") {
+			t.Fatalf("上层裸数据库样例未被阻断: %s violations=%+v", upperLeakFile, violations)
+		}
 	}
 	// adapterViolation 表示合法 db adapter 是否被数据库门禁错误阻断。
 	if _, adapterViolation := messages["internal/adapter/store.go"]; adapterViolation {

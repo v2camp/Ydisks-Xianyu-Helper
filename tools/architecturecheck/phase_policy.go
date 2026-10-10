@@ -171,7 +171,7 @@ func checkLifecycleArchitecture(root string) []violation {
 	// violations 保存阶段三生命周期边界违规。
 	var violations []violation
 	// lifecycleRoots 是拥有后台 worker 或慢外部调用的生产包前缀。
-	lifecycleRoots := []string{"internal/account/", "internal/automation/", "internal/browser/", "internal/engine/", "internal/notify/", "internal/renewal/"}
+	lifecycleRoots := []string{"internal/account/", "internal/agent/", "internal/automation/", "internal/browser/", "internal/engine/", "internal/notify/", "internal/qqbot/", "internal/renewal/"}
 	violations = append(violations, scanGoProductionFiles(root, func(relativePath string, source []byte) []violation {
 		// frozen 表示受冻结 CAPTCHA 规范保护的实现；阶段三不得以生命周期迁移修改其调用链。
 		// frozen 表示当前文件是否受冻结 CAPTCHA 规范保护，阶段三不允许修改其调用链。
@@ -439,7 +439,7 @@ func featureName(path string) string {
 // 现有领域 repository 在阶段五继续由各消费者的窄方法使用；本规则不把它们误判成裸 SQL 迁移。
 func checkDatabaseArchitecture(root string) []violation {
 	// upperRoots 是阶段五不得操作裸数据库的上层生产包。
-	upperRoots := []string{"internal/account/", "internal/application/", "internal/automation/", "internal/chat/", "internal/engine/", "internal/notify/", "internal/server/"}
+	upperRoots := []string{"internal/account/", "internal/agent/", "internal/application/", "internal/automation/", "internal/chat/", "internal/engine/", "internal/notify/", "internal/qqbot/", "internal/server/"}
 	return scanGoProductionFiles(root, func(relativePath string, source []byte) []violation {
 		// isUpperLayer 表示当前文件是否属于禁止裸数据库访问的生产层。
 		isUpperLayer := false
