@@ -2,17 +2,19 @@
 import { act,renderHook } from '@testing-library/react';
 import type { Dispatch,SetStateAction } from 'react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
-import type { AccountDetail,AIReplySettings } from './api';
+import type { AccountAgentSupport,AccountDetail,AIReplySettings } from './api';
 import {
 cancelPasswordLogin,
 checkPasswordLoginStatus,
 getAccountAISettings,
+getAccountAgentSupport,
 getAccountBindings,
 getLongLoginSettings,
 getNotificationChannels,
 passwordLogin,
 setLongLoginSettings,
 updateAccountAISettings,
+updateAccountAgentSupport,
 updateAccountPauseDuration,
 updateAccountSettings,
 } from './api';
@@ -23,12 +25,14 @@ vi.mock('./api', /* accountsSubmoduleApiMockFactory 提供账号子模块 Hook �
   cancelPasswordLogin: vi.fn(),
   checkPasswordLoginStatus: vi.fn(),
   getAccountAISettings: vi.fn(),
+  getAccountAgentSupport: vi.fn(),
   getAccountBindings: vi.fn(),
   getLongLoginSettings: vi.fn(),
   getNotificationChannels: vi.fn(),
   passwordLogin: vi.fn(),
   setLongLoginSettings: vi.fn(),
   updateAccountAISettings: vi.fn(),
+  updateAccountAgentSupport: vi.fn(),
   updateAccountPauseDuration: vi.fn(),
   updateAccountSettings: vi.fn(),
 }));
@@ -55,6 +59,10 @@ const updateAIMock = vi.mocked(updateAccountAISettings);
 const pauseMock = vi.mocked(updateAccountPauseDuration);
 // updateAccountMock 是账号编辑表单保存的可控替身。
 const updateAccountMock = vi.mocked(updateAccountSettings);
+// agentSupportMock 是账号级客服 Agent 授权读取的可控替身。
+const agentSupportMock = vi.mocked(getAccountAgentSupport);
+// updateAgentSupportMock 是账号级客服 Agent 授权保存的可控替身。
+const updateAgentSupportMock = vi.mocked(updateAccountAgentSupport);
 
 // accountFixture 是账号编辑和登录流程使用的账号对象。
 const accountFixture = { id: 'account-1', enabled: true, value: 'old-cookie', remark: '旧备注', auto_confirm: false, auto_consign: false, auto_bargain: false, pause_duration: 0, username: 'user@example.com', login_password: 'old-password', show_browser: false } as AccountDetail;
@@ -62,6 +70,14 @@ const accountFixture = { id: 'account-1', enabled: true, value: 'old-cookie', re
 const editFormFixture: AccountEditForm = { remark: '新备注', cookie: 'new-cookie', auto_confirm: true, auto_consign: false, auto_bargain: true, bargain_soothe_template: '', pause_duration: 60, username: 'user@example.com', login_password: 'new-password', show_browser: true, showLoginPassword: false, clear_password: false };
 // aiFixture 是账号 AI 设置的服务端配置。
 const aiFixture: AIReplySettings = { ai_enabled: true, auto_adjust_price_enabled: true, max_discount_percent: 20, max_discount_amount: 50, max_bargain_rounds: 2, custom_prompts: '请礼貌回复' };
+// agentSupportFixture 是账号级客服 Agent 授权的服务端配置，两个覆盖值为空表示继承租户默认。
+const agentSupportFixture: AccountAgentSupport = {
+  enabled: null,
+  preset: null,
+  effectiveEnabled: true,
+  effectivePreset: 'readonly',
+  presets: [{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' }],
+};
 
 describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知绑定和密码登录。 */ () => {
   beforeEach(/* 当前回调重置账号子模块 API 替身。 */ () => {
@@ -72,6 +88,8 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     setLongLoginMock.mockResolvedValue({ can_open_long_login: true, enabled: true });
     accountAIMock.mockResolvedValue(aiFixture as never);
     updateAIMock.mockResolvedValue({ success: true });
+    agentSupportMock.mockResolvedValue(agentSupportFixture);
+    updateAgentSupportMock.mockResolvedValue();
     updateAccountMock.mockResolvedValue({ success: true } as never);
     pauseMock.mockResolvedValue({ success: true, paused: true, paused_until: 12345 } as never);
     passwordLoginMock.mockResolvedValue({ success: true, session_id: 'session-1', status: 'processing', message: '处理中' });
@@ -173,6 +191,86 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     );
     expect(hook.result.current.saving).toBe(false);
     hook.unmount();
+  });
+
+  test('客服 Agent 授权只在改动过时才随保存提交', /* 当前回调验证未改动的授权不会产生无意义的写入。 */ async () => {
+    // setEditingAccount 是编辑账号状态替身。
+    const setEditingAccount = vi.fn();
+    // setActiveModal 是编辑弹窗状态替身。
+    const setActiveModal = vi.fn();
+    // setEditForm 是编辑表单状态替身。
+    const setEditForm = vi.fn();
+    // loadAccounts 是保存成功后的账号列表刷新替身。
+    const loadAccounts = vi.fn().mockResolvedValue(undefined);
+    // hook 是账号子模块 Hook 的渲染结果。
+    const hook = renderHook(
+      // agentHookFactory 创建客服 Agent 授权场景的子模块 Hook。
+      () => useAccountSubmodules({ editingAccount: accountFixture, setEditingAccount, setActiveModal, editForm: editFormFixture, setEditForm, loadAccounts }),
+    );
+
+    await act(
+      // openAction 打开 AI 弹窗，同时加载 AI 设置与客服 Agent 授权。
+      async () => hook.result.current.openAIModal(accountFixture),
+    );
+    expect(hook.result.current.agentSupport).toEqual(agentSupportFixture);
+    expect(hook.result.current.agentDirty).toBe(false);
+
+    await act(
+      // untouchedSaveAction 未改动授权时保存，不应提交授权。
+      async () => hook.result.current.handleSaveAISettings(),
+    );
+    expect(updateAgentSupportMock).not.toHaveBeenCalled();
+    expect(updateAIMock).toHaveBeenCalledWith('account-1', aiFixture);
+
+    await act(
+      // reopenAction 重新打开弹窗并改动授权。
+      async () => hook.result.current.openAIModal(accountFixture),
+    );
+    act(
+      // agentChangeAction 把档位覆盖写回草稿。
+      () => hook.result.current.updateAgentSupport({ preset: 'advanced' }),
+    );
+    expect(hook.result.current.agentDirty).toBe(true);
+    await act(
+      // dirtySaveAction 改动后保存，先提交授权再提交 AI 设置。
+      async () => hook.result.current.handleSaveAISettings(),
+    );
+    expect(updateAgentSupportMock).toHaveBeenCalledWith('account-1', { enabled: null, preset: 'advanced' });
+    // lastAISaveOrder 是第二次 AI 设置提交的调用序号，用于断言授权先于 AI 设置提交。
+    const lastAISaveOrder = updateAIMock.mock.invocationCallOrder[updateAIMock.mock.invocationCallOrder.length - 1];
+    expect(updateAgentSupportMock.mock.invocationCallOrder[0]).toBeLessThan(lastAISaveOrder);
+  });
+
+  test('客服 Agent 授权提交失败时整个保存中止且不提交 AI 设置', /* 当前回调验证失败不会留下半途状态。 */ async () => {
+    // setEditingAccount 是编辑账号状态替身。
+    const setEditingAccount = vi.fn();
+    // setActiveModal 是编辑弹窗状态替身。
+    const setActiveModal = vi.fn();
+    // setEditForm 是编辑表单状态替身。
+    const setEditForm = vi.fn();
+    // loadAccounts 是保存成功后的账号列表刷新替身。
+    const loadAccounts = vi.fn().mockResolvedValue(undefined);
+    // hook 是账号子模块 Hook 的渲染结果。
+    const hook = renderHook(
+      // failureHookFactory 创建客服 Agent 授权失败场景的子模块 Hook。
+      () => useAccountSubmodules({ editingAccount: accountFixture, setEditingAccount, setActiveModal, editForm: editFormFixture, setEditForm, loadAccounts }),
+    );
+
+    await act(
+      // openAction 打开 AI 弹窗。
+      async () => hook.result.current.openAIModal(accountFixture),
+    );
+    act(
+      // agentChangeAction 改动启用覆盖，使保存会提交授权。
+      () => hook.result.current.updateAgentSupport({ enabled: true }),
+    );
+    updateAgentSupportMock.mockRejectedValueOnce(new Error('档位取值非法'));
+    await act(
+      // failedSaveAction 授权提交失败后 AI 设置不应被提交。
+      async () => hook.result.current.handleSaveAISettings(),
+    );
+    expect(updateAIMock).not.toHaveBeenCalled();
+    expect(hook.result.current.agentSupport).toMatchObject({ enabled: true });
   });
 
   test('密码登录成功后刷新账号，取消动作可以终止会话', /* 当前回调验证密码登录轮询和取消路径。 */ async () => {

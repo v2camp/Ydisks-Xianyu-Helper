@@ -1,7 +1,10 @@
-import { Bot,Loader2,Save,Settings,X } from 'lucide-react';
+import { Bot,Loader2,Save,Settings,ShieldCheck,X } from 'lucide-react';
 import React from 'react';
 import { createPortal } from 'react-dom';
-import type { AccountDetail,AIReplySettings } from '../api';
+import type { AccountAgentOverride,AccountAgentSupport,AccountDetail,AIReplySettings } from '../api';
+
+/** INHERIT_AGENT_VALUE 是「跟随租户默认」在选择框里的取值；原生 select 不接受 null 作为选项值。 */
+export const INHERIT_AGENT_VALUE = '__inherit__';
 
 // AccountAISettingsModalProps 描述账号 AI 设置弹窗需要的状态和回调。
 export interface AccountAISettingsModalProps {
@@ -9,18 +12,22 @@ export interface AccountAISettingsModalProps {
   account: AccountDetail;
   // settings 是账号 AI 设置编辑草稿。
   settings: AIReplySettings;
+  // agentSupport 是账号级客服 Agent 授权草稿；读取失败时为 null，此时分组只给出不可用说明。
+  agentSupport: AccountAgentSupport | null;
   // saving 表示 AI 设置保存请求是否正在执行。
   saving: boolean;
   // onChange 更新 AI 设置草稿。
   onChange: (settings: AIReplySettings) => void;
+  // onAgentChange 更新账号级客服 Agent 授权草稿。
+  onAgentChange: (patch: Partial<AccountAgentOverride>) => void;
   // onClose 关闭 AI 设置弹窗。
   onClose: () => void;
   // onSave 保存 AI 设置并刷新账号列表。
   onSave: () => void | Promise<void>;
 }
 
-// AccountAISettingsModal 渲染账号 AI 自动回复策略编辑界面。
-export const AccountAISettingsModal: React.FC<AccountAISettingsModalProps> = ({ account, settings, saving, onChange, onClose, onSave }) => {
+// AccountAISettingsModal 渲染账号 AI 自动回复策略与账号级客服 Agent 授权编辑界面。
+export const AccountAISettingsModal: React.FC<AccountAISettingsModalProps> = ({ account, settings, agentSupport, saving, onChange, onAgentChange, onClose, onSave }) => {
   // updateSettings 使用最新草稿合并单个 AI 字段变化。
   const updateSettings = (patch: Partial<AIReplySettings>) => onChange({ ...settings, ...patch });
   // handleEnabledChange 切换 AI 自动回复开关。
@@ -38,6 +45,22 @@ export const AccountAISettingsModal: React.FC<AccountAISettingsModalProps> = ({ 
   const handleBargainRoundsChange = (event: React.ChangeEvent<HTMLInputElement>) => updateSettings({ max_bargain_rounds: parseInt(event.target.value, 10) || 1 });
   // handlePromptChange 更新自定义 AI 提示词。
   const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => updateSettings({ custom_prompts: event.target.value });
+  // handleAgentEnabledChange 把启用状态选择写回账号级授权草稿，继承取值恢复为 null。
+  const handleAgentEnabledChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    // raw 是启用状态选择框的原始取值。
+    const raw = event.target.value;
+    onAgentChange({ enabled: raw === INHERIT_AGENT_VALUE ? null : raw === 'on' });
+  };
+  // handleAgentPresetChange 把档位选择写回账号级授权草稿，继承取值恢复为 null。
+  const handleAgentPresetChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    // raw 是档位选择框的原始取值。
+    const raw = event.target.value;
+    onAgentChange({ preset: raw === INHERIT_AGENT_VALUE ? null : raw });
+  };
+  // effectivePresetLabel 是账号当前生效档位的展示名；服务端名单里找不到时回落为标识本身。
+  const effectivePresetLabel = agentSupport
+    ? agentSupport.presets.find(/* option 是档位候选项，按 value 与账号当前生效档位匹配。 */ option => option.value === agentSupport.effectivePreset)?.label || agentSupport.effectivePreset
+    : '';
 
   return createPortal(
     <div className="modal-overlay-centered">
@@ -75,6 +98,56 @@ export const AccountAISettingsModal: React.FC<AccountAISettingsModalProps> = ({ 
           </div>
 
           <div><label className="block text-sm font-bold text-gray-700 mb-2">自定义提示词（可选）</label><textarea value={settings.custom_prompts} onChange={handlePromptChange} placeholder="输入自定义的AI回复规则或风格指引...&#10;&#10;例如：回复时保持礼貌专业、使用简洁的语言、强调产品质量等" className="w-full ios-input px-4 py-3 rounded-xl h-40 resize-none" /></div>
+
+          {/* 客服 Agent：能力授权与 AI 议价是两件事，因此单列分组，并且只暴露启用与档位两个控件。 */}
+          <div className="border-t border-gray-200 pt-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-sky-600" />客服 Agent</h3>
+            {!agentSupport ? (
+              <p className="text-xs text-gray-500">账号级客服 Agent 授权未能读取，保存时不会改动它；可以关闭弹窗后重试。</p>
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="account-agent-enabled">启用状态</label>
+                    <select
+                      id="account-agent-enabled"
+                      aria-label="客服 Agent 启用状态"
+                      value={agentSupport.enabled === null ? INHERIT_AGENT_VALUE : agentSupport.enabled ? 'on' : 'off'}
+                      onChange={handleAgentEnabledChange}
+                      className="w-full ios-input px-4 py-3 rounded-xl"
+                    >
+                      <option value={INHERIT_AGENT_VALUE}>跟随租户默认（当前{agentSupport.effectiveEnabled ? '启用' : '关闭'}）</option>
+                      <option value="on">启用</option>
+                      <option value="off">关闭</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="account-agent-preset">能力档位</label>
+                    <select
+                      id="account-agent-preset"
+                      aria-label="客服 Agent 能力档位"
+                      value={agentSupport.preset === null ? INHERIT_AGENT_VALUE : agentSupport.preset}
+                      onChange={handleAgentPresetChange}
+                      className="w-full ios-input px-4 py-3 rounded-xl"
+                    >
+                      <option value={INHERIT_AGENT_VALUE}>跟随租户默认（当前{effectivePresetLabel || '未知'}）</option>
+                      {agentSupport.presets.map(/* option 是服务端下发的当前档位选项。 */ option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs leading-5 text-gray-500">
+                  开启后客服 Agent 可自主查询该账号的订单与商品，并在所选档位允许的范围内对外应答。
+                  这里的改动随下方「保存」一起提交，不再单独生效。
+                </p>
+                <p className="text-xs leading-5 text-gray-500">
+                  档位只约束这一账号的能力上限，具体放行哪些操作由后端能力内核判定，界面不列出工具清单。
+                </p>
+              </>
+            )}
+          </div>
+
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <h4 className="font-bold text-blue-900 mb-2 flex items-center gap-2"><Settings className="w-4 h-4" />AI如何工作</h4>
             <ul className="text-xs text-blue-800 space-y-1"><li>• 自动识别买家的砍价请求</li><li>• 根据设定的策略智能回复</li><li>• 在合理范围内同意降价或礼貌拒绝</li><li>• 只有开启自动改价后，已发送给买家的有效报价才会用于真实订单改价</li></ul>

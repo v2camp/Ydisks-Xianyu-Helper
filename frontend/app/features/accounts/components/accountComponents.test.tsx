@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup,fireEvent,render,screen } from '@testing-library/react';
 import { afterEach,describe,expect,test,vi } from 'vitest';
-import type { AccountDetail,AIReplySettings } from '../api';
-import { AccountAISettingsModal } from './AccountAISettingsModal';
+import type { AccountAgentSupport,AccountDetail,AIReplySettings } from '../api';
+import { AccountAISettingsModal,INHERIT_AGENT_VALUE } from './AccountAISettingsModal';
 import { AccountCard } from './AccountCard';
 import { AccountDeleteDialog } from './AccountDeleteDialog';
 import { AccountQRCodeModal } from './AccountQRCodeModal';
@@ -32,6 +32,18 @@ const aiSettingsFixture: AIReplySettings = {
   max_discount_amount: 100,
   max_bargain_rounds: 3,
   custom_prompts: '',
+};
+
+// agentSupportFixture 是账号级客服 Agent 授权弹窗测试使用的草稿，两个覆盖值均为空表示继承租户默认。
+const agentSupportFixture: AccountAgentSupport = {
+  enabled: null,
+  preset: null,
+  effectiveEnabled: true,
+  effectivePreset: 'readonly',
+  presets: [
+    { value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' },
+    { value: 'advanced', label: '高级', description: '在标准之上允许可逆的数据写入' },
+  ],
 };
 
 // noopAccountAction 是账号卡片测试使用的动作占位函数。
@@ -72,7 +84,7 @@ describe('账号 feature 展示组件', /* 当前回调覆盖账号页面子模�
     // onSave 是 AI 设置保存测试替身。
     const onSave = vi.fn();
     // view 允许测试在 AI 开启后重新渲染同一受控弹窗。
-    const view = render(<AccountAISettingsModal account={accountFixture} settings={aiSettingsFixture} saving={false} onChange={onChange} onClose={noopAccountAction} onSave={onSave} />);
+    const view = render(<AccountAISettingsModal account={accountFixture} settings={aiSettingsFixture} agentSupport={agentSupportFixture} saving={false} onChange={onChange} onAgentChange={noopAccountAction} onClose={noopAccountAction} onSave={onSave} />);
     fireEvent.click(screen.getByLabelText('切换 AI 自动回复'));
     fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '20' } });
     fireEvent.click(screen.getByText('保存'));
@@ -81,9 +93,41 @@ describe('账号 feature 展示组件', /* 当前回调覆盖账号页面子模�
     expect(onSave).toHaveBeenCalledTimes(1);
     // enabledSettings 是 AI 议价已开启、允许商家进一步选择真实自动改价的草稿。
     const enabledSettings = { ...aiSettingsFixture, ai_enabled: true };
-    view.rerender(<AccountAISettingsModal account={accountFixture} settings={enabledSettings} saving={false} onChange={onChange} onClose={noopAccountAction} onSave={onSave} />);
+    view.rerender(<AccountAISettingsModal account={accountFixture} settings={enabledSettings} agentSupport={agentSupportFixture} saving={false} onChange={onChange} onAgentChange={noopAccountAction} onClose={noopAccountAction} onSave={onSave} />);
     fireEvent.click(screen.getByLabelText('切换 AI 自动改价'));
     expect(onChange).toHaveBeenNthCalledWith(3, { ...enabledSettings, auto_adjust_price_enabled: true });
+  });
+
+  test('客服 Agent 分组展示继承态并在选择后写回覆盖值', /* 当前回调验证三态继承与覆盖值往返。 */ () => {
+    // onAgentChange 是客服 Agent 授权草稿更新测试替身。
+    const onAgentChange = vi.fn();
+    const view = render(<AccountAISettingsModal account={accountFixture} settings={aiSettingsFixture} agentSupport={agentSupportFixture} saving={false} onChange={noopAccountAction} onAgentChange={onAgentChange} onClose={noopAccountAction} onSave={noopAccountAction} />);
+    // enabledSelect 是启用状态下拉框，两个覆盖值为空时必须落在继承项上并显示继承到的生效值。
+    const enabledSelect = screen.getByLabelText('客服 Agent 启用状态') as HTMLSelectElement;
+    expect(enabledSelect.value).toBe(INHERIT_AGENT_VALUE);
+    expect(screen.getByText('跟随租户默认（当前启用）')).toBeTruthy();
+    expect(screen.getByText('跟随租户默认（当前只读）')).toBeTruthy();
+
+    fireEvent.change(enabledSelect, { target: { value: 'off' } });
+    expect(onAgentChange).toHaveBeenCalledWith({ enabled: false });
+    fireEvent.change(screen.getByLabelText('客服 Agent 能力档位'), { target: { value: 'advanced' } });
+    expect(onAgentChange).toHaveBeenCalledWith({ preset: 'advanced' });
+
+    fireEvent.change(screen.getByLabelText('客服 Agent 启用状态'), { target: { value: INHERIT_AGENT_VALUE } });
+    expect(onAgentChange).toHaveBeenCalledWith({ enabled: null });
+    fireEvent.change(screen.getByLabelText('客服 Agent 能力档位'), { target: { value: INHERIT_AGENT_VALUE } });
+    expect(onAgentChange).toHaveBeenCalledWith({ preset: null });
+
+    view.rerender(<AccountAISettingsModal account={accountFixture} settings={aiSettingsFixture} agentSupport={{ ...agentSupportFixture, enabled: true, preset: 'advanced' }} saving={false} onChange={noopAccountAction} onAgentChange={onAgentChange} onClose={noopAccountAction} onSave={noopAccountAction} />);
+    expect((screen.getByLabelText('客服 Agent 启用状态') as HTMLSelectElement).value).toBe('on');
+    expect((screen.getByLabelText('客服 Agent 能力档位') as HTMLSelectElement).value).toBe('advanced');
+  });
+
+  test('客服 Agent 授权读取失败时只提示不可用且不渲染控件', /* 当前回调验证读取失败不退化成一个会被误保存的空配置。 */ () => {
+    render(<AccountAISettingsModal account={accountFixture} settings={aiSettingsFixture} agentSupport={null} saving={false} onChange={noopAccountAction} onAgentChange={noopAccountAction} onClose={noopAccountAction} onSave={noopAccountAction} />);
+    expect(screen.getByText(/账号级客服 Agent 授权未能读取/)).toBeTruthy();
+    expect(screen.queryByLabelText('客服 Agent 启用状态')).toBeNull();
+    expect(screen.queryByLabelText('客服 Agent 能力档位')).toBeNull();
   });
 
   test('删除确认框展示错误并转发确认动作', /* 当前回调验证删除确认框的错误和提交分支。 */ () => {

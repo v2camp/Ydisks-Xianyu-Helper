@@ -9,14 +9,14 @@ const indexHtml = readFileSync(resolve(staticRoot, 'index.html'), 'utf8');
 // PAGE_CHUNK_BUDGETS 定义每个业务页面动态分片允许的原始字节上限。
 const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Dashboard: 30 * 1024,
-  // AccountList 页面接入全局居中对话框服务后实测 71813 字节，预算随之上调。
-  AccountList: 72 * 1024,
+  // AccountList 页面承载账号编辑弹窗、全局居中对话框服务与账号级客服 Agent 授权控件，实测 75242 字节，预算随之上调。
+  AccountList: 76 * 1024,
   OrderList: 40 * 1024,
   CardList: 45 * 1024,
   ItemList: 65 * 1024,
   // Settings 页面承载 QQ 连接器配置卡与入站命令白名单，实测 33438 字节，预算随之上调。
   Settings: 35 * 1024,
-  // AgentCenter 页面承载三类 Agent 的入口与租户级客服 Agent 授权，实测 8347 字节。
+  // AgentCenter 页面承载三类 Agent 的入口与租户级客服 Agent 授权，实测 7834 字节。
   AgentCenter: 10 * 1024,
   // Rules 页面包含模板发货模式入口、模板变量编辑器与全局居中对话框调用点。
   Rules: 73 * 1024,
