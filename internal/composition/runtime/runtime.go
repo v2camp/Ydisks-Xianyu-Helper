@@ -63,6 +63,8 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	}
 	// services 在全部组合完成前保持 nil；首次连接回调只会在生命周期启动后触发，因此不会观察到半初始化服务。
 	var services *composition.Services
+	// supportAgentFactory 是账号级客服 Agent 生成器工厂；依赖不完整时为 nil，全部账号沿用默认单次问答。
+	supportAgentFactory := buildSupportAgentFactory(infrastructure.Store, func() *composition.Services { return services }, infrastructure.Logger)
 	// initialOrderSync 是账号首次消息传输就绪后的订单同步回调，失败交给 Adapter 记录，不影响连接。
 	initialOrderSync := func(ctx context.Context, accountID string) error {
 		if services == nil {
@@ -76,7 +78,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		browserManager = browser.NewManager(infrastructure.Logger)
 	}
 	// runtimeBundle、bundleErr 分别是账号运行时依赖集合及其构造失败原因。
-	runtimeBundle, bundleErr := adapter.NewRuntimeBundle(infrastructure.Store, browserManager, infrastructure.Logger, initialOrderSync)
+	runtimeBundle, bundleErr := adapter.NewRuntimeBundle(infrastructure.Store, browserManager, infrastructure.Logger, initialOrderSync, supportAgentFactory)
 	if bundleErr != nil {
 		return Runtime{}, fmt.Errorf("构造账号运行时依赖失败: %w", bundleErr)
 	}
