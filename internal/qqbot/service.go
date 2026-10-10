@@ -20,7 +20,10 @@ var ErrCommandsDisabled = errors.New("qq 入站命令未启用")
 // ErrUnauthorized 表示发送者不在命令白名单内，调用方应回复授权提示。
 var ErrUnauthorized = errors.New("qq 入站命令发送者未授权")
 
-// Service 编排入站命令：授权校验、命令解析、数据读取与文本渲染。
+// ErrPolicyDenied 表示策略拒绝了该命令，调用方应回复通用拒绝文案且不得以任何方式降级放行。
+var ErrPolicyDenied = errors.New("qq 入站命令被策略拒绝")
+
+// Service 编排入站命令：授权校验、命令解析、策略求值、数据读取与文本渲染。
 type Service struct {
 	// sales 提供当日账号级销量读取。
 	sales SalesReader
@@ -32,13 +35,15 @@ type Service struct {
 	identity IdentityResolver
 	// authorizer 判断命令是否对当前发送者开放。
 	authorizer Authorizer
+	// policy 在读取数据前对该调用求值，未装配时命令一律不执行。
+	policy PolicyEvaluator
 	// now 返回当前时刻，便于测试固定时间。
 	now func() time.Time
 }
 
 // NewService 构造入站命令服务；任一端口为 nil 时命令执行会返回明确的不可用错误。
-func NewService(sales SalesReader, health HealthReader, chats ChatReader, identity IdentityResolver, authorizer Authorizer) *Service {
-	return &Service{sales: sales, health: health, chats: chats, identity: identity, authorizer: authorizer, now: time.Now}
+func NewService(sales SalesReader, health HealthReader, chats ChatReader, identity IdentityResolver, authorizer Authorizer, policy PolicyEvaluator) *Service {
+	return &Service{sales: sales, health: health, chats: chats, identity: identity, authorizer: authorizer, policy: policy, now: time.Now}
 }
 
 // Handle 处理一条入站消息，返回待回复的中文文本。
@@ -62,6 +67,11 @@ func (s *Service) Handle(ctx context.Context, openID, text string) (string, erro
 	userID, err := s.resolveAdmin(ctx)
 	if err != nil {
 		return "", err
+	}
+	// capabilityName、governed 分别是本次命令对应的平台能力名与是否受策略管辖。
+	capabilityName, governed := capabilityForCommand(command)
+	if governed && !s.allows(userID, capabilityName) {
+		return "", ErrPolicyDenied
 	}
 	// reply 是命令执行并渲染后的回复文本；execErr 表示数据读取失败。
 	reply, execErr := s.execute(ctx, command, userID)
@@ -91,6 +101,11 @@ func FormatUnauthorized(openID string) string {
 // FormatFailure 渲染命令执行失败时的兜底文案，不泄露内部错误细节。
 func FormatFailure() string {
 	return "命令执行失败，请稍后重试或查看服务日志。"
+}
+
+// FormatDenied 渲染策略拒绝时的兜底文案，不回显能力名或内部判定细节。
+func FormatDenied() string {
+	return "该命令当前不可执行。如需排查，请检查系统设置中的 QQ 连接器与 Agent 配置。"
 }
 
 // execute 按命令标识读取数据并渲染文本；未知命令回退到命令清单。

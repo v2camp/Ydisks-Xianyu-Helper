@@ -132,7 +132,7 @@ func TestParseInboundMessageErrors(t *testing.T) {
 // TestRunRejectsInvalidSetup 验证缺少上下文、服务或凭据时 Run 直接失败。
 func TestRunRejectsInvalidSetup(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	// cases 是应判定为启动失败的输入。
 	cases := map[string]func() error{
 		"空上下文":/* 未注入生命周期上下文不得启动。 */ func() error {
@@ -155,7 +155,7 @@ func TestRunRejectsInvalidSetup(t *testing.T) {
 // TestRunRepliesC2CWithCommandResult 验证单聊命令全链路：解析 → 执行 → 被动回复且回传 msg_id。
 func TestRunRepliesC2CWithCommandResult(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, sales, _, _ := newTestService()
+	service, sales, _, _ := newFixtureService()
 	sales.snapshot = SalesSnapshot{Date: "2026-10-08", Accounts: []AccountSales{{AccountID: "a", AccountName: "主力号", Orders: 2, AmountFen: 9900}}, TotalOrders: 2, AmountFen: 9900}
 	// replier 是回复替身。
 	replier := &replierFake{}
@@ -181,7 +181,7 @@ func TestRunRepliesC2CWithCommandResult(t *testing.T) {
 // TestRunRepliesGroupWhenGroupOpenIDPresent 验证群场景回复到群且剥离 @ 提及前缀。
 func TestRunRepliesGroupWhenGroupOpenIDPresent(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, health, _ := newTestService()
+	service, _, health, _ := newFixtureService()
 	health.snapshot = HealthSnapshot{DatabaseOK: true, SilenceMinutes: 1, SilenceThreshold: 180}
 	// replier 是回复替身。
 	replier := &replierFake{}
@@ -204,7 +204,7 @@ func TestRunRepliesGroupWhenGroupOpenIDPresent(t *testing.T) {
 // TestRunSilentWhenCommandsDisabled 验证开关关闭时不回复任何内容。
 func TestRunSilentWhenCommandsDisabled(t *testing.T) {
 	// service 是开关关闭的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	service.authorizer = &authorizerFake{enabled: false, allowed: true}
 	// replier 是回复替身。
 	replier := &replierFake{}
@@ -217,7 +217,7 @@ func TestRunSilentWhenCommandsDisabled(t *testing.T) {
 // TestRunRepliesUnauthorizedNotice 验证未授权发送者收到含其 openid 的提示。
 func TestRunRepliesUnauthorizedNotice(t *testing.T) {
 	// service 是白名单不命中的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	service.authorizer = &authorizerFake{enabled: true, allowed: false}
 	// replier 是回复替身。
 	replier := &replierFake{}
@@ -230,7 +230,7 @@ func TestRunRepliesUnauthorizedNotice(t *testing.T) {
 // TestRunRepliesFailureNotice 验证命令执行失败时回复兜底文案且不泄露细节。
 func TestRunRepliesFailureNotice(t *testing.T) {
 	// service 是销量读取失败的命令服务。
-	service, sales, _, _ := newTestService()
+	service, sales, _, _ := newFixtureService()
 	sales.err = errors.New("数据库连接失败")
 	// replier 是回复替身。
 	replier := &replierFake{}
@@ -243,7 +243,7 @@ func TestRunRepliesFailureNotice(t *testing.T) {
 // TestRunPropagatesSessionError 验证会话启动错误被原样透出。
 func TestRunPropagatesSessionError(t *testing.T) {
 	// service 是注入替身的命令服务。
-	service, _, _, _ := newTestService()
+	service, _, _, _ := newFixtureService()
 	// originalClient 是原工厂，用于用例结束后还原。
 	originalClient := newGatewayClient
 	// originalStart 是原会话启动函数，用于用例结束后还原。

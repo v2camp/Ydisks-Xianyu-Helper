@@ -14,6 +14,7 @@ import (
 	automationapp "xianyu-go/internal/application/automation"
 	chatapp "xianyu-go/internal/application/chat"
 	"xianyu-go/internal/application/lifecycle"
+	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/money"
@@ -447,6 +448,15 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 		}
 		return nil
 	}
+	// catalog 是平台内置能力目录；构造失败属声明自相矛盾的编程错误。
+	catalog, catalogErr := capability.PlatformCatalog()
+	if catalogErr != nil {
+		// 目录构造失败时不启动网关：未受策略管辖的命令一律不得执行，静默放行比不可用更危险。
+		if dependencies.Logger != nil {
+			dependencies.Logger.Error("QQ 入站命令未启用：平台能力目录构造失败", "err", catalogErr)
+		}
+		return nil
+	}
 	// service 是装配完成的入站命令服务。
 	service := qqbot.NewService(
 		qqSalesReader{analytics: dependencies.Analytics, summaries: dependencies.Summaries, clock: clock},
@@ -454,6 +464,7 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 		qqChatReader{chat: dependencies.Chat, summaries: dependencies.Summaries},
 		qqIdentityResolver{store: dependencies.Store},
 		authorizer,
+		qqbot.NewCatalogPolicy(catalog),
 	)
 	service.SetClock(clock)
 	return qqbot.NewGateway(appID, appSecret, service)
