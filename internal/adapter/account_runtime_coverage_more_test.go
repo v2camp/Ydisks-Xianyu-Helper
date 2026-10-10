@@ -35,7 +35,7 @@ func TestAccountRuntimePortForwardsStartedManagerOperations(t *testing.T) {
 	store, cleanup := newAdapterTestStore(t)
 	defer cleanup()
 	// manager 保存拥有一个测试账号运行实例的账号管理器。
-	manager := accountmanager.NewManager(store, runtimePortHandler{refreshResult: true}, nil)
+	manager := accountmanager.NewManager(store, runtimePortHandler{refreshResult: true}, nil, accountmanager.ManagerOptions{})
 	// ctx、cancel 保存运行实例的生命周期上下文。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

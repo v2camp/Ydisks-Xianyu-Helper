@@ -55,7 +55,7 @@ func TestManagerStartStop(t *testing.T) {
 	store.Cookies.SetStatus(context.Background(), "acc3", false)
 
 	// mgr 用于本次流程后续判断的mgr
-	mgr := NewManager(store, noopHandler{}, nil)
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{})
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -95,10 +95,53 @@ func TestManagerStartStop(t *testing.T) {
 	}
 }
 
+// TestManagerForwardsAIGeneratorFactory 验证账号启动时把生成器工厂透传给 engine，并按本账号标识调用一次。
+// 工厂本身返回 nil（表示该账号不使用自定义生成器），因此本用例只断言透传链路而不涉及 Agent 行为。
+func TestManagerForwardsAIGeneratorFactory(t *testing.T) {
+	// dbPath 是本次验证使用的临时数据库路径。
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	// d、err 分别是打开的数据库句柄与打开失败原因。
+	d, _, err := db.Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer d.Close()
+	// store 是账号管理器的数据库仓储入口。
+	store := db.NewStore(d, db.DialectSQLite)
+	store.Users.Create(context.Background(), "admin", "a@e.com", "pw")
+	// admin 是账号归属的用户行。
+	admin, _ := store.Users.GetByUsername(context.Background(), "admin")
+	store.Cookies.Save(context.Background(), "cid-agent", "unb=7; _m_h5_tk=t7_1;", admin.ID)
+	store.Cookies.SetStatus(context.Background(), "cid-agent", true)
+
+	// requested 记录工厂收到的账号标识。
+	var requested []string
+	// mgr 是注入了生成器工厂的管理器。
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{
+		AIGeneratorFactory: func(cookieID string) engine.AIGenerator {
+			requested = append(requested, cookieID)
+			return nil
+		},
+	})
+	// ctx、cancel 是本次账号启动的生命周期预算。
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// startErr 是启动账号运行实例的失败原因。
+	startErr := mgr.Start(ctx, "cid-agent", "unb=7; _m_h5_tk=t7_1;")
+	if startErr != nil {
+		t.Fatalf("Start: %v", startErr)
+	}
+	defer mgr.StopAll()
+
+	if len(requested) != 1 || requested[0] != "cid-agent" {
+		t.Fatalf("生成器工厂应被本账号调用一次: %v", requested)
+	}
+}
+
 // TestManagerStoppingFence 验证账号删除期间禁止并发启动，并支持失败后的 fencing 释放。
 func TestManagerStoppingFence(t *testing.T) {
 	// mgr 是仅用于验证停止 fencing 状态机的账号管理器。
-	mgr := NewManager(nil, noopHandler{}, nil)
+	mgr := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	if !mgr.BeginStopping("fenced") {
 		t.Fatal("首次建立停止 fencing 应成功")
 	}
@@ -120,7 +163,7 @@ func TestManagerStoppingFence(t *testing.T) {
 // TestManagerGlobalStoppingFence 验证全量关闭期间不允许新的账号运行实例进入管理器。
 func TestManagerGlobalStoppingFence(t *testing.T) {
 	// mgr 是只验证生命周期 fencing 的管理器，不需要数据库或平台处理器。
-	mgr := NewManager(nil, noopHandler{}, nil)
+	mgr := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	mgr.mu.Lock()
 	// stoppingAll 模拟 StopAllContext 已经建立的全局关闭屏障。
 	mgr.stoppingAll = true
@@ -154,7 +197,7 @@ func TestManagerConcurrentStartCreatesSingleManagedInstance(t *testing.T) {
 	store.Cookies.Save(context.Background(), "same", "unb=1; _m_h5_tk=t_1;", admin.ID)
 
 	// mgr 用于本次流程后续判断的mgr
-	mgr := NewManager(store, noopHandler{}, nil)
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{})
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -204,7 +247,7 @@ func TestManagerStopAll(t *testing.T) {
 	}
 
 	// mgr 用于本次流程后续判断的mgr
-	mgr := NewManager(store, noopHandler{}, nil)
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{})
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

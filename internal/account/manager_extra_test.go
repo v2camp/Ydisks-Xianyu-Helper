@@ -191,7 +191,7 @@ func newManagerWithAccount(t *testing.T, cookieID, cookieValue string) (*Manager
 		cleanup()
 		t.Fatalf("SetStatus: %v", err)
 	}
-	return NewManager(store, noopHandler{}, nil), store, cleanup
+	return NewManager(store, noopHandler{}, nil, ManagerOptions{}), store, cleanup
 }
 
 // startAccountWithMtop 用自定义 mtop 客户端启动账号，返回 runCtx 的 cancel。
@@ -272,7 +272,7 @@ func TestSender(t *testing.T) {
 // TestManagerInputAndCredentialBoundaries 验证管理器空 Context、停止 fencing 和凭证刷新边界。
 func TestManagerInputAndCredentialBoundaries(t *testing.T) {
 	// manager 是不依赖数据库启动的输入校验管理器。
-	manager := NewManager(nil, noopHandler{}, nil)
+	manager := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	// nilContext 是专门验证管理器 nil Context 防护的空接口值。
 	var nilContext context.Context
 	if // err 是空启动 Context 的参数错误。
@@ -302,7 +302,7 @@ func TestManagerInputAndCredentialBoundaries(t *testing.T) {
 		t.Fatal("未装配处理器不应报告刷新成功")
 	}
 	// refreshManager 是注入成功刷新处理器的管理器。
-	refreshManager := NewManager(nil, refreshHandler{}, nil)
+	refreshManager := NewManager(nil, refreshHandler{}, nil, ManagerOptions{})
 	if // refreshed 是处理器委托返回的刷新结果。
 	refreshed := refreshManager.RecoverExpiredCredential(context.Background(), "account"); !refreshed {
 		t.Fatal("处理器刷新成功结果未透传")
@@ -318,7 +318,7 @@ func TestManagerInputAndCredentialBoundaries(t *testing.T) {
 // TestManagerStopAndRestartErrorBoundaries 验证停止等待取消、全量停止传播和重启启动失败边界。
 func TestManagerStopAndRestartErrorBoundaries(t *testing.T) {
 	// manager 是包含未关闭运行完成信号的停止测试管理器。
-	manager := NewManager(nil, noopHandler{}, nil)
+	manager := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	// account 是未启动但可执行生命周期 Stop 的账号运行时。
 	account := engine.New(engine.Config{CookieID: "cancel-account", CookieStr: "unb=1"})
 	// managed 是等待信号保持打开的管理实例。
@@ -346,7 +346,7 @@ func TestManagerStopAndRestartErrorBoundaries(t *testing.T) {
 	// postStopContext 在停止旧实例后才报告取消，覆盖重启读取 Cookie 前的检查。
 	postStopContext := &stagedContext{cancelAfter: 2}
 	// postStopManager 是没有旧实例的管理器，确保重启阶段直接进入停止后检查。
-	postStopManager := NewManager(nil, noopHandler{}, nil)
+	postStopManager := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	// postStopErr 是停止阶段后取消重启返回的分类错误。
 	postStopErr := postStopManager.Restart(postStopContext, "cancel-account")
 	if !errors.Is(postStopErr, ErrRestartIncomplete) || !errors.Is(postStopErr, context.Canceled) {
@@ -356,7 +356,7 @@ func TestManagerStopAndRestartErrorBoundaries(t *testing.T) {
 	closedDone := make(chan struct{})
 	close(closedDone)
 	// stopErrorManager 是用于覆盖停止阶段错误包装的管理器。
-	stopErrorManager := NewManager(nil, noopHandler{}, nil)
+	stopErrorManager := NewManager(nil, noopHandler{}, nil, ManagerOptions{})
 	// stopErrorAccount 是停止时可立即收束的账号运行时。
 	stopErrorAccount := engine.New(engine.Config{CookieID: "restart-stop-error", CookieStr: "unb=1"})
 	// stopErrorManaged 保留打开的管理完成信号，使管理器在 Context 关闭时返回错误。
@@ -783,7 +783,7 @@ func TestStartAll_LoadError(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
 	// mgr 用于本次流程后续判断的mgr
-	mgr := NewManager(store, noopHandler{}, nil)
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{})
 
 	// 提前关闭 DB 让 ListEnabledRuntimeCredentials 失败。
 	if err := store.DB.Close(); err != nil {
@@ -819,7 +819,7 @@ func TestStartAll_DisabledNotStarted(t *testing.T) {
 	store.Cookies.SetStatus(context.Background(), "on2", true)
 
 	// 用阻塞 mtop 的 Manager：直接构造，使所有启动账号都挂起、不触发真实网络。
-	mgr := NewManager(store, noopHandler{}, nil)
+	mgr := NewManager(store, noopHandler{}, nil, ManagerOptions{})
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

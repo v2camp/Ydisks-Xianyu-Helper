@@ -25,6 +25,18 @@ var ErrRestartIncomplete = errors.New("账号重启未完成")
 // legacyManagerShutdownTimeout 是兼容无 Context 停止入口时允许等待账号 worker 收束的最长预算。
 const legacyManagerShutdownTimeout = 10 * time.Second
 
+// ManagerOptions 是账号管理器的可选依赖。
+//
+// 收敛为结构体而不是继续追加位置参数：可选依赖已出现第二项，位置参数无法表达
+// 「只注入后一项」；两个字段都为零值时等价于「不注入任何可选依赖」。
+type ManagerOptions struct {
+	// ReviewNotifier 是 AI 回复人工确认通知器；nil 时账号运行时只拦截发送、不发确认通知。
+	ReviewNotifier engine.ReplyReviewNotifier
+	// AIGeneratorFactory 是账号级模型生成器工厂；nil 时全部账号沿用默认单次问答。
+	// 客服 Agent 由组合层经它注入，账号管理器只做透传，不解释生成器语义。
+	AIGeneratorFactory engine.AIGeneratorFactory
+}
+
 // Manager 管理所有账号运行时。
 type Manager struct {
 	store   *db.Store
@@ -32,6 +44,9 @@ type Manager struct {
 	logger  *slog.Logger
 	// reviewNotifier 是 AI 回复人工确认通知器，可选；nil 时账号运行时只拦截发送、不发确认通知。
 	reviewNotifier engine.ReplyReviewNotifier
+	// aiGeneratorFactory 是账号级模型生成器工厂，可选；nil 时账号运行时沿用默认单次问答。
+	// 构造后不再变更，读取不需要加锁，与 handler、reviewNotifier 同性质。
+	aiGeneratorFactory engine.AIGeneratorFactory
 	// globalBudget 是进程级共享的全局日发送预算，由 NewManager 创建一次并注入每个账号闸门。
 	// 归 Manager 持有至进程关停，自身无独立关停路径；锁与生命周期文档见 engine.SendBudget。
 	globalBudget *engine.SendBudget
@@ -58,15 +73,10 @@ type managedAccount struct {
 	err      error
 }
 
-// NewManager 构造管理器；末尾变参可选注入 AI 回复人工确认通知器，保持旧调用方兼容。
-func NewManager(store *db.Store, handler engine.Handler, logger *slog.Logger, reviewNotifiers ...engine.ReplyReviewNotifier) *Manager {
+// NewManager 构造管理器；可选依赖经 options 注入，零值表示一项都不注入。
+func NewManager(store *db.Store, handler engine.Handler, logger *slog.Logger, options ManagerOptions) *Manager {
 	if logger == nil {
 		logger = slog.Default()
-	}
-	// reviewNotifier 是首个变参通知器；最多取一个，传 nil 等价于未注入。
-	var reviewNotifier engine.ReplyReviewNotifier
-	if len(reviewNotifiers) > 0 {
-		reviewNotifier = reviewNotifiers[0]
 	}
 	// globalBudget 是进程级共享的全局日发送预算，额度来自数据库设置 global_send_daily_limit（0=不限），
 	// 数据库未配置时回落到环境变量 XIANYU_GLOBAL_SEND_DAILY_LIMIT；store 可用时接入全局桶持久化并恢复今日用量。
@@ -87,14 +97,15 @@ func NewManager(store *db.Store, handler engine.Handler, logger *slog.Logger, re
 		globalBudget.Restore(resolveCtx)
 	}
 	return &Manager{
-		store:          store,
-		handler:        handler,
-		logger:         logger,
-		reviewNotifier: reviewNotifier,
-		globalBudget:   globalBudget,
-		accounts:       make(map[string]*managedAccount),
-		stopping:       make(map[string]struct{}),
-		watchdog:       newAccountWatchdog(),
+		store:              store,
+		handler:            handler,
+		logger:             logger,
+		reviewNotifier:     options.ReviewNotifier,
+		aiGeneratorFactory: options.AIGeneratorFactory,
+		globalBudget:       globalBudget,
+		accounts:           make(map[string]*managedAccount),
+		stopping:           make(map[string]struct{}),
+		watchdog:           newAccountWatchdog(),
 	}
 }
 
@@ -172,6 +183,8 @@ func (m *Manager) Start(ctx context.Context, cookieID, cookieValue string) error
 		Logger:    m.logger,
 		// 透传 AI 回复人工确认通知器；未注入时为 nil，账号运行时按无通知降级。
 		ReplyReviewNotifier: m.reviewNotifier,
+		// 透传账号级模型生成器工厂；未注入时为 nil，账号运行时沿用默认单次问答。
+		AIGeneratorFactory: m.aiGeneratorFactory,
 		// 透传进程级全局日发送预算；未启用全局额度时为 nil，闸门按无全局额度降级。
 		GlobalBudget: m.globalBudget,
 	})

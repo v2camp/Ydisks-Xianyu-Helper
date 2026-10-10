@@ -42,7 +42,7 @@ func newTestServer(t *testing.T) (*Server, *db.Store, func()) { // newTestServer
 	// 具体测试可以在自己的请求流程中修改这些副本数据。
 
 	// mgr 是使用空处理器的测试账号管理器。
-	mgr := account.NewManager(store, noopHandler{}, nil)
+	mgr := account.NewManager(store, noopHandler{}, nil, account.ManagerOptions{})
 	// srv 是未启用聊天服务的基础测试 HTTP 服务。
 	// orderDependencies 保存订单应用服务专用的测试装配能力，确保 Server 不从通用容器回退读取订单依赖。
 	orderDependencies, orderDependencyErr := adapter.NewOrderDependencies(store)
@@ -149,7 +149,7 @@ func newUninitializedTestServer(t *testing.T) (*Server, *db.Store, func()) {
 	// store 是未初始化测试数据库的 repository 聚合入口。
 	store := db.NewStore(d, db.DialectSQLite)
 	// mgr 是未初始化测试使用的空处理器账号管理器。
-	mgr := account.NewManager(store, noopHandler{}, nil)
+	mgr := account.NewManager(store, noopHandler{}, nil, account.ManagerOptions{})
 	// srv 是未初始化测试使用的 HTTP 服务实例。
 	// orderDependencies 保存未初始化测试的订单专用装配能力。
 	orderDependencies, orderDependencyErr := adapter.NewOrderDependencies(store)

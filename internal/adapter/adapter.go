@@ -178,7 +178,7 @@ func NewRuntimeBundle(store *db.Store, bm *browser.Manager, logger *slog.Logger,
 	// 提前于账号管理器构造，以便随账号工厂穿入 AI 回复人工确认链路。
 	notifier := notify.New("", store, logger)
 	// manager 是自动化中心的在线发送器来源，同时在启动期把 Adapter 固定为账号事件处理器。
-	manager := accountmanager.NewManager(store, runtimeAdapter, logger, notifier)
+	manager := accountmanager.NewManager(store, runtimeAdapter, logger, accountmanager.ManagerOptions{ReviewNotifier: notifier})
 	// automationSenders 为自动化图片卡密注入“临时下载、平台上传、WebSocket 发送”链路，不在本地保存图片。
 	automationSenders := NewAutomationImageSenderProvider(store, manager, func() mtop.Client { return mtop.NewClient() })
 	// autoCenter 依赖已构造但尚未启动的 manager 与 adapter，避免运行期形成部分可用状态。
