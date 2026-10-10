@@ -26,7 +26,7 @@ type liveKnowledge struct {
 
 // deliveryAnswerConstraint 是回答发货方式类问题时必须写入 prompt 的系统约束。
 // 目的：禁止模型声称全店统一渠道，无线索时给出统一兜底话术。
-const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时只能依据当前商品线索，禁止声称全店统一支持某渠道；无线索则回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
+const deliveryAnswerConstraint = "回答发货方式、什么网盘、怎么发类问题时：提示词给出了当前商品的确定发货渠道时，必须直接明确回答该渠道（如「这款发百度网盘」），不得含糊；禁止声称全店统一支持某渠道。只有当前商品没有任何渠道线索时，才回答「不同商品发货方式不同，以商品详情和拍下的发货消息为准」。"
 
 // liveCatalogInstruction 是动态在售列表的注入指令文案。
 const liveCatalogInstruction = "本店在售列表（买家问有没有/单买/第几季时依此回答，不在列表的回答暂时没有）"

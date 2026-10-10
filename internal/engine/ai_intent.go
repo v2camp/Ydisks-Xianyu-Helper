@@ -35,6 +35,15 @@ const (
 	IntentInquiry = "inquiry"
 	// IntentConsult 是商品内容咨询意图。
 	IntentConsult = "consult"
+	// IntentStock 是内容完整性咨询意图（全集/第几季/是否完结类）。
+	IntentStock = "stock"
+	// IntentRefund 是售前退款政策咨询意图（能不能退、支持退吗类）；
+	// 售后纠纷表达（我要退款、退货）由负向词拦截转人工，不走本意图。
+	IntentRefund = "refund"
+	// IntentSpec 是商品规格咨询意图（册数/版本/规格/套装范围类）。
+	IntentSpec = "spec"
+	// IntentUsage 是使用与时效咨询意图（能不能用/有效期/是否会员类）。
+	IntentUsage = "usage"
 	// IntentChitchat 是闲聊兜底桶：边界层未命中任何意图时写入此类（即旧值 "chat" 的更名）。
 	IntentChitchat = "chitchat"
 	// IntentAmbiguous 是多意图同时命中时的归并标签：边界层无法确定单一意图，便于后续人工或分流策略复核。

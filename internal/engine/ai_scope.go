@@ -108,12 +108,29 @@ const builtinComplaintExpr = "退款|退货|投诉|差评|举报|骗子|骗人|�
 // 内置非接管意图词表与历史意图注册表等价：仅参与命中标注（写入历史），不触发接管；
 // 保证未配置时「多意图归并 ambiguous」等历史语义不变。
 const (
-	// builtinOrderExpr 是订单/发货咨询意图，覆盖发货时效与发货方式问法。
-	builtinOrderExpr = "发货|还没发|提取码|网盘|下载链接|怎么下载|怎么发|什么时候发|多久发|发货方式|什么网盘"
+	// builtinOrderExpr 是订单/发货咨询意图，覆盖发货时效、发货方式与网盘渠道问法。
+	// 渠道词（百度/夸克/度盘/迅雷）与口语疑问句式（X 吗 / 什么盘）必须收录：
+	// 真实买家以「有夸克吗」「百度吗」为主，只写「什么网盘」会大面积漏配。
+	builtinOrderExpr = "发货|还没发|直接拍|拍下|提取码|网盘|什么盘|哪种盘|百度|度盘|夸克|迅雷|资源码|下载链接|链接|怎么下载|怎么发|什么时候发|多久发|发货方式|什么网盘|发网盘"
 	// builtinInquiryExpr 是询价与物流政策意图。
-	builtinInquiryExpr = "多少钱|什么价格|怎么卖|包邮"
-	// builtinConsultExpr 是商品内容咨询意图。
-	builtinConsultExpr = "内容|适合|有效|真实|怎么用"
+	builtinInquiryExpr = "多少钱|什么价格|怎么卖|包邮|怎么购买|怎么下单"
+	// builtinConsultExpr 是商品内容咨询意图。刻意不收「是什么」「啥」这类通用疑问词，
+	// 否则「发货方式是什么」会同时命中 order 与 consult，把单一意图打成 ambiguous。
+	builtinConsultExpr = "内容|适合|有效|真实|怎么用|讲什么|讲的什么"
+)
+
+// 内置接管意图词表：命中即允许 AI 应答，收录真实聊天里高频且有确定答案的问法。
+const (
+	// builtinStockExpr 是内容完整性咨询意图，覆盖全集/完结/剧集范围的口语问法。
+	// 末尾两项用双引号包成正则词，匹配「第 N 季」里的变动数字与中文数字。
+	builtinStockExpr = `全集|全剧|完整版|完结|所有的|全吗|多少集|几集|更新完|更新了吗|单买|"第[一二三四五六七八九十\d]季"|"第\d+季"`
+	// builtinRefundExpr 是售前退款政策咨询意图，只收咨询句式，不收「我要退款」这类动作表达；
+	// 后者由 builtinComplaintExpr 负向拦截转人工，避免 AI 答复售后纠纷。
+	builtinRefundExpr = "能退|可以退|能退吗|支持退|退吗|能不能退|退款吗|退钱吗|包退|无理由|退款政策"
+	// builtinSpecExpr 是商品规格咨询意图，覆盖册数、版本、套装范围类问法。
+	builtinSpecExpr = "几本|全册|第几册|上册|下册|套装|版本|新版|规格|大班|中班|小班|教材|尺寸|颜色|绿皮|黄皮"
+	// builtinUsageExpr 是使用与时效咨询意图，覆盖兼容性与有效期类问法。
+	builtinUsageExpr = "可以用吗|能用吗|支持吗|可以用|有效期|时间限制|到期|没到期|会员|试看|试一下|点读笔"
 )
 
 // defaultScope 是 ai_scope_config 未配置时的内置边界：仅砍价允许 AI 接管，
@@ -122,9 +139,16 @@ var defaultScope = &aiScope{
 	negative: orMatchers(compileSafe(builtinComplaintExpr)),
 	intents: []aiCompiledIntent{
 		{id: IntentBargain, allowAI: true, match: compileSafe(builtinBargainExpr)},
+		// 退款与完整性咨询命中即有 FAQ 或商品信息可依据，允许接管。
+		{id: IntentRefund, allowAI: true, match: compileSafe(builtinRefundExpr)},
+		{id: IntentStock, allowAI: true, match: compileSafe(builtinStockExpr)},
 		{id: IntentOrder, allowAI: false, match: compileSafe(builtinOrderExpr)},
 		{id: IntentInquiry, allowAI: false, match: compileSafe(builtinInquiryExpr)},
 		{id: IntentConsult, allowAI: false, match: compileSafe(builtinConsultExpr)},
+		// 规格与时效类暂时只标注不接管：商品侧尚无确定的规格事实源，
+		// 交给 AI 硬答会重演「答非所问」，待事实源补齐后再放开。
+		{id: IntentSpec, allowAI: false, match: compileSafe(builtinSpecExpr)},
+		{id: IntentUsage, allowAI: false, match: compileSafe(builtinUsageExpr)},
 	},
 }
 

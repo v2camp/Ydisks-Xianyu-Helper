@@ -100,6 +100,69 @@ func TestDefaultScopeDecideComplaintUnion(t *testing.T) {
 	}
 }
 
+// TestDefaultScopeCoversSpokenDeliveryAndRefund 锁定口语化发货渠道与售前退款咨询的覆盖。
+// 真实聊天里买家以「有夸克吗」「百度吗」「能退吗」为主，只写书面问法会大面积漏配，
+// 该断言同时守住「售后纠纷仍被负向拦截」这条安全边界。
+func TestDefaultScopeCoversSpokenDeliveryAndRefund(t *testing.T) {
+	// cases 覆盖口语渠道、完整性咨询、售前退款与售后纠纷四类。
+	cases := []struct {
+		// name 是用例名称。
+		name string
+		// text 是真实聊天里出现过的买家表达。
+		text string
+		// wantIntent 是期望的单一意图标签；空串表示期望未命中。
+		wantIntent string
+		// wantTakeover 是期望的接管结论。
+		wantTakeover bool
+		// wantNegative 是期望是否被负向拦截。
+		wantNegative bool
+	}{
+		{name: "百度口语", text: "百度吗", wantIntent: IntentOrder, wantTakeover: false},
+		{name: "百度云口语", text: "百度云的吗", wantIntent: IntentOrder, wantTakeover: false},
+		{name: "网盘口语", text: "网盘吗", wantIntent: IntentOrder, wantTakeover: false},
+		{name: "要夸克", text: "有夸克的吗", wantIntent: IntentOrder, wantTakeover: false},
+		{name: "全剧", text: "全剧吗", wantIntent: IntentStock, wantTakeover: true},
+		{name: "更新完", text: "更新完了吗", wantIntent: IntentStock, wantTakeover: true},
+		{name: "售前退款咨询", text: "那能退吗？", wantIntent: IntentRefund, wantTakeover: true},
+		{name: "售后退款动作仍拦截", text: "我要退款", wantIntent: IntentComplaint, wantTakeover: false, wantNegative: true},
+		{name: "投诉仍拦截", text: "我要投诉你", wantIntent: IntentComplaint, wantTakeover: false, wantNegative: true},
+	}
+	// testCase 是当前遍历到的输入样例。
+	for _, testCase := range cases {
+		// gotTakeover 与 gotHits 是边界层的实际判定结果。
+		gotTakeover, gotHits := defaultScope.decide(testCase.text)
+		// gotIntent 是收敛后的意图标签。
+		gotIntent := primaryIntentLabel(gotHits)
+		// gotNegative 表示是否被负向拦截。
+		gotNegative := defaultScope.negative(testCase.text)
+		if gotNegative {
+			gotIntent = IntentComplaint
+		}
+		if gotIntent != testCase.wantIntent {
+			t.Fatalf("%s: %q 意图=%q，期望 %q（命中 %v）", testCase.name, testCase.text, gotIntent, testCase.wantIntent, gotHits)
+		}
+		if gotTakeover != testCase.wantTakeover {
+			t.Fatalf("%s: %q 接管=%v，期望 %v", testCase.name, testCase.text, gotTakeover, testCase.wantTakeover)
+		}
+		if gotNegative != testCase.wantNegative {
+			t.Fatalf("%s: %q 负向=%v，期望 %v", testCase.name, testCase.text, gotNegative, testCase.wantNegative)
+		}
+	}
+}
+
+// TestDefaultScopeDeliveryQuestionKeepsSingleIntent 验证发货方式问句只命中单一意图。
+// 曾因 consult 收录「是什么」导致「发货方式是什么」同时命中 order 与 consult 被误并成 ambiguous。
+func TestDefaultScopeDeliveryQuestionKeepsSingleIntent(t *testing.T) {
+	// take、hits 是「发货方式是什么」的判定结果。
+	take, hits := defaultScope.decide("发货方式是什么")
+	if take {
+		t.Fatal("内置 order 意图不应接管")
+	}
+	if !equalStringSlice(hits, []string{IntentOrder}) {
+		t.Fatalf("发货方式问句应只命中 order，实际 %v", hits)
+	}
+}
+
 // TestParseComplaintKeywords 验证扩展词表解析：空集回落、非法正则忽略、正常正则编译、分隔符兼容。
 func TestParseComplaintKeywords(t *testing.T) {
 	// 空值回落 nil。
