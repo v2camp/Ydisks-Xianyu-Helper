@@ -374,6 +374,8 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 sh scripts/compose-functional.sh build go-test go-lint
 sh scripts/compose-functional.sh run --rm go-vet
 sh scripts/compose-functional.sh run --rm go-lint
+# Web UI 冒烟：先重建基镜像再构建 e2e 镜像
+sh scripts/compose-functional.sh build seed-sqlite
 sh scripts/compose-functional.sh build webui-e2e-test
 sh scripts/compose-functional.sh run --rm webui-e2e-test
 ```
@@ -392,6 +394,7 @@ sh scripts/compose-functional.sh run --rm webui-e2e-test
 - 端到端验证用仓库脚本，不要手工拼命令。
 - scripts 目录提供 full、functional 与 persistence 三套脚本。
 - 完整门禁等价于 make check，需要 Go 与 Node 同时可用。
+- webui-e2e-test 镜像 FROM 基镜像，构建顺序不可颠倒。
 
 ### 2.3 禁止事项
 
@@ -436,6 +439,11 @@ go test -coverprofile=/tmp/cover-core.out \
 - 前端路由、页面白屏与数据库残留类型回归由 e2e 页面级断言捕获。
 - e2e 断言 React 挂载、路由停留且无控制台错误，不能只校验 HTTP 状态。
 - 涉及前端路由、页面渲染或触发类型删改时，必须跑 webui-e2e-test 门禁。
+- 跑 webui-e2e-test 前必须重建基镜像，否则得到假绿。
+- 基镜像标签是 ydisks-xianyu-helper:functional。
+- 被测服务端与前端界面都烘焙在基镜像里，不取当前工作树。
+- 界面用 //go:embed 编进二进制，前后端新鲜度不可分离。
+- 基镜像由 seed-sqlite 服务构建，只 build e2e 镜像会复用旧快照。
 
 ---
 
