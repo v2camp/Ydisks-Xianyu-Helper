@@ -125,7 +125,8 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 
 - 依赖标准库与 `github.com/mark3labs/mcp-go`；
 - 依赖 `internal/application/*` 的应用模型；
-- 在包内定义工具、资源与提示所需的最小消费者端口。
+- 依赖 `internal/capability` 的共享用例契约；
+- 在包内定义只有本传输层使用的工具、资源与提示所需的最小消费者端口。
 
 禁止：
 
@@ -144,6 +145,7 @@ refactoring-master-plan.md 定义，本文不声明当前阶段或完成状态�
 `internal/capability` 定义平台能力的统一目录与访问策略：能力清单、危险等级、作用域与各调用方
 所需的确认方式。它是权限判断的唯一实现点，三个消费方（`internal/mcp` 承载的外部 Harness、
 `internal/qqbot` 承载的运营 Agent、`internal/agent` 承载的客服 Agent）都必须经它求值。
+它还承载被多个消费方共用的用例契约（`ports.go`），这是同名用例只有一个签名来源的保证。
 
 允许：
 

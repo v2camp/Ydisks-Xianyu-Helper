@@ -165,7 +165,7 @@ cd ".worktree/<任务名>"
 - internal/mcp 只依赖标准库、mcp-go 与应用层模型。
 - internal/mcp 禁止依赖 db、server、平台、浏览器、自动化与引擎。
 - internal/mcp 禁止依赖 internal/adapter 与 internal/composition。
-- internal/mcp 的用例接口由包内定义并由组合层投影实现。
+- 跨消费方共用的用例契约放 internal/capability，单消费方专用的放包内。
 - server 只保留 /mcp 通用挂载缝，不写 MCP 协议实现。
 - server 禁止引入 mcp-go 依赖或 JSON-RPC 语义。
 - 新增可变并发状态要有归属、锁与关停文档，并配套测试。
