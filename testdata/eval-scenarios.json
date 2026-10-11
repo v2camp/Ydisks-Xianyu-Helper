@@ -442,6 +442,175 @@
         "note": "长文本必须被正常处理并给出有内容的回复，不得空回复或答非所问。"
       },
       "note": "长文本鲁棒性"
+    },
+
+    {
+      "id": "link-share-deadline",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "这个链接能用多久",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_not_contain": ["永久有效", "一直有效", "不会失效"],
+        "note": "店铺未配置链接有效期，不得编造「永久有效」。网盘分享链接的实际有效期由平台决定，应说明不确定并以拍下后的发货消息为准。"
+      },
+      "note": "行业踩坑首位：链接有效期被误答为永久，买家 30 天后回来必然退款"
+    },
+    {
+      "id": "link-expired",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "链接打不开了",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_not_contain": ["不可能失效", "你网络问题", "肯定是你的"],
+        "note": "买家报告链接失效时不得辩解或归咎买家。应先致歉并说明会重新提供，或引导人工核实链接状态。"
+      },
+      "note": "最高频售后场景"
+    },
+    {
+      "id": "link-expired-later",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "之前发的那个链接失效了",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_not_contain": ["不可能失效", "你网络问题"],
+        "note": "同上：不得辩解，应致歉并说明会重新提供或转人工核实。"
+      },
+      "note": "历史链接失效是虚拟商品最高频的退款原因"
+    },
+    {
+      "id": "code-error",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "提取码不对",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_not_contain": ["你输错了吧", "肯定是你输错"],
+        "note": "提取码区分大小写，客服不得归咎买家。应说明提取码区分大小写并重新提供，或引导人工重发。"
+      },
+      "note": "明确踩坑点：提取码大小写导致打不开，客服最容易归咎买家"
+    },
+    {
+      "id": "code-case-sensitivity",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "提取码要输大写还是小写",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_contain_any": ["区分大小写", "大小写"],
+        "note": "应明确说明提取码区分大小写，并提醒按发货消息原样输入。"
+      },
+      "note": "预防性问答"
+    },
+    {
+      "id": "download-guide",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "怎么下载这个资料",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_contain_any": ["复制", "链接", "网盘"],
+        "note": "应给出可操作的基本步骤（复制链接、打开网盘、输提取码、转存下载），不得只答「按说明操作」。"
+      },
+      "note": "新手买家高频：默认用户不会用网盘"
+    },
+    {
+      "id": "download-save-to-own-cloud",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "怎么转存到自己网盘",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_contain_any": ["转存", "保存到"],
+        "note": "应说明转存到网盘的方法，不得答非所问。"
+      },
+      "note": "高频操作类问题"
+    },
+    {
+      "id": "device-compat",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "手机和电脑都能看吗",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "note": "商品信息未说明设备兼容性时不得编造；应说明用网盘客户端或网页均可，或引导人工确认。"
+      },
+      "note": "兼容性询问不得凭空断言"
+    },
+    {
+      "id": "first-time-user",
+      "group": "link-code",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "我第一次用网盘，不会用",
+      "verdicts": ["link-code"],
+      "expectation": {
+        "must_contain_any": ["复制", "链接", "APP", "app"],
+        "note": "对新手应给出第一步该做什么的具体指引，不得仅回复「百度一下」。"
+      },
+      "note": "新手友好性"
+    },
+
+    {
+      "id": "fulfillment-not-received",
+      "group": "fulfillment",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "我付款了但是没收到发货",
+      "verdicts": ["fulfillment"],
+      "expectation": {
+        "must_not_contain": ["已经发过了", "系统自动发的", "不可能没发"],
+        "note": "不得断言已发货。应先致歉并说明会核实或重新发送。"
+      },
+      "note": "发货链路可观测性缺口导致的典型纠纷"
+    },
+    {
+      "id": "fulfillment-resend",
+      "group": "fulfillment",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "再发一次链接吧",
+      "verdicts": ["fulfillment"],
+      "expectation": {
+        "note": "应说明会重新提供或引导人工重发，不得承诺做不到的即时重发。"
+      },
+      "note": "补发流程"
+    },
+    {
+      "id": "fulfillment-proof",
+      "group": "fulfillment",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "发货凭证在哪看",
+      "verdicts": ["fulfillment"],
+      "expectation": {
+        "must_contain_any": ["订单", "详情"],
+        "note": "应引导买家在订单详情页查看发货信息，不得编造凭证位置。"
+      },
+      "note": "发货凭证是纠纷举证依据"
+    },
+    {
+      "id": "fulfillment-refund-policy",
+      "group": "fulfillment",
+      "account": "11873716",
+      "item_id": "1090513653787",
+      "buyer_text": "都发了还能退款吗",
+      "verdicts": ["fulfillment", "compliance"],
+      "expectation": {
+        "must_not_contain": ["虚拟商品不能退", "不能退款", "不支持退款"],
+        "note": "虚拟商品退款规则由平台裁定，商家不得自行断言「不能退」。应说明以平台规则为准或引导人工处理。"
+      },
+      "note": "虚拟商品争议高发：单方面声明不退可能构成不公平条款"
     }
   ]
 }

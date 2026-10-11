@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // ErrAIBargainQuoteAlreadyClaimed 表示同一订单已绑定过 AI 报价，重复事件不得再次执行外部改价。
@@ -336,4 +337,49 @@ func (a *AIReply) AddConversationExchange(ctx context.Context, cookieID, chatID,
 		}
 	}
 	return tx.Commit()
+}
+
+// AIDecisionRecord 是一次接管决策的结构化记录，用于回答「这条消息为什么被放行或拦下」。
+// 消息原文只保留短哈希与截断预览，避免把完整对话复制一份到审计表。
+type AIDecisionRecord struct {
+	// CookieID 是账号标识。
+	CookieID string
+	// ChatID 是会话标识。
+	ChatID string
+	// ItemID 是商品标识。
+	ItemID string
+	// MessageHash 是买家消息的短哈希。
+	MessageHash string
+	// MessagePreview 是买家消息的截断预览，仅供人读定位。
+	MessagePreview string
+	// Takeover 表示该消息最终是否允许 AI 接管。
+	Takeover bool
+	// HitIntents 是边界判定命中的意图名列表。
+	HitIntents []string
+	// NegativeHit 表示是否被内置或配置负向词表拦截。
+	NegativeHit bool
+	// ExtraHit 表示是否被扩展负向词表拦截。
+	ExtraHit bool
+	// IntentLabel 是写入对话历史的意图标签。
+	IntentLabel string
+	// Reason 是判定原因简码：taken / no-intent / negative / extra-negative。
+	Reason string
+	// ConfigFingerprint 是判定所用边界配置的指纹。
+	ConfigFingerprint string
+}
+
+// AddDecisionLog 写入一条接管决策归因记录。
+// 失败只影响可观测性，调用方须自行吞掉错误，不得让埋点失败阻断回复链路。
+func (a *AIReply) AddDecisionLog(ctx context.Context, rec AIDecisionRecord) error {
+	// intents 是命中意图的逗号拼接结果。
+	intents := strings.Join(rec.HitIntents, ",")
+	// err 是写入失败原因。
+	_, err := a.DB.ExecContext(ctx, `
+		INSERT INTO ai_decision_log
+		(cookie_id,chat_id,item_id,message_hash,message_preview,takeover,hit_intents,negative_hit,extra_hit,intent_label,reason,config_fingerprint)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		rec.CookieID, rec.ChatID, rec.ItemID, rec.MessageHash, rec.MessagePreview,
+		rec.Takeover, intents, rec.NegativeHit, rec.ExtraHit,
+		rec.IntentLabel, rec.Reason, rec.ConfigFingerprint)
+	return err
 }

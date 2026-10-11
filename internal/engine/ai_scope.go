@@ -9,9 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"xianyu-go/internal/engine/aimatch"
+	"xianyu-go/internal/logsafe"
 )
 
 // 系统设置里的配置键名，均为非敏感普通值。
@@ -95,6 +97,9 @@ type aiScope struct {
 	negative func(string) bool
 	// intents 是按顺序判定的意图列表。
 	intents []aiCompiledIntent
+	// fingerprint 是本次编译所用配置的指纹。
+	// 归因时用它判断「行为变化是否由配置变更引起」；不含任何敏感值。
+	fingerprint string
 }
 
 // builtinBargainExpr 是内置砍价意图对应的组合词表达式，与历史正则覆盖范围等价。
@@ -139,7 +144,8 @@ const (
 // defaultScope 是 ai_scope_config 未配置时的内置边界：仅砍价允许 AI 接管，
 // 其余正向意图只参与意图标注，负向词表为内置投诉词。
 var defaultScope = &aiScope{
-	negative: orMatchers(compileSafe(builtinComplaintExpr)),
+	negative:    orMatchers(compileSafe(builtinComplaintExpr)),
+	fingerprint: defaultScopeFingerprint,
 	intents: []aiCompiledIntent{
 		{id: IntentBargain, allowAI: true, match: compileSafe(builtinBargainExpr)},
 		// 退款与完整性咨询命中即有 FAQ 或商品信息可依据，允许接管。
@@ -218,7 +224,29 @@ func (a *AIReplierImpl) loadScope(ctx context.Context) (*aiScope, error) {
 		a.logger.Warn("AI 边界配置无可用意图，回落内置")
 		return defaultScope, nil
 	}
+	scope.fingerprint = scopeFingerprint(raw, cfgJson)
 	return scope, nil
+}
+
+// defaultScopeFingerprint 是未配置边界、回落内置时的指纹标识。
+const defaultScopeFingerprint = "builtin-scope"
+
+// scopeFingerprint 计算边界判定的配置指纹。
+// 参与计算的是内置词表与配置原文，不含任何敏感值；结果仅用于归因比对，
+// 让「行为变化」可以区分是模型波动还是配置变更。
+func scopeFingerprint(raw string, cfg aiScopeConfig) string {
+	// parts 是参与指纹的片段。
+	parts := []string{builtinComplaintExpr, cfg.Negative, raw}
+	// intent 是当前遍历到的意图配置。
+	for _, intent := range cfg.Intents {
+		parts = append(parts, strings.Join([]string{
+			intent.ID,
+			intent.Match,
+			strconv.FormatBool(intent.Enabled),
+			strconv.FormatBool(intent.AI),
+		}, ":"))
+	}
+	return logsafe.ID(strings.Join(parts, "|"))
 }
 
 // decide 按边界判定文本是否允许 AI 接管，并返回命中的意图名。

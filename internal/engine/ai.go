@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"xianyu-go/internal/db"
+	"xianyu-go/internal/logsafe"
 	"xianyu-go/internal/netguard"
 )
 
@@ -78,12 +79,23 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	}
 	// takeover 表示当前消息是否允许 AI 接管；hitIDs 是按配置顺序命中的意图名。
 	// 边界策略：负向命中（内置/配置/扩展词表任一）一票否决；命中启用意图才接管。
+	// negHit 表示内置与配置负向词表是否命中。
+	negHit := scope.negative(m.Text)
+	// extraHit 表示扩展投诉负向词表是否命中。
+	extraHit := intentBlockedByExtra(extraKeywords, m.Text)
+	// takeover、hitIDs 是边界判定的结果：是否放行与命中的意图名，顺序与配置一致。
 	takeover, hitIDs := scope.decide(m.Text)
-	if !takeover || intentBlockedByExtra(extraKeywords, m.Text) {
-		return nil, nil
-	}
 	// userIntent 是写入对话历史的真实意图标签（多命中/零命中分别归并到 ambiguous/chitchat）。
 	userIntent := primaryIntentLabel(hitIDs)
+	if extraHit {
+		userIntent = IntentComplaint
+	}
+	// 接管与不接管都必须留痕：否则评测发现回复不合格时，
+	// 无法回答「这条消息当时为什么被放行或拦下」。
+	a.recordDecision(ctx, m, scope.fingerprint, hitIDs, negHit, extraHit, takeover && !extraHit, userIntent)
+	if !takeover || extraHit {
+		return nil, nil
+	}
 	// aiCfg、err 用于本次流程后续判断的人工智能Cfg、err
 	aiCfg, err := a.globalAIConfig(ctx)
 	if err != nil {
@@ -202,6 +214,47 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 		}
 	}
 	return &ReplyResult{Text: reply, AutoPriceQuote: quote}, nil
+}
+
+// recordDecision 记录一次接管决策的归因信息。
+// 埋点失败只记 Debug，绝不影响回复链路；不接管的消息同样留痕，
+// 否则「为什么这条没被接管」永远无法回答。
+// fingerprint 是判定所用边界配置的指纹，用于区分模型波动与配置变更。
+func (a *AIReplierImpl) recordDecision(ctx context.Context, m ChatMessage, fingerprint string, hitIDs []string, negHit, extraHit, takeover bool, intentLabel string) {
+	// preview 是买家消息的截断预览，仅供人读定位，不承担审计作用。
+	preview := m.Text
+	// runes 是按字符计数的切片，避免中文被按字节截断成乱码。
+	if runes := []rune(preview); len(runes) > 60 {
+		preview = string(runes[:60]) + "…"
+	}
+	// reason 是判定原因简码，供聚合统计使用。
+	reason := "taken"
+	switch {
+	case extraHit:
+		reason = "extra-negative"
+	case negHit:
+		reason = "negative"
+	case !takeover:
+		reason = "no-intent"
+	}
+	// err 是归因写入失败原因；失败只记 Debug。
+	err := a.store.AIReply.AddDecisionLog(ctx, db.AIDecisionRecord{
+		CookieID:          a.cookieID,
+		ChatID:            m.ChatID,
+		ItemID:            m.ItemID,
+		MessageHash:       logsafe.ID(m.Text),
+		MessagePreview:    preview,
+		Takeover:          takeover,
+		HitIntents:        hitIDs,
+		NegativeHit:       negHit,
+		ExtraHit:          extraHit,
+		IntentLabel:       intentLabel,
+		Reason:            reason,
+		ConfigFingerprint: fingerprint,
+	})
+	if err != nil {
+		a.logger.Debug("写入 AI 决策归因失败", "err", err)
+	}
 }
 
 // conversationContext 封装conversation上下文业务协调。
