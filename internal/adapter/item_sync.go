@@ -296,7 +296,14 @@ func (r *ItemSyncRepository) saveItems(ctx context.Context, cookieID string, ite
 	return r.store.Items.SavePageFromRemote(ctx, cookieID, rows)
 }
 
-// syncItems 将平台商品模型转换为数据库行并执行全集 reconcile。
+// itemDeleteGuardMinLocal 是启用「远端列表防误删」所需的最小本地在售商品数。
+// 商品很少时清空通常是商家真实下架，且软删除可恢复，因此只对成规模账号防误删：
+// 一旦接口异常把大账号判成空列表，全量软删除会连带禁用其全部商品级自动化规则。
+const itemDeleteGuardMinLocal = 10
+
+// syncItems 将平台商品模型转换为数据库行，并在远端列表可信时执行全集 reconcile。
+// 远端为空或数量相对本地在售暴跌时只保存远端商品、不删除本地商品，
+// 避免接口返回不完整被误判为商家下架而清空商品并禁用商品级自动化规则。
 func (r *ItemSyncRepository) syncItems(ctx context.Context, cookieID string, items []mtop.ItemListItem) (db.ItemSyncResult, error) {
 	// rows 保存待写入数据库的商品行。
 	rows := make([]db.ItemInfoRow, 0, len(items))
@@ -309,7 +316,45 @@ func (r *ItemSyncRepository) syncItems(ctx context.Context, cookieID string, ite
 		}
 		rows = append(rows, db.ItemInfoRow{CookieID: cookieID, ItemID: item.ID, ItemTitle: item.Title, ItemCategory: item.CategoryID, ItemPrice: price, ItemDetail: item.ItemDetail, IsMultiSpec: item.IsMultiSpec})
 	}
-	return r.store.Items.SyncFromRemote(ctx, cookieID, rows)
+	// guardReason 非空表示本次放弃删除本地多余商品；guardErr 是保护判断所需的本地数量读取失败。
+	guardReason, guardErr := r.deleteGuardReason(ctx, cookieID, len(rows))
+	if guardErr != nil {
+		return db.ItemSyncResult{}, guardErr
+	}
+	if guardReason == "" {
+		return r.store.Items.SyncFromRemote(ctx, cookieID, rows)
+	}
+	if r.logger != nil {
+		r.logger.Warn("商品同步跳过本地删除，避免接口异常误伤在售商品与自动化规则",
+			"account_id", cookieID, "remote_count", len(rows), "reason", guardReason)
+	}
+	// saved、saveErr 保存仅写入远端商品的结果，本地商品与其自动化规则保持不变。
+	saved, saveErr := r.store.Items.SavePageFromRemote(ctx, cookieID, rows)
+	if saveErr != nil {
+		return db.ItemSyncResult{}, saveErr
+	}
+	return db.ItemSyncResult{Saved: saved}, nil
+}
+
+// deleteGuardReason 判断本次全集同步是否应当放弃删除本地多余商品。
+// ctx 控制查询；cookieID 是同步账号，remoteCount 是本次远端列表去重后的商品数。
+// 返回非空原因表示只保存不删除；本地数量读取失败直接返回错误，不做猜测性删除。
+func (r *ItemSyncRepository) deleteGuardReason(ctx context.Context, cookieID string, remoteCount int) (string, error) {
+	// localActive 是同步前本地在售商品数量。
+	localActive, err := r.store.Items.CountActive(ctx, cookieID)
+	if err != nil {
+		return "", err
+	}
+	if localActive < itemDeleteGuardMinLocal {
+		return "", nil
+	}
+	if remoteCount == 0 {
+		return "远端商品列表为空但本地仍有大量在售商品", nil
+	}
+	if remoteCount*2 < localActive {
+		return "远端商品数量不足本地在售商品的一半", nil
+	}
+	return "", nil
 }
 
 // withCookieSnapshot 创建带完整 Cookie Jar 或平面 Cookie 的平台上下文。

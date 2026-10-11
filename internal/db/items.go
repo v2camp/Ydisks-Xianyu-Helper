@@ -100,6 +100,20 @@ func scanItemInfoRows(rows *sql.Rows) ([]ItemInfoRow, error) {
 	return out, rows.Err()
 }
 
+// CountActive 返回账号下未被标记删除的商品数量，供全集同步判断远端列表是否可信。
+// ctx 控制查询；cookieID 为空时返回零而不是全表计数，避免把空账号误判为大规模下架。
+func (i *Items) CountActive(ctx context.Context, cookieID string) (int, error) {
+	// count 保存账号下在售商品数量。
+	var count int
+	// err 保存查询或扫描错误。
+	err := i.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM item_info WHERE cookie_id=? AND deleted_at IS NULL`, cookieID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // Upsert 插入或更新商品信息。
 func (i *Items) Upsert(ctx context.Context, r *ItemInfoRow) error {
 	// err 用于本次流程后续判断的err
