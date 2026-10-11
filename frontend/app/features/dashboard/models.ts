@@ -134,6 +134,8 @@ export interface OrderAnalytics {
   item_stats?: Array<{
     /** 商品标识。 */
     item_id: string;
+    /** 订单自带的商品标题快照；商品表缺失该商品时仍能显示商品名。 */
+    item_title?: string;
     /** 商品订单数。 */
     order_count: number;
     /** 商品订单总金额。 */
@@ -204,6 +206,8 @@ export interface AnalyticsCityStatsResponse {
 export interface AnalyticsItemStatsResponse {
   /** 商品平台标识。 */
   item_id: string;
+  /** 订单自带的商品标题快照；商品表缺失该商品时仍能显示商品名。 */
+  item_title?: string;
   /** 该商品订单数。 */
   order_count: number;
   /** 该商品订单金额。 */

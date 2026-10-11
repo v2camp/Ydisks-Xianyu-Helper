@@ -17,6 +17,23 @@ test('Dashboard 派生数据保持趋势和排行口径一致',
     expect(getTrendPercent(analyticsFixture, { ...analyticsFixture, revenue_stats: { total_amount: 100, total_orders: 2 } })).toBe('+20.0%');
   });
 
+test('Dashboard 商品排行优先使用订单自带的标题快照',
+  // 商品被平台删除后商品表不再有记录，此时必须改用订单冗余的标题而不是退回商品编号。
+  () => {
+    // analytics 是商品统计自带标题快照的分析结果。
+    const analytics = {
+      revenue_stats: { total_amount: 30, total_orders: 3 },
+      daily_stats: [],
+      item_stats: [{ item_id: 'deleted-item', item_title: '已删除商品', order_count: 3, total_amount: 30, avg_amount: 10 }],
+    } as OrderAnalytics;
+    expect(buildProductSalesData(analytics, {})[0]).toEqual({ name: '已删除商品', sales: 3 });
+    expect(buildSourceData(analytics, {}, ['red'])[0]).toMatchObject({ name: '已删除商品', percent: 100 });
+    expect(buildCategoryData(analytics, {}, ['blue'])[0]).toMatchObject({ name: '已删除商品', percentage: '100.0' });
+    // namedAnalytics 同时具备商品表名称和快照，快照优先保证与订单口径一致。
+    const namedAnalytics = { ...analytics, item_stats: [{ ...analytics.item_stats![0], item_title: '快照标题' }] } as OrderAnalytics;
+    expect(buildProductSalesData(namedAnalytics, { 'deleted-item': '商品表标题' })[0]).toEqual({ name: '快照标题', sales: 3 });
+  });
+
 test('Dashboard 派生数据覆盖空值、零值和名称截断分支',
   // 边界数据测试验证没有订单或缺少商品标题时仍能稳定渲染。
   () => {

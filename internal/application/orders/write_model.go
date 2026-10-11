@@ -50,6 +50,8 @@ type ItemWrite struct {
 type UpsertOptions struct {
 	// ItemID 是关联商品标识。
 	ItemID string
+	// ItemTitle 是平台订单携带的商品标题快照；非空时补写订单行，使订单不依赖商品表也能显示商品名。
+	ItemTitle string
 	// BuyerID 是买家标识。
 	BuyerID string
 	// CookieID 是订单所属账号标识。

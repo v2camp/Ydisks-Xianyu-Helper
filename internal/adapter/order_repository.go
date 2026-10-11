@@ -204,7 +204,7 @@ func (w orderWriter) UpsertItemBasic(ctx context.Context, item orderapp.ItemWrit
 // UpsertOrder 委托事务内订单写入。
 func (w orderWriter) UpsertOrder(ctx context.Context, orderID string, options orderapp.UpsertOptions) error {
 	return w.transaction.UpsertOrder(ctx, orderID, db.OrderUpsertOpts{
-		ItemID: options.ItemID, BuyerID: options.BuyerID, CookieID: options.CookieID,
+		ItemID: options.ItemID, ItemTitle: options.ItemTitle, BuyerID: options.BuyerID, CookieID: options.CookieID,
 		CreatedAt:   options.CreatedAt,
 		OrderStatus: options.OrderStatus, SpecName: options.SpecName, SpecValue: options.SpecValue,
 		Quantity: options.Quantity, Amount: options.Amount, ReceiverName: options.ReceiverName,
@@ -217,7 +217,7 @@ func (w orderWriter) UpsertOrder(ctx context.Context, orderID string, options or
 // UpsertOrder 委托订单写入。
 func (r OrderRepository) UpsertOrder(ctx context.Context, orderID string, opts orderapp.UpsertOptions) error {
 	return NormalizeOrderError(r.store.Orders.Upsert(ctx, orderID, db.OrderUpsertOpts{
-		ItemID: opts.ItemID, BuyerID: opts.BuyerID, CookieID: opts.CookieID,
+		ItemID: opts.ItemID, ItemTitle: opts.ItemTitle, BuyerID: opts.BuyerID, CookieID: opts.CookieID,
 		CreatedAt:   opts.CreatedAt,
 		OrderStatus: opts.OrderStatus, SpecName: opts.SpecName, SpecValue: opts.SpecValue,
 		Quantity: opts.Quantity, Amount: opts.Amount, ReceiverName: opts.ReceiverName,
@@ -236,7 +236,7 @@ func (r OrderRepository) BatchUpsertOrders(ctx context.Context, rows []orderapp.
 	converted := make([]db.BatchOrderUpsert, 0, len(rows))
 	// row 是当前待转换的应用层批量订单记录。
 	for _, row := range rows {
-		converted = append(converted, db.BatchOrderUpsert{OrderID: row.OrderID, Options: db.OrderUpsertOpts{ItemID: row.Options.ItemID, BuyerID: row.Options.BuyerID, CookieID: row.Options.CookieID, CreatedAt: row.Options.CreatedAt, OrderStatus: row.Options.OrderStatus, SpecName: row.Options.SpecName, SpecValue: row.Options.SpecValue, Quantity: row.Options.Quantity, Amount: row.Options.Amount, ReceiverName: row.Options.ReceiverName, ReceiverPhone: row.Options.ReceiverPhone, ReceiverAddr: row.Options.ReceiverAddress, ReceiverCity: row.Options.ReceiverCity, ChatID: row.Options.ChatID, IsBargain: row.Options.IsBargain, SystemShipped: row.Options.SystemShipped}})
+		converted = append(converted, db.BatchOrderUpsert{OrderID: row.OrderID, Options: db.OrderUpsertOpts{ItemID: row.Options.ItemID, ItemTitle: row.Options.ItemTitle, BuyerID: row.Options.BuyerID, CookieID: row.Options.CookieID, CreatedAt: row.Options.CreatedAt, OrderStatus: row.Options.OrderStatus, SpecName: row.Options.SpecName, SpecValue: row.Options.SpecValue, Quantity: row.Options.Quantity, Amount: row.Options.Amount, ReceiverName: row.Options.ReceiverName, ReceiverPhone: row.Options.ReceiverPhone, ReceiverAddr: row.Options.ReceiverAddress, ReceiverCity: row.Options.ReceiverCity, ChatID: row.Options.ChatID, IsBargain: row.Options.IsBargain, SystemShipped: row.Options.SystemShipped}})
 	}
 	if r.store == nil || r.store.OrderWrites == nil {
 		return errors.New("订单写入 Unit of Work 未初始化")
