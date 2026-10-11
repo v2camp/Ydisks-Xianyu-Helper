@@ -44,7 +44,7 @@ func finishOrderRefresh(summary RefreshSummary, results []RefreshOrderResult, su
 // 返回值只包含可信已售列表字段；unknown 按未提供状态处理以保留旧状态，其他金额和状态继续由现有写入边界校验。
 func soldRecoveryOptions(cookieID string, remote RefreshSoldOrder) UpsertOptions {
 	// options 保存平台事实；空字段由数据库按既有规则合并，禁止复制其他账号的地址和聊天上下文。
-	options := UpsertOptions{CookieID: cookieID, ItemID: remote.ItemID, BuyerID: remote.BuyerID,
+	options := UpsertOptions{CookieID: cookieID, ItemID: remote.ItemID, ItemTitle: remote.ItemTitle, BuyerID: remote.BuyerID,
 		CreatedAt: remote.CreatedAt, OrderStatus: remote.OrderStatus, Quantity: remote.Quantity, Amount: remote.Amount,
 		ReceiverName: remote.ReceiverName, ReceiverPhone: remote.ReceiverPhone, ReceiverAddress: remote.ReceiverAddr, ReceiverCity: remote.ReceiverCity}
 	if options.OrderStatus == "unknown" {

@@ -74,7 +74,7 @@ func (o *Orders) ListForUser(ctx context.Context, f OrderListFilter) ([]OrderRow
 		// pattern 用于本次流程后续判断的pattern
 		pattern := "%" + search + "%"
 		where = append(where, `(LOWER(o.order_id) LIKE ? OR LOWER(COALESCE(o.item_id,'')) LIKE ?
-			OR LOWER(COALESCE(o.buyer_id,'')) LIKE ? OR LOWER(COALESCE(i.item_title,'')) LIKE ?
+			OR LOWER(COALESCE(o.buyer_id,'')) LIKE ? OR LOWER(COALESCE(NULLIF(o.item_title,''), i.item_title, '')) LIKE ?
 			OR LOWER(COALESCE(o.receiver_name,'')) LIKE ? OR LOWER(COALESCE(o.receiver_phone,'')) LIKE ?)`)
 		for // i 用于本次流程后续判断的i
 		i := 0; i < 6; i++ {
@@ -101,7 +101,7 @@ func (o *Orders) ListForUser(ctx context.Context, f OrderListFilter) ([]OrderRow
 	queryArgs = append(queryArgs, f.Limit, f.Offset)
 	// rows、err 用于本次流程后续判断的rows、err
 	rows, err := o.DB.QueryContext(ctx,
-		`SELECT o.order_id, o.item_id, COALESCE(i.item_title,''), COALESCE(i.item_detail,''),
+		`SELECT o.order_id, o.item_id, COALESCE(NULLIF(o.item_title,''), i.item_title, ''), COALESCE(i.item_detail,''),
 		        o.buyer_id, o.spec_name, o.spec_value, o.quantity, o.amount,
 		        o.order_status, o.cookie_id, o.is_bargain, o.system_shipped,
 		        o.receiver_name, o.receiver_phone, o.receiver_address, o.receiver_city,

@@ -216,8 +216,10 @@ func TestMultiDB_DeletedAutomationRulesSharedCard(t *testing.T) {
 			if err := store.Automation.DeferTask(ctx, DeferredAutomationTask{TaskKey: "shared-pending", CookieID: cookieID, TriggerType: "paid", TaskJSON: `{}`}); err != nil {
 				t.Fatal(err)
 			}
-			// err 保存无外部副作用的订单夹具写入结果。
-			if err := store.Orders.Upsert(ctx, "shared-order", OrderUpsertOpts{CookieID: cookieID}); err != nil {
+			// err 保存无外部副作用的订单夹具写入结果；此处库仍处于迁移前版本，
+			// 直接写 SQL 而不是调用 Upsert，避免新代码依赖尚未创建的列。
+			if _, err := store.DB.ExecContext(ctx,
+				`INSERT INTO orders (order_id, cookie_id, order_status, version) VALUES ('shared-order', ?, 'unknown', 1)`, cookieID); err != nil {
 				t.Fatal(err)
 			}
 			// err 保存真实启动迁移结果。

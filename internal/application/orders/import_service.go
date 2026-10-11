@@ -152,7 +152,7 @@ func (s *ImportService) importOne(ctx context.Context, ownedCookieIDs []string, 
 	if err := s.repository.WithTransaction(ctx, func(writer Writer) error {
 		// err 保存订单主体写入错误。
 		if err := writer.UpsertOrder(ctx, orderID, UpsertOptions{
-			CookieID: cookieID, ItemID: input.ItemID, BuyerID: input.BuyerID,
+			CookieID: cookieID, ItemID: input.ItemID, ItemTitle: input.ItemTitle, BuyerID: input.BuyerID,
 			OrderStatus: status, SpecName: input.SpecName, SpecValue: input.SpecValue,
 			Quantity: input.Quantity, Amount: amount, ReceiverName: input.ReceiverName,
 			ReceiverPhone: input.ReceiverPhone, ReceiverAddress: input.ReceiverAddress,

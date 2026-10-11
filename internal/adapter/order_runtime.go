@@ -349,7 +349,7 @@ func (r *OrderRuntime) FetchSoldOrders(ctx context.Context, detail *orderapp.Pla
 			if strings.TrimSpace(remote.OrderID) == "" {
 				return orderapp.RefreshSoldFetchResult{Orders: orders, CookieUpdate: orderCookieUpdate(detail, session)}, fmt.Errorf("订单列表第 %d 页存在缺失订单号的条目，分页不完整", pageNumber)
 			}
-			orders = append(orders, orderapp.RefreshSoldOrder{OrderID: remote.OrderID, ItemID: remote.ItemID, BuyerID: remote.BuyerID, CreatedAt: remote.CreatedAt, OrderStatus: orderapp.NormalizeOrderStatus(remote.OrderStatus), Quantity: remote.Quantity, Amount: remote.Amount, ReceiverName: remote.ReceiverName, ReceiverPhone: remote.ReceiverPhone, ReceiverAddr: remote.ReceiverAddr, ReceiverCity: remote.ReceiverCity, IsBargain: remote.IsBargain})
+			orders = append(orders, orderapp.RefreshSoldOrder{OrderID: remote.OrderID, ItemID: remote.ItemID, ItemTitle: remote.ItemTitle, BuyerID: remote.BuyerID, CreatedAt: remote.CreatedAt, OrderStatus: orderapp.NormalizeOrderStatus(remote.OrderStatus), Quantity: remote.Quantity, Amount: remote.Amount, ReceiverName: remote.ReceiverName, ReceiverPhone: remote.ReceiverPhone, ReceiverAddr: remote.ReceiverAddr, ReceiverCity: remote.ReceiverCity, IsBargain: remote.IsBargain})
 		}
 		// 发现待刀成订单（SKIP_PIN 按钮在场）时立即按名单触发自动免拼。
 		// 失败只记日志不阻断同步：下一轮订单同步按钮仍在场会自然重试；

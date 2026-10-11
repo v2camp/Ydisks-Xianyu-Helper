@@ -255,9 +255,9 @@ func upsertOrder(ctx context.Context, execer sqlQueryExecer, dialect Dialect, or
 	}
 	// err 保存初始占位插入失败；主键冲突不授权覆盖，仍须经过下方归属和版本检查。
 	_, err := execer.ExecContext(ctx,
-		dialectInsertIgnorePrefix(dialect)+` INTO orders (order_id, item_id, buyer_id, cookie_id, order_status, version)
-		 VALUES (?, ?, ?, ?, 'unknown', 1)`+dialectInsertIgnore(dialect, []string{"order_id"}),
-		orderID, opts.ItemID, opts.BuyerID, opts.CookieID)
+		dialectInsertIgnorePrefix(dialect)+` INTO orders (order_id, item_id, item_title, buyer_id, cookie_id, order_status, version)
+		 VALUES (?, ?, ?, ?, ?, 'unknown', 1)`+dialectInsertIgnore(dialect, []string{"order_id"}),
+		orderID, opts.ItemID, opts.ItemTitle, opts.BuyerID, opts.CookieID)
 	if err != nil {
 		return err
 	}
@@ -379,6 +379,7 @@ func orderUpsertAssignments(opts OrderUpsertOpts) ([]string, []any) {
 	}
 	add("chat_id", opts.ChatID, opts.ChatID != "")
 	add("item_id", opts.ItemID, opts.ItemID != "")
+	add("item_title", opts.ItemTitle, opts.ItemTitle != "")
 	add("buyer_id", opts.BuyerID, opts.BuyerID != "")
 	add("cookie_id", opts.CookieID, opts.CookieID != "")
 	add("created_at", opts.CreatedAt, opts.CreatedAt != "")
@@ -447,9 +448,11 @@ func shouldUpdateOrderStatus(current, incoming string) bool {
 
 // OrderUpsertOpts Upsert 的可选字段。
 type OrderUpsertOpts struct {
-	ItemID   string
-	BuyerID  string
-	CookieID string
+	ItemID string
+	// ItemTitle 是平台订单携带的商品标题快照；非空时写入订单行，用于商品表缺失时仍能显示商品名。
+	ItemTitle string
+	BuyerID   string
+	CookieID  string
 	// CreatedAt 是平台订单创建时间；为空时不覆盖数据库已有时间。
 	CreatedAt     string
 	OrderStatus   string

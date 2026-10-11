@@ -80,8 +80,9 @@ export const buildProductSalesData = (analytics: OrderAnalytics, itemNames: Reco
     .map(
       // item 是单个商品的销售统计。
       item => {
-        // itemName 是商品优先使用标题的展示名称。
-        const itemName = itemNames[item.item_id] || item.item_id;
+        // itemName 优先取订单自带的标题快照，其次回退商品表名称，最后退回商品编号，
+        // 保证商品已从商品表删除的订单仍能显示商品名而不是编号。
+        const itemName = item.item_title || itemNames[item.item_id] || item.item_id;
         return { name: itemName.length > 12 ? `${itemName.substring(0, 12)}...` : itemName, sales: item.order_count };
       },
     )
@@ -97,8 +98,9 @@ export const buildSourceData = (analytics: OrderAnalytics, itemNames: Record<str
     .map(
       // item 是单个商品的订单统计。
       item => {
-        // itemName 是商品优先使用标题的展示名称。
-        const itemName = itemNames[item.item_id] || item.item_id;
+        // itemName 优先取订单自带的标题快照，其次回退商品表名称，最后退回商品编号，
+        // 保证商品已从商品表删除的订单仍能显示商品名而不是编号。
+        const itemName = item.item_title || itemNames[item.item_id] || item.item_id;
         return {
           name: itemName.length > 10 ? `${itemName.substring(0, 10)}...` : itemName,
           value: item.order_count,
@@ -122,8 +124,9 @@ export const buildCategoryData = (analytics: OrderAnalytics, itemNames: Record<s
     .map(
       // item 是单个商品的金额统计。
       item => {
-        // itemName 是商品优先使用标题的展示名称。
-        const itemName = itemNames[item.item_id] || item.item_id;
+        // itemName 优先取订单自带的标题快照，其次回退商品表名称，最后退回商品编号，
+        // 保证商品已从商品表删除的订单仍能显示商品名而不是编号。
+        const itemName = item.item_title || itemNames[item.item_id] || item.item_id;
         return {
           name: itemName.length > 12 ? `${itemName.substring(0, 12)}...` : itemName,
           value: item.total_amount,

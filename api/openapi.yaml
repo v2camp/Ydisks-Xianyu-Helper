@@ -9330,7 +9330,7 @@ components:
         daily_stats: {type: array, items: {type: object, required: [date, order_count, amount], properties: {date: {type: string}, order_count: {type: integer}, amount: {type: number}}}}
         status_stats: {type: array, items: {type: object, required: [status, count, amount], properties: {status: {type: string}, count: {type: integer}, amount: {type: number}}}}
         city_stats: {type: array, items: {type: object, required: [city, order_count, total_amount], properties: {city: {type: string}, order_count: {type: integer}, total_amount: {type: number}}}}
-        item_stats: {type: array, items: {type: object, required: [item_id, order_count, total_amount, avg_amount], properties: {item_id: {type: string}, order_count: {type: integer}, total_amount: {type: number}, avg_amount: {type: number}}}}
+        item_stats: {type: array, items: {type: object, required: [item_id, order_count, total_amount, avg_amount], properties: {item_id: {type: string}, item_title: {type: string}, order_count: {type: integer}, total_amount: {type: number}, avg_amount: {type: number}}}}
     ValidOrdersResponse:
       type: object
       required: [orders, total, page, page_size, truncated]
