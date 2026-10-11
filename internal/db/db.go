@@ -52,8 +52,29 @@ const (
 //	postgres://user:pass@host:5432/dbname?sslmode=disable
 //
 // 为向后兼容，传入的 dbURL 若不含 "://"，则按 SQLite 文件路径处理。
-// Open 打开当前值。
+// 需要只读访问（不触发迁移）时改用 OpenReadOnly。
 func Open(ctx context.Context, dbURL string) (*sql.DB, Dialect, error) {
+	// db、dialect、err 是打开的连接池、方言与失败原因。
+	db, dialect, err := openPool(ctx, dbURL)
+	if err != nil {
+		return nil, "", err
+	}
+	if // err 用于本次流程后续判断的err
+	err := Migrate(ctx, db, dialect); err != nil {
+		_ = db.Close()
+		return nil, "", err
+	}
+	return db, dialect, nil
+}
+
+// OpenReadOnly 打开数据库但不执行迁移，供只读工具与离线评测使用。
+// 迁移由部署链路负责；调用方必须只读，不得借本入口写入业务表。
+func OpenReadOnly(ctx context.Context, dbURL string) (*sql.DB, Dialect, error) {
+	return openPool(ctx, dbURL)
+}
+
+// openPool 解析并打开数据库连接池，不执行迁移。
+func openPool(ctx context.Context, dbURL string) (*sql.DB, Dialect, error) {
 	// driver、dialect、dsn、err 用于本次流程后续判断的driver、dialect、dsn、err
 	driver, dialect, dsn, err := parseDBURL(dbURL)
 	if err != nil {
@@ -92,12 +113,6 @@ func Open(ctx context.Context, dbURL string) (*sql.DB, Dialect, error) {
 	err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, "", fmt.Errorf("ping 数据库: %w", err)
-	}
-
-	if // err 用于本次流程后续判断的err
-	err := Migrate(ctx, db, dialect); err != nil {
-		_ = db.Close()
-		return nil, "", err
 	}
 	return db, dialect, nil
 }
