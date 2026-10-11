@@ -51,6 +51,16 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 	// result 是逐步填充的评测结果。
 	result := CaseResult{Chat: sample.Chat, Verdicts: sample.Verdicts}
 
+	// 决策层：显式声明是否应接管时，只校验接管结论，全程不调用模型。
+	if exp != nil && exp.MustNotTakeover != nil {
+		// want、got 分别是期望与实际的接管状态。
+		want, got := *exp.MustNotTakeover, sample.Snapshot != nil && sample.Snapshot.Takeover
+		result.Layer = layerDecision
+		result.Pass = want == got
+		result.Reason = takeoverReason(want, got)
+		return result
+	}
+
 	// 结构层优先：提示词组装本身不对时，模型再强也不该判通过。
 	if verdict, ok := CheckPromptStructure(sample, exp); ok {
 		result.Layer = verdict.Layer
@@ -106,7 +116,20 @@ func judgeReply(ctx context.Context, exp *Expectation, sample Sample, reply stri
 	if verdict, ok := DecideByRule(exp, reply); ok {
 		return verdict
 	}
-	return JudgeByModel(ctx, gen, judgeCfg, sample, reply)
+	return JudgeByModel(ctx, gen, judgeCfg, exp, sample, reply)
+}
+
+// takeoverReason 说明接管判定与期望的差异，供报告与排障使用。
+// want 是期望的接管状态，got 是生产判定链的实际结果。
+func takeoverReason(want, got bool) string {
+	switch {
+	case want == got:
+		return "接管判定符合期望"
+	case want:
+		return "期望 AI 接管，但生产判定链判定为不接管"
+	default:
+		return "期望不接管（转人工或人工处理），但生产判定链判定为接管"
+	}
 }
 
 // aggregate 把多次采样结果按多数表决聚合到一条结果上。

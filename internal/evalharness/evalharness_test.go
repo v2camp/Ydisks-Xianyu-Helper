@@ -260,3 +260,31 @@ func TestValidateSamplesSkipsUnplayable(t *testing.T) {
 		t.Fatal("全部不可回放时应报错")
 	}
 }
+
+// TestDeriveExpectationLegacyFormat 旧格式提示也必须推导出同样的期望。
+// 这是跨版本可比性的前提：新格式若能推导而旧格式不能，提示词改动会同时改变判定口径，
+// 修复前后的评测结果将不可对照。
+func TestDeriveExpectationLegacyFormat(t *testing.T) {
+	// sample 使用修复前的旧格式提示。
+	sample := evalSampleWithPrompt(
+		"……该商品发货方式（按该商品卡密内容确定，可直接回答）：百度网盘、夸克网盘……", "")
+	// exp 是推导出的期望。
+	exp := sample.ResolveExpectation()
+	if exp == nil {
+		t.Fatal("旧格式也应能推导期望，否则判定口径随提示词格式漂移")
+	}
+	if len(exp.MustContainAny) != 2 || exp.MustContainAny[0] != "百度网盘" {
+		t.Fatalf("旧格式渠道解析错误: %v", exp.MustContainAny)
+	}
+}
+
+// TestDeriveExpectationLegacyNonAuthoritative 旧格式标注「仅参考」时不推导强期望，
+// 避免把推断当成确定事实去要求模型。
+func TestDeriveExpectationLegacyNonAuthoritative(t *testing.T) {
+	// sample 使用旧格式但依据为「仅参考」的提示。
+	sample := evalSampleWithPrompt("……该商品发货方式（按描述推断，仅参考）：夸克网盘……", "")
+	// exp 是推导结果，标注「仅参考」时应为空。
+	if exp := sample.ResolveExpectation(); exp != nil {
+		t.Fatalf("仅参考的推断不应推导强期望: %+v", exp)
+	}
+}
