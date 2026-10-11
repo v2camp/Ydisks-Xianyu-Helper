@@ -35,12 +35,14 @@ type RetentionReport struct {
 	MCPCallAudit int64
 	// RenewalLogs 是本次删除的超期续期日志行数。
 	RenewalLogs int64
+	// AIDecisionLog 是本次删除的超期 AI 接管决策归因行数。
+	AIDecisionLog int64
 }
 
 // Total 返回本次清理删除的总行数。
 func (r RetentionReport) Total() int64 {
 	return r.ChatMessages + r.ChatSessions + r.WSMessages + r.AccountLoginLogs +
-		r.RiskControlLogs + r.SecurityAuditLogs + r.MCPCallAudit + r.RenewalLogs
+		r.RiskControlLogs + r.SecurityAuditLogs + r.MCPCallAudit + r.RenewalLogs + r.AIDecisionLog
 }
 
 // CleanupRetention 按保留天数清理消息与全部日志表，返回逐表删除行数。
@@ -127,6 +129,14 @@ func (s *Store) CleanupRetention(ctx context.Context, retentionDays int) (Retent
 		renewalLogs += deleted
 	}
 	report.RenewalLogs = renewalLogs
+
+	// AI 接管决策归因日志与其它审计表同期限清理：它是审计数据不是业务数据，
+	// 不清理会随运行天数无界增长。跨版本的长期对照依赖评测样本库，不依赖本表。
+	aiDecisionLogs, err := s.deleteBefore(ctx, `DELETE FROM ai_decision_log WHERE created_at < ?`, cutoff)
+	if err != nil {
+		return report, err
+	}
+	report.AIDecisionLog = aiDecisionLogs
 	return report, nil
 }
 
