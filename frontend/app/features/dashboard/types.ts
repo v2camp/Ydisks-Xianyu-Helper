@@ -4,7 +4,7 @@ import type { DashboardStats,Item,Order,OrderAnalytics } from './api';
 /** Dashboard 请求状态。 */
 export type DashboardRequestState = 'idle' | 'loading' | 'success' | 'error';
 
-/** Dashboard 当前选中的时间范围。 */
+/** Dashboard 当前选中的时间范围与账号范围。 */
 export type DashboardRangeSelection = {
   /** 当前选择的快捷时间范围。 */
   range: TimeRange;
@@ -12,6 +12,8 @@ export type DashboardRangeSelection = {
   customStartDate: string;
   /** 自定义范围结束日期。 */
   customEndDate: string;
+  /** 当前选择的闲鱼账号标识；空串表示全部账号。 */
+  cookieID: string;
 };
 
 /** Dashboard 订单明细分页结果。 */

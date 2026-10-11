@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Query 是订单分析用例使用的用户范围、日期和时区条件。
+// Query 是订单分析用例使用的用户范围、日期、账号和时区条件。
 type Query struct {
 	// UserID 是当前登录用户的本地身份标识。
 	UserID int64
@@ -15,11 +15,13 @@ type Query struct {
 	StartDate string
 	// EndDate 是用户本地日期范围的结束日期，格式为 YYYY-MM-DD。
 	EndDate string
+	// CookieID 是可选账号过滤条件，值为闲鱼账号标识；为空表示统计全部账号。
+	CookieID string
 	// Location 是用于日期边界和按日聚合的用户本地时区。
 	Location *time.Location
 }
 
-// Filter 是持久化查询已经转换后的用户、UTC 日期和有效状态条件。
+// Filter 是持久化查询已经转换后的用户、UTC 日期、账号和有效状态条件。
 type Filter struct {
 	// UserID 是订单所属账号对应的用户身份标识。
 	UserID int64
@@ -27,6 +29,8 @@ type Filter struct {
 	StartAt string
 	// EndBefore 是排除边界的 UTC 结束时间文本；为空表示不限制结束时间。
 	EndBefore string
+	// CookieID 是可选的订单所属账号标识；为空表示不限制账号。
+	CookieID string
 	// Statuses 是允许参与统计的订单状态候选集合。
 	Statuses []string
 }

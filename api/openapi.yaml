@@ -1897,6 +1897,11 @@ paths:
           in: query
           required: false
           schema: {type: integer}
+        - name: cookie_id
+          in: query
+          required: false
+          description: 闲鱼账号标识；为空表示统计当前用户的全部账号。
+          schema: {type: string}
       responses:
         '200':
           description: 成功
@@ -1960,6 +1965,11 @@ paths:
           in: query
           required: false
           schema: {type: integer, minimum: 1, maximum: 500}
+        - name: cookie_id
+          in: query
+          required: false
+          description: 闲鱼账号标识；为空表示统计当前用户的全部账号。
+          schema: {type: string}
       responses:
         '200':
           description: 成功

@@ -39,9 +39,10 @@ func (s *Server) dashboardStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) orderAnalytics(w http.ResponseWriter, r *http.Request) {
 	// sess 是当前请求的认证会话。
 	sess := auth.SessionFromContext(r.Context())
-	// query 是从 HTTP 查询参数映射出的订单分析用例请求。
+	// query 是从 HTTP 查询参数映射出的订单分析用例请求；cookie_id 为空表示统计全部账号。
 	query := analyticsapp.Query{
 		UserID: sess.UserID, StartDate: r.URL.Query().Get("start_date"), EndDate: r.URL.Query().Get("end_date"),
+		CookieID: r.URL.Query().Get("cookie_id"),
 		Location: analyticsapp.LocationFromOffset(r.URL.Query().Get("timezone_offset_minutes")),
 	}
 	// result 和 err 是订单分析应用服务返回的统计结果及错误。
@@ -67,9 +68,10 @@ func (s *Server) validOrders(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 || pageSize > 500 {
 		pageSize = 500
 	}
-	// query 是从 HTTP 查询参数映射出的有效订单用例请求。
+	// query 是从 HTTP 查询参数映射出的有效订单用例请求；cookie_id 为空表示统计全部账号。
 	query := analyticsapp.Query{
 		UserID: sess.UserID, StartDate: r.URL.Query().Get("start_date"), EndDate: r.URL.Query().Get("end_date"),
+		CookieID: r.URL.Query().Get("cookie_id"),
 		Location: analyticsapp.LocationFromOffset(r.URL.Query().Get("timezone_offset_minutes")),
 	}
 	// result 和 err 是订单分析应用服务返回的分页结果及错误。

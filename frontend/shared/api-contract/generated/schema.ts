@@ -6079,6 +6079,8 @@ export interface operations {
                 start_date: string;
                 end_date: string;
                 timezone_offset_minutes?: number;
+                /** @description 闲鱼账号标识；为空表示统计当前用户的全部账号。 */
+                cookie_id?: string;
             };
             header?: never;
             path?: never;
@@ -6150,6 +6152,8 @@ export interface operations {
                 timezone_offset_minutes?: number;
                 page?: number;
                 page_size?: number;
+                /** @description 闲鱼账号标识；为空表示统计当前用户的全部账号。 */
+                cookie_id?: string;
             };
             header?: never;
             path?: never;

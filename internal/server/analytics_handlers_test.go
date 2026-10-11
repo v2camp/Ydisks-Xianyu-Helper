@@ -283,6 +283,123 @@ func TestAnalyticsCustomRangeDoesNotSilentlyDropDays(t *testing.T) {
 	}
 }
 
+// TestOrderAnalyticsFiltersByCookieID 验证订单分析和有效订单接口按 cookie_id 过滤，且不能读到其他用户的账号订单。
+func TestOrderAnalyticsFiltersByCookieID(t *testing.T) {
+	// srv、store、cleanup 构造带 SQLite 测试库的服务及其清理函数。
+	srv, store, cleanup := newTestServer(t)
+	defer cleanup()
+	// ctx 是账号与订单测试数据写入使用的上下文。
+	ctx := context.Background()
+	// saveErr 是第二个账号写入失败时的错误；acc2 必须与 acc1 同属当前登录用户。
+	if saveErr := store.Cookies.Save(ctx, "acc2", "unb=acc2", 1); saveErr != nil {
+		t.Fatalf("save acc2: %v", saveErr)
+	}
+	_, _ = store.DB.ExecContext(ctx, `INSERT INTO orders (order_id,amount,order_status,cookie_id,created_at) VALUES
+		('acc1-order','10.00','completed','acc1','2026-06-28 10:00:00'),
+		('acc2-order','25.00','completed','acc2','2026-06-28 11:00:00')`)
+	// created、createErr 是不属于当前登录用户的账号所属用户的创建结果及错误。
+	created, createErr := store.Users.Create(ctx, "cookie-filter-outsider", "outsider@example.com", "pw")
+	if !created || createErr != nil {
+		t.Fatalf("create outsider user: ok=%v err=%v", created, createErr)
+	}
+	// otherUser、lookupErr 是越权账号所属用户及其查询结果。
+	otherUser, lookupErr := store.Users.GetByUsername(ctx, "cookie-filter-outsider")
+	if lookupErr != nil {
+		t.Fatalf("lookup outsider user: %v", lookupErr)
+	}
+	// outsiderSaveErr 是越权账号写入失败时的错误。
+	if outsiderSaveErr := store.Cookies.Save(ctx, "outsider-acc", "unb=outsider", otherUser.ID); outsiderSaveErr != nil {
+		t.Fatalf("save outsider account: %v", outsiderSaveErr)
+	}
+	_, _ = store.DB.ExecContext(ctx, `INSERT INTO orders (order_id,amount,order_status,cookie_id,created_at) VALUES ('outsider-order','99.00','completed','outsider-acc','2026-06-28 12:00:00')`)
+
+	// handler 是当前测试使用的完整路由树。
+	handler := srv.Router()
+	// sessionCookie 是当前登录用户的认证会话。
+	sessionCookie := loginHelper(t, handler)
+	// scopedStatus 是限定 acc2 后版本化统计入口的状态码，同时校验 OpenAPI 已登记 cookie_id 参数。
+	scopedStatus := requestAdminAnalyticsRoute(t, handler, sessionCookie, http.MethodGet, "/api/v1/analytics/orders?start_date=2026-06-28&end_date=2026-06-28&cookie_id=acc2", "")
+	if scopedStatus != http.StatusOK {
+		t.Fatalf("scoped analytics status=%d", scopedStatus)
+	}
+
+	// scopedRecorder 是限定 acc2 后重新发起的请求记录器，用于校验统计结果。
+	scopedRecorder := requestAnalyticsRecorder(t, handler, sessionCookie, "/analytics/orders?start_date=2026-06-28&end_date=2026-06-28&cookie_id=acc2")
+	// scoped 是限定 acc2 后的收益汇总。
+	scoped := decodeRevenueStats(t, scopedRecorder)
+	if scoped.TotalOrders != 1 || scoped.TotalAmount != 25 {
+		t.Fatalf("scoped revenue=%+v want 1/25", scoped)
+	}
+
+	// allRecorder 是不限定账号时的请求记录器，用于确认过滤确实生效而非数据缺失。
+	allRecorder := requestAnalyticsRecorder(t, handler, sessionCookie, "/analytics/orders?start_date=2026-06-28&end_date=2026-06-28")
+	// all 是不限定账号时的收益汇总，应包含 acc1 与 acc2 两单。
+	all := decodeRevenueStats(t, allRecorder)
+	if all.TotalOrders != 2 || all.TotalAmount != 35 {
+		t.Fatalf("unscoped revenue=%+v want 2/35", all)
+	}
+
+	// outsiderRecorder 是尝试读取其他用户账号订单的请求记录器。
+	outsiderRecorder := requestAnalyticsRecorder(t, handler, sessionCookie, "/analytics/orders?start_date=2026-06-28&end_date=2026-06-28&cookie_id=outsider-acc")
+	// outsider 是越权账号的收益汇总，必须为空。
+	outsider := decodeRevenueStats(t, outsiderRecorder)
+	if outsider.TotalOrders != 0 || outsider.TotalAmount != 0 {
+		t.Fatalf("outsider revenue=%+v want 0/0", outsider)
+	}
+
+	// validRecorder 是限定 acc2 后的有效订单明细请求记录器。
+	validRecorder := requestAnalyticsRecorder(t, handler, sessionCookie, "/analytics/orders/valid?start_date=2026-06-28&end_date=2026-06-28&cookie_id=acc2")
+	// validOrders 是限定账号后的有效订单明细。
+	var validOrders struct {
+		Orders []map[string]any `json:"orders"`
+		Total  int              `json:"total"`
+	}
+	if // err 是有效订单响应解析错误。
+	err := json.Unmarshal(validRecorder.Body.Bytes(), &validOrders); err != nil {
+		t.Fatal(err)
+	}
+	if validOrders.Total != 1 || len(validOrders.Orders) != 1 || validOrders.Orders[0]["cookie_id"] != "acc2" {
+		t.Fatalf("valid orders=%+v want only acc2", validOrders)
+	}
+}
+
+// revenueStatsPayload 是订单分析响应中用于断言的收益汇总片段。
+type revenueStatsPayload struct {
+	// TotalOrders 是统计范围内的订单数。
+	TotalOrders int `json:"total_orders"`
+	// TotalAmount 是统计范围内的订单金额合计。
+	TotalAmount float64 `json:"total_amount"`
+}
+
+// requestAnalyticsRecorder 以当前会话请求订单分析入口并返回响应记录器。
+func requestAnalyticsRecorder(t *testing.T, handler http.Handler, sessionCookie *http.Cookie, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	// request 是带认证会话的分析入口请求。
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.AddCookie(sessionCookie)
+	// recorder 是捕获分析响应的记录器。
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("analytics path=%s status=%d body=%s", path, recorder.Code, recorder.Body.String())
+	}
+	return recorder
+}
+
+// decodeRevenueStats 从订单分析响应中解析收益汇总。
+func decodeRevenueStats(t *testing.T, recorder *httptest.ResponseRecorder) revenueStatsPayload {
+	t.Helper()
+	// response 是订单分析响应的收益汇总片段。
+	var response struct {
+		RevenueStats revenueStatsPayload `json:"revenue_stats"`
+	}
+	if // err 是订单分析响应解析错误。
+	err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	return response.RevenueStats
+}
+
 // TestAnalyticsDateBoundaryConvertsLocalDayToUTC 封装TestAnalytics日期BoundaryConvertsLocalDayToUTC业务协调。
 func TestAnalyticsDateBoundaryConvertsLocalDayToUTC(t *testing.T) {
 	// previous 用于本次流程后续判断的previous

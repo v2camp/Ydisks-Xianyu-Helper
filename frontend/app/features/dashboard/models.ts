@@ -47,6 +47,14 @@ export interface Order {
   updated_at?: string;
 }
 
+/** 由当前 feature adapter 归一后的账号筛选项 UI 模型；只含标识与展示名。 */
+export interface DashboardAccountOption {
+  /** 闲鱼账号标识，同时作为订单表的 cookie_id 过滤值。 */
+  id: string;
+  /** 账号展示名，取平台昵称，缺失时回退备注或截断标识。 */
+  name: string;
+}
+
 /** 由当前 feature adapter 归一后的 Item UI 模型；不直接暴露 HTTP DTO。 */
 export interface Item {
   /** 本地商品数据库主键。 */

@@ -1,9 +1,16 @@
 import { formatLocalDate } from '../../../dateRange';
-import type { DashboardStatsResponse,Item,ItemListEnvelope,Order,OrderAnalyticsResponse,OrderStatus,ValidOrderResponse,ValidOrdersResponse } from './models';
+import type { AccountTransport } from '../../../shared/api-contract/accounts';
+import type { DashboardAccountOption,DashboardStatsResponse,Item,ItemListEnvelope,Order,OrderAnalyticsResponse,OrderStatus,ValidOrderResponse,ValidOrdersResponse } from './models';
 import { contractClient, runContractRequest } from '../../../shared/api-contract/client';
 import { type RequestControlOptions } from '../../../shared/http/client';
 import { collectionFrom, objectFrom } from '../../../shared/http/contract';
 export type * from './models';
+
+/** AnalyticsRequestOptions 是订单统计请求的取消、超时与账号过滤选项。 */
+export interface AnalyticsRequestOptions extends RequestControlOptions {
+  /** cookieID 是闲鱼账号标识；空串或省略表示统计当前用户的全部账号。 */
+  cookieID?: string;
+}
 
 /** 仪表盘订单明细接口转换后的分页结果。 */
 export interface ValidOrdersResult {
@@ -27,6 +34,22 @@ const normalizeOrderStatus = (value: unknown): OrderStatus => {
 export const getDashboardStats = async (options?: RequestControlOptions): Promise<DashboardStatsResponse> =>
   runContractRequest(/* signal 是本次仪表盘统计请求的超时与取消控制信号。 */ signal => contractClient.GET('/api/v1/analytics/dashboard', { signal }), options);
 
+/** accountScope 把账号过滤条件转换为查询参数；未限定账号时返回空对象，避免向服务端传空串。 */
+const accountScope = (/* cookieID 是用户选择的闲鱼账号标识。 */ cookieID?: string): { /** cookie_id 是服务端识别的订单账号过滤查询参数。 */ cookie_id: string } | Record<string, never> => (
+  cookieID ? { cookie_id: cookieID } : {}
+);
+
+/** 读取账号筛选下拉需要的账号标识与展示名；不读取 Cookie 等敏感字段。 */
+export const getAccountOptions = async (options?: RequestControlOptions): Promise<DashboardAccountOption[]> => {
+  // response 是账号详情列表的原始 transport 响应。
+  const response = await runContractRequest(/* signal 控制账号下拉数据源的取消和超时。 */ signal => contractClient.GET('/api/v1/accounts/details', { signal }), options);
+  // rows 是从兼容包装中取出的账号传输记录。
+  const rows = collectionFrom<AccountTransport>(response as unknown, ['data', 'accounts', 'details']);
+  // accountOptions 是账号下拉使用的标识与展示名，昵称缺失时依次回退备注和截断标识。
+  const accountOptions = rows.map(/* row 是当前需要生成展示名的账号传输记录。 */ row => ({ id: row.id, name: row.nickname || row.remark || `账号 ${row.id.substring(0, 6)}` }));
+  return accountOptions.filter(/* option 是当前待去重的账号候选项。 */ option => option.id !== '');
+};
+
 /** 读取仪表盘商品索引，兼容历史 items 包装。 */
 export const getItems = async (accountID?: string, options?: RequestControlOptions): Promise<Item[]> => {
   // response 是商品列表的原始 transport 响应。
@@ -36,8 +59,8 @@ export const getItems = async (accountID?: string, options?: RequestControlOptio
   return items.map(/* item 是当前需要兼容布尔标记的商品传输记录。 */ item => ({ ...item, id: item.id || `${item.cookie_id}-${item.item_id}`, is_multi_spec: item.is_multi_spec === true || item.is_multi_spec === 1, multi_quantity_delivery: item.multi_quantity_delivery === true || item.multi_quantity_delivery === 1 }));
 };
 
-/** 读取指定自然日范围的订单统计，并显式传递浏览器时区偏移。 */
-export const getOrderAnalytics = async (range: number | { /** 统计起始日期。 */ start_date: string; /** 统计结束日期。 */ end_date: string } = 7, options?: RequestControlOptions): Promise<OrderAnalyticsResponse> => {
+/** 读取指定自然日范围与账号的订单统计，并显式传递浏览器时区偏移。 */
+export const getOrderAnalytics = async (range: number | { /** 统计起始日期。 */ start_date: string; /** 统计结束日期。 */ end_date: string } = 7, options: AnalyticsRequestOptions = {}): Promise<OrderAnalyticsResponse> => {
   // dateRange 是标准化后的统计日期范围。
   let dateRange: { /** 统计起始日期。 */ start_date: string; /** 统计结束日期。 */ end_date: string };
   if (typeof range === 'number') {
@@ -51,16 +74,18 @@ export const getOrderAnalytics = async (range: number | { /** 统计起始日期
     dateRange = range;
   }
   return runContractRequest(/* signal 是本次订单分析请求的超时与取消控制信号。 */ signal => contractClient.GET('/api/v1/analytics/orders', {
-    params: { query: { ...dateRange, timezone_offset_minutes: -new Date().getTimezoneOffset() } },
+    // accountScope 在限定单个账号时附带 cookie_id，否则不传该参数以统计全部账号。
+    params: { query: { ...dateRange, ...accountScope(options.cookieID), timezone_offset_minutes: -new Date().getTimezoneOffset() } },
     signal,
   }), options);
 };
 
 /** 读取可参与仪表盘统计的订单并适配历史响应形状。 */
-export const getValidOrders = async (dateRange: { /** 统计起始日期。 */ start_date: string; /** 统计结束日期。 */ end_date: string }, options?: RequestControlOptions): Promise<ValidOrdersResult> => {
+export const getValidOrders = async (dateRange: { /** 统计起始日期。 */ start_date: string; /** 统计结束日期。 */ end_date: string }, options: AnalyticsRequestOptions = {}): Promise<ValidOrdersResult> => {
   // response 是有效订单接口的未知兼容响应。
   const response = await runContractRequest(/* signal 是本次有效订单查询请求的超时与取消控制信号。 */ signal => contractClient.GET('/api/v1/analytics/orders/valid', {
-    params: { query: { ...dateRange, timezone_offset_minutes: -new Date().getTimezoneOffset() } },
+    // accountScope 在限定单个账号时附带 cookie_id，否则不传该参数以统计全部账号。
+    params: { query: { ...dateRange, ...accountScope(options.cookieID), timezone_offset_minutes: -new Date().getTimezoneOffset() } },
     signal,
   }), options);
   // page 是生成契约或历史 data/result 包装后的有效订单分页元数据。
