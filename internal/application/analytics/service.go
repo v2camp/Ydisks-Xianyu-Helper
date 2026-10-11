@@ -280,7 +280,12 @@ func ErrorMessage(err error) string {
 func (query Query) filter() Filter {
 	// statuses 是固定有效状态的独立副本，避免调用方修改全局集合。
 	statuses := append([]string(nil), ValidOrderStatuses...)
-	return Filter{UserID: query.UserID, StartAt: dateBoundary(query.StartDate, false, query.Location), EndBefore: dateBoundary(query.EndDate, true, query.Location), Statuses: statuses}
+	// cookieID 是去除空白后的账号过滤条件，空字符串表示统计全部账号。
+	cookieID := strings.TrimSpace(query.CookieID)
+	return Filter{
+		UserID: query.UserID, StartAt: dateBoundary(query.StartDate, false, query.Location),
+		EndBefore: dateBoundary(query.EndDate, true, query.Location), CookieID: cookieID, Statuses: statuses,
+	}
 }
 
 // dailyValue 保存单个日期的订单数和金额累计值。

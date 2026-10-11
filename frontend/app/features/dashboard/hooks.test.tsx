@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
-import type { DashboardStats,Item,OrderAnalyticsResponse } from './api';
-import { getDashboardStats,getItems,getOrderAnalytics,getValidOrders } from './api';
+import type { DashboardAccountOption,DashboardStats,Item,OrderAnalyticsResponse } from './api';
+import { getAccountOptions,getDashboardStats,getItems,getOrderAnalytics,getValidOrders } from './api';
 import type { UseDashboardOptions } from './hooks';
 import { useDashboard } from './hooks';
 
 vi.mock('./api', /* dashboardApiMockFactory 提供仪表盘 Hook 的确定性 API 替身。 */ () => ({
+  getAccountOptions: vi.fn(),
   getDashboardStats: vi.fn(),
   getItems: vi.fn(),
   getOrderAnalytics: vi.fn(),
   getValidOrders: vi.fn(),
 }));
 
+// getAccountOptionsMock 是读取账号下拉选项的可控请求替身。
+const getAccountOptionsMock = vi.mocked(getAccountOptions);
 // getStatsMock 是读取仪表盘概览统计的可控请求替身。
 const getStatsMock = vi.mocked(getDashboardStats);
 // getItemsMock 是读取商品列表的可控请求替身。
@@ -30,8 +33,10 @@ const itemsFixture: Item[] = [{ id: 'item-1', cookie_id: 'account-1', item_id: '
 const analyticsFixture: OrderAnalyticsResponse = { revenue_stats: { total_amount: 100, total_orders: 2, avg_amount: 50, unique_buyers: 2, unique_items: 1 }, daily_stats: [{ date: '2026-08-15', amount: 100, order_count: 2 }], status_stats: [], city_stats: [], item_stats: [{ item_id: 'item-1', order_count: 2, total_amount: 100, avg_amount: 50 }] };
 // validOrdersFixture 是有效订单查询的最小返回结果。
 const validOrdersFixture = { orders: [], total: 0, truncated: false };
-// dashboardOptions 是今天范围的仪表盘 Hook 参数。
-const dashboardOptions: UseDashboardOptions = { range: 'today', customStartDate: '', customEndDate: '', customRangeVersion: 0 };
+// accountsFixture 是账号下拉选项的测试数据。
+const accountsFixture: DashboardAccountOption[] = [{ id: 'account-1', name: '测试账号' }];
+// dashboardOptions 是今天范围、全部账号的仪表盘 Hook 参数。
+const dashboardOptions: UseDashboardOptions = { range: 'today', customStartDate: '', customEndDate: '', cookieID: '', customRangeVersion: 0 };
 
 // renderDashboardHook 是渲染仪表盘 Hook 的具名回调。
 const renderDashboardHook = () => useDashboard(dashboardOptions);
@@ -39,6 +44,7 @@ const renderDashboardHook = () => useDashboard(dashboardOptions);
 describe('useDashboard', /* 当前回调处理仪表盘并行请求和派生数据状态。 */ () => {
   beforeEach(/* 当前回调重置仪表盘 API 替身。 */ () => {
     vi.clearAllMocks();
+    getAccountOptionsMock.mockResolvedValue(accountsFixture);
     getStatsMock.mockResolvedValue(statsFixture);
     getItemsMock.mockResolvedValue(itemsFixture);
     getAnalyticsMock.mockResolvedValue(analyticsFixture);
@@ -89,9 +95,44 @@ describe('useDashboard', /* 当前回调处理仪表盘并行请求和派生数�
     );
   });
 
+  test('加载账号下拉选项供账号过滤器使用', /* 当前回调验证账号筛选数据源进入 Hook 返回值。 */ async () => {
+    // hook 是仪表盘 Hook 的渲染结果。
+    const hook = renderHook(renderDashboardHook);
+    await waitFor(
+      // accountsAssertion 等待账号下拉选项写入。
+      () => expect(hook.result.current.accounts).toEqual(accountsFixture),
+    );
+  });
+
+  test('账号列表请求失败时降级为仅全部账号且不阻断经营数据', /* 当前回调验证账号数据源失败不影响主链路。 */ async () => {
+    getAccountOptionsMock.mockRejectedValueOnce(new Error('账号服务失败'));
+    // hook 是账号数据源失败场景的仪表盘 Hook 渲染结果。
+    const hook = renderHook(renderDashboardHook);
+    await waitFor(
+      // rangeAssertion 等待经营数据在账号数据源失败时仍然加载成功。
+      () => expect(hook.result.current.status.range).toBe('success'),
+    );
+    expect(hook.result.current.accounts).toEqual([]);
+  });
+
+  test('选中账号时把账号标识透传给经营数据请求', /* 当前回调验证账号过滤参数进入分析与订单请求。 */ async () => {
+    // accountOptions 是限定单个账号的仪表盘 Hook 参数。
+    const accountOptions: UseDashboardOptions = { ...dashboardOptions, cookieID: 'account-1' };
+    // renderAccountHook 是限定账号场景的 Hook 渲染回调。
+    const renderAccountHook = () => useDashboard(accountOptions);
+    // hook 是限定账号场景的仪表盘 Hook 渲染结果。
+    const hook = renderHook(renderAccountHook);
+    await waitFor(
+      // rangeAssertion 等待限定账号的经营数据请求完成。
+      () => expect(hook.result.current.status.range).toBe('success'),
+    );
+    expect(getAnalyticsMock).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String) }), expect.objectContaining({ cookieID: 'account-1' }));
+    expect(getValidOrdersMock).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String) }), expect.objectContaining({ cookieID: 'account-1' }));
+  });
+
   test('自定义日期倒置时阻断范围请求并提示错误', /* 当前回调验证日期范围校验错误分支。 */ async () => {
     // invalidOptions 是开始日期晚于结束日期的非法范围参数。
-    const invalidOptions: UseDashboardOptions = { range: 'custom', customStartDate: '2026-08-20', customEndDate: '2026-08-01', customRangeVersion: 1 };
+    const invalidOptions: UseDashboardOptions = { range: 'custom', customStartDate: '2026-08-20', customEndDate: '2026-08-01', cookieID: '', customRangeVersion: 1 };
     // renderInvalidHook 是非法日期范围 Hook 的渲染回调。
     const renderInvalidHook = () => useDashboard(invalidOptions);
     // hook 是非法日期范围 Hook 的渲染结果。

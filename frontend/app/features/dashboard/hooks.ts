@@ -1,6 +1,7 @@
 import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
 import { getDateRange,getPreviousDateRange } from '../../../dateRange';
-import { getDashboardStats,getItems,getOrderAnalytics,getValidOrders } from './api';
+import type { DashboardAccountOption } from './models';
+import { getAccountOptions,getDashboardStats,getItems,getOrderAnalytics,getValidOrders } from './api';
 import { buildCategoryData,buildChartData,buildItemNameMap,buildProductSalesData,buildSourceData,getMaxProductSales,getRangeLabel,getTrendPercent,isCurrentDashboardRequest } from './state';
 import type { DashboardData,DashboardRangeSelection,DashboardStatus } from './types';
 
@@ -11,6 +12,7 @@ export type UseDashboardOptions = DashboardRangeSelection & { /** customRangeVer
 export type UseDashboardResult = {
   /** data 表示返回数据。 */ data: DashboardData | null;
   /** status 表示状态。 */ status: DashboardStatus;
+  /** accounts 表示账号筛选下拉可选项。 */ accounts: DashboardAccountOption[];
   /** chartData 表示图表数据。 */ chartData: ReturnType<typeof buildChartData>;
   /** productSalesData 表示商品销量数据。 */ productSalesData: ReturnType<typeof buildProductSalesData>;
   /** sourceData 表示来源统计数据。 */ sourceData: ReturnType<typeof buildSourceData>;
@@ -30,11 +32,13 @@ const errorMessage = (error: unknown, fallback: string): string => error instanc
 /** 加载 Dashboard 概览、趋势和订单明细，并隔离过期响应。 */
 export const useDashboard = (options: UseDashboardOptions): UseDashboardResult => {
   // { 解构得到当前 Hook 返回的状态和操作函数。
-  const { range, customStartDate, customEndDate, customRangeVersion } = options;
+  const { range, customStartDate, customEndDate, cookieID, customRangeVersion } = options;
   // [overview, 解构得到当前 Hook 返回的状态和操作函数。
   const [overview, setOverview] = useState<Pick<DashboardData, 'stats' | 'items' | 'itemNames'> | null>(null);
   // [rangeData, 解构得到当前 Hook 返回的状态和操作函数。
   const [rangeData, setRangeData] = useState<Pick<DashboardData, 'analytics' | 'previousAnalytics' | 'validOrders' | 'dateRange'> | null>(null);
+  // [accounts, 账号筛选下拉可选项；加载失败时保持为空数组并降级为仅「全部账号」。
+  const [accounts, setAccounts] = useState<DashboardAccountOption[]>([]);
   // [status, 解构得到当前 Hook 返回的状态和操作函数。
   const [status, setStatus] = useState<DashboardStatus>({ overview: 'idle', range: 'idle', error: '' });
   // [refreshKey, 解构得到当前 Hook 返回的状态和操作函数。
@@ -45,9 +49,9 @@ export const useDashboard = (options: UseDashboardOptions): UseDashboardResult =
   const overviewSequence = useRef(0);
   // rangeSelection 范围选择，负责当前功能中的对应处理。
   const rangeSelection = useMemo(
-    // selection 是当前时间范围的不可变快照。
-    () => ({ range, customStartDate, customEndDate }),
-    [customEndDate, customStartDate, range],
+    // selection 是当前时间范围与账号范围的不可变快照。
+    () => ({ range, customStartDate, customEndDate, cookieID }),
+    [cookieID, customEndDate, customStartDate, range],
   );
 
   // refresh 刷新当前数据。
@@ -77,6 +81,13 @@ export const useDashboard = (options: UseDashboardOptions): UseDashboardResult =
     return /* 当前回调处理用户交互或异步状态变化。 */ () => controller.abort();
   }, [refreshKey]);
 
+  useEffect(/* 当前回调同步账号下拉数据源与组件生命周期。 */ () => {
+    // controller 账号列表请求取消控制器。
+    const controller = new AbortController();
+    getAccountOptions({ signal: controller.signal }).then(/* 当前回调写入账号下拉可选项。 */ options => setAccounts(options)).catch(/* 当前回调在账号列表不可用时保持空列表，不阻断经营数据展示。 */ () => setAccounts([]));
+    return /* 当前回调处理用户交互或异步状态变化。 */ () => controller.abort();
+  }, [refreshKey]);
+
   useEffect(/* 当前回调同步 React 副作用和资源生命周期。 */ () => {
     // dateRange 日期范围，负责当前功能中的对应处理。
     let dateRange;
@@ -94,9 +105,9 @@ export const useDashboard = (options: UseDashboardOptions): UseDashboardResult =
     const controller = new AbortController();
     setStatus(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, range: 'loading', error: '' }));
     Promise.all([
-      getOrderAnalytics({ start_date: dateRange.startDate, end_date: dateRange.endDate }, { signal: controller.signal }),
-      getOrderAnalytics({ start_date: previousRange.startDate, end_date: previousRange.endDate }, { signal: controller.signal }),
-      getValidOrders({ start_date: dateRange.startDate, end_date: dateRange.endDate }, { signal: controller.signal }),
+      getOrderAnalytics({ start_date: dateRange.startDate, end_date: dateRange.endDate }, { cookieID, signal: controller.signal }),
+      getOrderAnalytics({ start_date: previousRange.startDate, end_date: previousRange.endDate }, { cookieID, signal: controller.signal }),
+      getValidOrders({ start_date: dateRange.startDate, end_date: dateRange.endDate }, { cookieID, signal: controller.signal }),
     ]).then(/* 当前回调处理用户交互或异步状态变化。 */ ([analytics, previousAnalytics, validOrders]) => {
       if (!isCurrentDashboardRequest(requestSequence.current, sequence, controller.signal)) return;
       setRangeData({ analytics, previousAnalytics, validOrders, dateRange });
@@ -106,7 +117,7 @@ export const useDashboard = (options: UseDashboardOptions): UseDashboardResult =
       setStatus(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, range: 'error', error: errorMessage(error, '经营数据加载失败') }));
     });
     return /* 当前回调处理用户交互或异步状态变化。 */ () => controller.abort();
-  }, [customRangeVersion, range, refreshKey]);
+  }, [cookieID, customRangeVersion, range, refreshKey]);
 
   // data 数据。
   const data = useMemo<DashboardData | null>(
@@ -138,6 +149,7 @@ export const useDashboard = (options: UseDashboardOptions): UseDashboardResult =
   return {
     data,
     status,
+    accounts,
     chartData,
     productSalesData,
     sourceData,

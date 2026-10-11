@@ -243,12 +243,12 @@ func (r *AnalyticsRepository) ListValidOrders(ctx context.Context, filter analyt
 	return records, rows.Err()
 }
 
-// orderScope 构造订单查询的用户、日期、状态和金额过滤条件。
+// orderScope 构造订单查询的用户、日期、账号、状态和金额过滤条件。
 func (r *AnalyticsRepository) orderScope(filter analyticsapp.Filter, amountColumn string) (string, []any, string, string) {
 	// conditions 保存 SQL WHERE 条件片段。
 	conditions := []string{"orders.deleted_at IS NULL"}
 	// args 保存条件对应的参数值。
-	args := make([]any, 0, len(filter.Statuses)+3)
+	args := make([]any, 0, len(filter.Statuses)+4)
 	if filter.StartAt != "" {
 		conditions = append(conditions, "orders.created_at >= ?")
 		args = append(args, filter.StartAt)
@@ -256,6 +256,10 @@ func (r *AnalyticsRepository) orderScope(filter analyticsapp.Filter, amountColum
 	if filter.EndBefore != "" {
 		conditions = append(conditions, "orders.created_at < ?")
 		args = append(args, filter.EndBefore)
+	}
+	if filter.CookieID != "" {
+		conditions = append(conditions, "orders.cookie_id = ?")
+		args = append(args, filter.CookieID)
 	}
 	if filter.UserID != 0 {
 		conditions = append(conditions, "EXISTS (SELECT 1 FROM cookies WHERE cookies.id = orders.cookie_id AND cookies.user_id = ?)")

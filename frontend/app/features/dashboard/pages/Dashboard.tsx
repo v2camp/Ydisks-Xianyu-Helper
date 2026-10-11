@@ -1,9 +1,10 @@
 import { Activity,AlertCircle,DollarSign,ExternalLink,Package,PackageCheck,ShoppingCart,TrendingUp,Users } from 'lucide-react';
 import React,{ useState } from 'react';
 import { Cell,Legend,Pie,PieChart,ResponsiveContainer,Tooltip } from 'recharts';
-import { getDateRange,TimeRange } from '../../../../dateRange';
+import { getDateRange,type TimeRange } from '../../../../dateRange';
 import { formatLocalDateTime } from '../../../../dateTime';
 import { OrderStatus } from '../api';
+import { DashboardFilterBar } from '../components/DashboardFilterBar';
 import { DashboardTrendChart } from '../DashboardTrendChart';
 import { useDashboard } from '../hooks';
 
@@ -46,7 +47,7 @@ export const StatusBadge: React.FC<{ /** status 表示状态。 */ status: Order
 };
 
 // StatCard 渲染统计卡片组件。
-const StatCard: React.FC<{ /** title 表示标题。 */ title: string; /** value 表示值。 */ value: string | number; /** icon 表示icon。 */ icon: React.ElementType; /** colorClass 表示颜色Class。 */ colorClass: string; /** trend 表示趋势。 */ trend?: string }> = ({ title, value, icon: Icon, colorClass, trend }) => (
+const StatCard: React.FC<{ /** title 表示标题。 */ title: string; /** value 表示值。 */ value: string | number; /** icon 表示icon。 */ icon: React.ElementType; /** colorClass 表示颜色Class。 */ colorClass: string; /** trend 表示趋势。 */ trend?: string; /** scopeHint 表示口径提示。 */ scopeHint?: string }> = ({ title, value, icon: Icon, colorClass, trend, scopeHint }) => (
   <div className="ios-card p-6 rounded-xl flex flex-col justify-between hover:translate-y-[-4px] transition-all duration-300 h-full relative overflow-hidden group border-0">
     <div className={`absolute -right-6 -top-6 w-32 h-32 ${colorClass} opacity-10 rounded-full group-hover:scale-125 transition-transform duration-500 blur-2xl`}></div>
     <div className="flex justify-between items-start mb-6">
@@ -60,6 +61,7 @@ const StatCard: React.FC<{ /** title 表示标题。 */ title: string; /** value
     <div className="relative z-10">
       <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight font-feature-settings-tnum">{value}</h3>
       <p className="text-gray-500 text-sm font-medium mt-1">{title}</p>
+      {scopeHint && <p className="text-xs text-gray-400 mt-1">{scopeHint}</p>}
     </div>
   </div>
 );
@@ -76,10 +78,12 @@ const Dashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   // [customRangeVersion, 解构得到当前 Hook 返回的状态和操作函数。
   const [customRangeVersion, setCustomRangeVersion] = useState(0);
+  // [cookieID, 当前选中的闲鱼账号标识，空串表示全部账号。
+  const [cookieID, setCookieID] = useState('');
   // dashboard 仪表盘数据。
-  const dashboard = useDashboard({ range: timeRange, customStartDate, customEndDate, customRangeVersion });
+  const dashboard = useDashboard({ range: timeRange, customStartDate, customEndDate, cookieID, customRangeVersion });
   // { 解构得到当前 Hook 返回的状态和操作函数。
-  const { data, status, chartData, productSalesData, sourceData: sourceDataData, categoryData: categoryDataData, maxProductSales, trendPercent, selectedRangeLabel, refresh } = dashboard;
+  const { data, status, accounts, chartData, productSalesData, sourceData: sourceDataData, categoryData: categoryDataData, maxProductSales, trendPercent, selectedRangeLabel, refresh } = dashboard;
   // stats 统计概览数据。
   const stats = data?.stats || null;
   // analytics 统计分析数据。
@@ -121,15 +125,6 @@ const Dashboard: React.FC = () => {
   // totalAmount 订单总金额。
   const totalAmount = analytics.revenue_stats.total_amount || 0;
 
-  // timeRangeOptions time范围Options，负责当前功能中的对应处理。
-  const timeRangeOptions = [
-    { key: 'today' as TimeRange, label: '今天' },
-    { key: 'yesterday' as TimeRange, label: '昨天' },
-    { key: '3days' as TimeRange, label: '三天内' },
-    { key: '7days' as TimeRange, label: '7天内' },
-    { key: '30days' as TimeRange, label: '一个月内' },
-    { key: 'custom' as TimeRange, label: '自定义' },
-  ];
   // currentRangeDates 当前统计日期范围。
   let currentRangeDates;
   try {
@@ -137,6 +132,10 @@ const Dashboard: React.FC = () => {
   } catch {
     currentRangeDates = { startDate: customStartDate, endDate: customEndDate };
   }
+  // selectedAccountName 是当前筛选账号的展示名，空串表示未限定账号。
+  const selectedAccountName = cookieID ? accounts.find(/* account 是当前待匹配的账号候选项。 */ account => account.id === cookieID)?.name || cookieID : '全部账号';
+  // filterSummary 是过滤器右侧展示的当前统计口径摘要。
+  const filterSummary = `${currentRangeDates.startDate} 至 ${currentRangeDates.endDate} · ${selectedAccountName}`;
   // normalizedSearchTerm 归一化当前数据（d搜索条件Term）。
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   // filteredValidOrders 过滤后的有效订单列表。
@@ -168,45 +167,22 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Time Range Selector */}
-      <div className="flex flex-wrap gap-2 p-2 bg-gray-100/50 rounded-2xl">
-        {timeRangeOptions.map(/* 当前回调处理集合中的单个元素。 */ (option) => (
-          <button
-            key={option.key}
-            onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setTimeRange(option.key)}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
-              timeRange === option.key
-                ? 'bg-brand text-white shadow-md'
-                : 'bg-white text-gray-600 hover:text-black hover:bg-gray-50'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-        {timeRange === 'custom' && (
-          <>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={/* 当前回调处理用户交互或异步状态变化。 */ (e) => setCustomStartDate(e.target.value)}
-              className="px-3 py-2 rounded-xl text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <span className="self-center text-gray-400">-</span>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={/* 当前回调处理用户交互或异步状态变化。 */ (e) => setCustomEndDate(e.target.value)}
-              className="px-3 py-2 rounded-xl text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <button
-              onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setCustomRangeVersion(/* 当前回调处理用户交互或异步状态变化。 */ value => value + 1)}
-              className="px-4 py-2 rounded-xl text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors"
-            >
-              应用
-            </button>
-          </>
-        )}
-      </div>
+      <DashboardFilterBar
+        range={timeRange}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
+        cookieID={cookieID}
+        accounts={accounts}
+        summary={filterSummary}
+        onRangeChange={/* 当前回调在用户切换快捷区间时立即改变统计口径。 */ nextRange => setTimeRange(nextRange)}
+        onCustomRangeApply={/* 当前回调在用户确认自定义区间后切换范围并递增版本触发重新请求。 */ (startDate, endDate) => {
+          setCustomStartDate(startDate);
+          setCustomEndDate(endDate);
+          setTimeRange('custom');
+          setCustomRangeVersion(/* 当前回调递增版本以应用新的自定义区间。 */ value => value + 1);
+        }}
+        onCookieChange={/* 当前回调在用户切换账号时改变过滤范围，下游全部数据随之重新请求。 */ nextCookieID => setCookieID(nextCookieID)}
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -222,6 +198,7 @@ const Dashboard: React.FC = () => {
           value={`${stats.active_cookies} / ${stats.total_cookies}`}
           icon={Users}
           colorClass="bg-blue-500"
+          scopeHint="全局资源，不随筛选变化"
         />
         <StatCard
           title="订单数"
@@ -234,6 +211,7 @@ const Dashboard: React.FC = () => {
           value={stats.available_card_stock}
           icon={Package}
           colorClass="bg-purple-500"
+          scopeHint="全局资源，不随筛选变化"
         />
       </div>
 
@@ -380,6 +358,7 @@ const Dashboard: React.FC = () => {
                     <div className="text-sm font-extrabold text-gray-900">当前范围内没有参与统计的订单</div>
                     <div className="text-xs text-gray-400 mt-2 max-w-lg leading-6">
                       日期范围：{currentRangeDates.startDate} 至 {currentRangeDates.endDate}；
+                      账号：{selectedAccountName}；
                       统计口径：待发货、已发货、已完成，且订单金额不为空。
                       当前统计卡片订单数：{analytics.revenue_stats.total_orders} 单。
                     </div>
