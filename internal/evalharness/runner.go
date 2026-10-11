@@ -53,8 +53,10 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 
 	// 决策层：显式声明是否应接管时，只校验接管结论，全程不调用模型。
 	if exp != nil && exp.MustNotTakeover != nil {
-		// want、got 分别是期望与实际的接管状态。
-		want, got := *exp.MustNotTakeover, sample.Snapshot != nil && sample.Snapshot.Takeover
+		// want 是期望的接管状态；MustNotTakeover 为真表示期望不接管，故取反。
+		want := !*exp.MustNotTakeover
+		// got 是生产判定链对该消息的实际接管状态。
+		got := sample.Snapshot != nil && sample.Snapshot.Takeover
 		result.Layer = layerDecision
 		result.Pass = want == got
 		result.Reason = takeoverReason(want, got)
