@@ -1,15 +1,16 @@
 # 归因查询手册
 
 > 日期：2026-10-11
-> 依赖：迁移 `00064`（`ai_decision_log`，决策归因）与 `00065`（`ai_generation_log`，生成归因）
-> 前提：**部署并跑一段时间后才有数据**；两张表默认保留 30 天，随 `log_retention_days` 清理。
+> 依赖：迁移 `00064`（`ai_decision_log`，决策归因）、`00065`（`ai_generation_log`，生成归因）与 `00066`（`automation_run_steps`，发货步骤留痕）
+> 前提：**部署并跑一段时间后才有数据**；三张表默认保留 30 天，随 `log_retention_days` 清理。
 
-两张表回答两类问题，分工明确：
+三张表回答三类问题，分工明确：
 
 | 表 | 回答的问题 |
 |---|---|
 | `ai_decision_log` | 这条消息**为什么被接管 / 为什么没被接管** |
 | `ai_generation_log` | 接管之后**是谁答的、依据什么答的** |
+| `automation_run_steps` | 发货链路**卡在哪一步** |
 
 ---
 
@@ -151,9 +152,93 @@ ORDER BY 判定次数 DESC;
 
 ---
 
-## 六、指标口径说明
+## 七、发货链路卡在哪一步？
+
+`automation_runs` 只有终态 `status` 与 `error_message`，**无法回答"卡在哪一步"**。
+`automation_run_steps`（迁移 `00066`）按动作游标逐步留痕。
+
+### 某次运行的全过程
+
+```sql
+SELECT id, attempt_count AS 重试代次, action_cursor AS 游标,
+       step AS 阶段, action_type AS 动作, status AS 结果,
+       latency_ms AS 耗时毫秒, error AS 原因, created_at
+FROM automation_run_steps
+WHERE run_id = <运行ID>
+ORDER BY id;
+```
+
+### 哪个动作类型最常失败
+
+```sql
+SELECT action_type AS 动作, status AS 结果, count(*) AS 次数,
+       round(avg(latency_ms)) AS 平均耗时毫秒
+FROM automation_run_steps
+WHERE created_at > now() - interval '30 days'
+GROUP BY action_type, status
+ORDER BY 动作, 次数 DESC;
+```
+
+### 被门禁拦截的内容分布
+
+内容门禁与链接健康检查会拦截发货正文——这是**主动保护**，不是故障，
+但集中出现说明卡密内容本身有问题（链接失效、含违规词）：
+
+```sql
+SELECT action_type, count(*) AS 次数,
+       left(error, 80) AS 原因摘录
+FROM automation_run_steps
+WHERE step = 'quarantine'
+  AND created_at > now() - interval '30 days'
+GROUP BY action_type, left(error, 80)
+ORDER BY 次数 DESC
+LIMIT 30;
+```
+
+### 反复重试仍失败的运行
+
+同一 `(run_id, action_cursor)` 在不同 `attempt_count` 下多次失败，
+说明重试无效，更可能是内容问题而非网络抖动：
+
+```sql
+SELECT run_id, action_cursor, count(DISTINCT attempt_count) AS 尝试次数,
+       count(*) AS 步骤记录数, max(status) AS 最终状态
+FROM automation_run_steps
+WHERE created_at > now() - interval '30 days'
+GROUP BY run_id, action_cursor
+HAVING count(DISTINCT attempt_count) >= 3
+ORDER BY 尝试次数 DESC
+LIMIT 30;
+```
+
+---
+
+## 八、⚠️ 仍然无法回答的问题：买家到底收到没有
+
+这是当前可观测性的**最后一块空白**，也是风险最高的一项。
+
+即使动作执行全部成功（`automation_run_steps.status = success`），
+也只能证明**平台接口返回成功**，不能证明买家实际收到。以下情况系统无感知：
+
+- 平台静默拦截（限流、风控）——接口返回成功，消息未送达；
+- 买家未看到消息（折叠、被吞）；
+- 网盘链接本身失效——内容发到了，但打不开。
+
+要闭环需要**买家侧确认信号**，建议方向（尚未实施）：
+
+1. 发出后 N 分钟内，检测买家回复中是否含「收到 / 谢谢 / 好了」等确认词；
+2. 未确认且已超过阈值时，把该运行标记为「疑似未送达」并进人工核对；
+3. 识别需谨慎：买家也可能回复「没收到」，两种语义必须区分。
+
+**当前可行的替代做法**：遇到纠纷时，先查 `automation_run_steps` 判断
+「动作是否真的发出去」。如果步骤全是 success，说明问题在平台侧或买家侧，
+不在我们的链路——这本身就是有价值的归因结论。
+
+---
+
+## 九、指标口径说明
 
 - `answer_source = 'empty'` 的记录**不计入**评测通过率的分母（判定失败单独统计），
   但在归因时要单独看：空回复是硬故障，不是「没答对」而是「没答」。
 - 单条样本存在模型随机性。做趋势判断时建议观察 30 天窗口而不是单日。
-- 两张表都是**当前写入、按时间清理**，不保留修改历史；需要长期趋势请定期导出。
+- 三张归因表都是**当前写入、按时间清理**，不保留修改历史；需要长期趋势请定期导出。

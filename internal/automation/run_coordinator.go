@@ -507,8 +507,13 @@ func (r automationRunCoordinator) executeRunActionLoop(ctx context.Context, task
 			}
 			return sent, false, err
 		}
+		// stepStarted 是当前动作开始时刻，用于步骤耗时统计。
+		stepStarted := time.Now()
 		// n 保存外部动作明确成功产生的结果数量。
 		actionResult, actionErr := r.executeLeasedAction(ctx, task, action, deliveryProof, run)
+		// 步骤留痕必须紧跟动作执行、早于任何错误分支：门禁拦截、结果不确定与
+		// 成功三条收口路径都会因此留下一条记录，否则「卡在哪一步」无从查起。
+		r.recordRunStep(ctx, run, ruleID, cursor, action, actionErr, time.Since(stepStarted))
 		// actionResult 中的模板跳过位置只在当前动作内有意义，此处补全冻结计划下标后再持久化。
 		actionResult.proof = tagTemplateDeliverySkips(actionResult.proof, cursor)
 		actionResult.reviewProof = tagTemplateDeliverySkips(actionResult.reviewProof, cursor)

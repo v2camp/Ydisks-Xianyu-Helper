@@ -201,7 +201,7 @@ func TestMigrate_ExistingAutomationRunsReceiveEmptyDeliveryProof(t *testing.T) {
 	}
 	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务、账号每日定时下架、账号级客服 Agent 配置（00059）、聊天时间单位统一（00060）、卡券发货渠道（00061）、消息与日志保留设置（00062）与账号级模型配置列移除（00063）、AI 决策归因日志（00064）迁移，不能仅证明旧 delivery_proof 列存在。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
-	if versionErr != nil || finalVersion != 65 {
+	if versionErr != nil || finalVersion != 66 {
 		t.Fatalf("final migration version=%d err=%v", finalVersion, versionErr)
 	}
 	// credential_cooldowns 表由 00050 创建，账号任务重试计数列由 00048 创建，发送日计数表由 00051 创建，进程心跳表由 00052 创建，免拼名单表由 00053 建立并已被 00056 移除，都必须在最终版本中符合预期。
@@ -321,8 +321,8 @@ func TestMigrate_UpgradesDatabaseWithMainChatVersions(t *testing.T) {
 	if versionErr != nil {
 		t.Fatalf("read final migration version: %v", versionErr)
 	}
-	if finalVersion != 65 {
-		t.Fatalf("final migration version=%d, want 65", finalVersion)
+	if finalVersion != 66 {
+		t.Fatalf("final migration version=%d, want 66", finalVersion)
 	}
 	if !tableExists(t, rawDB, "process_heartbeats") {
 		t.Fatal("升级后必须创建进程心跳持久化表")

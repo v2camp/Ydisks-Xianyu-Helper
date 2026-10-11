@@ -39,13 +39,15 @@ type RetentionReport struct {
 	AIDecisionLog int64
 	// AIGenerationLog 是本次删除的超期 AI 生成归因行数。
 	AIGenerationLog int64
+	// AutomationRunSteps 是本次删除的超期发货步骤留痕行数。
+	AutomationRunSteps int64
 }
 
 // Total 返回本次清理删除的总行数。
 func (r RetentionReport) Total() int64 {
 	return r.ChatMessages + r.ChatSessions + r.WSMessages + r.AccountLoginLogs +
 		r.RiskControlLogs + r.SecurityAuditLogs + r.MCPCallAudit + r.RenewalLogs +
-		r.AIDecisionLog + r.AIGenerationLog
+		r.AIDecisionLog + r.AIGenerationLog + r.AutomationRunSteps
 }
 
 // CleanupRetention 按保留天数清理消息与全部日志表，返回逐表删除行数。
@@ -147,6 +149,13 @@ func (s *Store) CleanupRetention(ctx context.Context, retentionDays int) (Retent
 		return report, err
 	}
 	report.AIGenerationLog = aiGenerationLogs
+
+	// 发货步骤留痕同属审计数据，与其它运行记录同期限清理。
+	runSteps, err := s.deleteBefore(ctx, `DELETE FROM automation_run_steps WHERE created_at < ?`, cutoff)
+	if err != nil {
+		return report, err
+	}
+	report.AutomationRunSteps = runSteps
 	return report, nil
 }
 
