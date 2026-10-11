@@ -390,13 +390,21 @@ func TestFormatDeliveryHintBases(t *testing.T) {
 	}
 }
 
-// TestFormatDeliveryHintAuthoritative 卡密识别出的渠道应标记为可确定，供 AI 直接回答。
-// 这是客服不再对「有夸克吗」打太极的关键：依据文案必须区别于「仅参考」的推断。
+// TestFormatDeliveryHintAuthoritative 卡密识别出的渠道应输出确定结论并显式声明优先级。
+// 2026-10-11 强化：知识库同时注入了「以商品详情页说明为准」的通用话术，
+// 仅标注「可确定」不足以让模型压过它（生产样本实证会复述成回避回答），
+// 必须声明优先于店铺通用说明，并点明禁止的回避话术。
 func TestFormatDeliveryHintAuthoritative(t *testing.T) {
 	// authoritative 是卡密渠道确定时的结果。
 	authoritative := formatDeliveryHint([]string{"百度网盘", "夸克网盘"}, false, 1, true, true)
-	if !strings.Contains(authoritative, "按该商品卡密内容确定") {
-		t.Fatalf("卡密渠道应标注为可确定: %s", authoritative)
+	if !strings.Contains(authoritative, "确定发货方式") {
+		t.Fatalf("卡密渠道应输出确定结论: %s", authoritative)
+	}
+	if !strings.Contains(authoritative, "优先于店铺通用说明") {
+		t.Fatalf("卡密渠道必须声明优先于店铺通用说明: %s", authoritative)
+	}
+	if !strings.Contains(authoritative, "不得回答「以商品详情为准」") {
+		t.Fatalf("卡密渠道必须点明禁止的回避话术: %s", authoritative)
 	}
 	if strings.Contains(authoritative, "仅参考") {
 		t.Fatalf("卡密渠道不应再标注仅参考: %s", authoritative)
@@ -404,10 +412,62 @@ func TestFormatDeliveryHintAuthoritative(t *testing.T) {
 	if !strings.Contains(authoritative, "百度网盘、夸克网盘") {
 		t.Fatalf("双盘渠道应并列输出: %s", authoritative)
 	}
-	// 同样是双盘，但来自文案推断时仍应标注仅参考。
+	// 同样是双盘，但来自文案推断时仍应标注仅参考，且不得冒充确定事实或声明优先级。
 	inferred := formatDeliveryHint([]string{"百度网盘", "夸克网盘"}, false, 1, true, false)
-	if !strings.Contains(inferred, "仅参考") || strings.Contains(inferred, "卡密内容确定") {
+	if !strings.Contains(inferred, "仅参考") || strings.Contains(inferred, "确定发货方式") {
 		t.Fatalf("文案推断不应冒充确定事实: %s", inferred)
+	}
+	if strings.Contains(inferred, "优先于店铺通用说明") {
+		t.Fatalf("文案推断不应声明优先级: %s", inferred)
+	}
+}
+
+// TestBuildKnowledgeContextDeliveryHintPrecedesFAQ 有确定渠道时发货段必须排在 FAQ 段之前。
+// 顺序即优先级信号：知识库里「以商品详情页说明为准」的通用话术若排在发货结论之前，
+// 模型会复述回避话术而不回答真实渠道（2026-10-11 生产样本实证）。
+func TestBuildKnowledgeContextDeliveryHintPrecedesFAQ(t *testing.T) {
+	// knowledge 是带一条命中 FAQ 的语料配置，FAQ 内容为通用回避话术。
+	knowledge := &aiKnowledgeConfig{
+		FAQ: []aiFAQItem{{
+			Category: "发货",
+			Match:    "度盘",
+			Answer:   "不同商品发货方式不同，请以商品详情页说明为准。",
+		}},
+	}
+	// live 是卡密已确定渠道时的发货线索。
+	live := liveKnowledge{DeliveryHint: formatDeliveryHint([]string{"百度网盘", "夸克网盘"}, false, 1, true, true)}
+	// ctx 是拼装出的知识上下文。
+	ctx := knowledge.buildKnowledgeContext("有度盘的吗", live)
+	// deliveryIdx 是发货段的起始位置，-1 表示缺失。
+	deliveryIdx := strings.Index(ctx, "确定发货方式")
+	// faqIdx 是 FAQ 段的起始位置，-1 表示缺失。
+	faqIdx := strings.Index(ctx, "店铺知识")
+	if deliveryIdx < 0 || faqIdx < 0 {
+		t.Fatalf("发货段与 FAQ 段都应注入: %s", ctx)
+	}
+	if deliveryIdx > faqIdx {
+		t.Fatalf("发货段必须排在 FAQ 段之前: %s", ctx)
+	}
+}
+
+// TestBuildKnowledgeContextNoHintKeepsFAQOnly 无线索时不注入发货段，FAQ 保持原样。
+// 防止修复引入的副作用波及只配置了知识库、没有发货卡密的账号。
+func TestBuildKnowledgeContextNoHintKeepsFAQOnly(t *testing.T) {
+	// knowledge 是带一条命中 FAQ 的语料配置。
+	knowledge := &aiKnowledgeConfig{
+		FAQ: []aiFAQItem{{
+			Category: "发货",
+			Match:    "度盘",
+			Answer:   "不同商品发货方式不同，请以商品详情页说明为准。",
+		}},
+	}
+	// ctx 是无线索时拼装出的知识上下文。
+	ctx := knowledge.buildKnowledgeContext("有度盘的吗", liveKnowledge{})
+	if strings.Contains(ctx, "确定发货方式") {
+		t.Fatalf("无线索时不应注入发货段: %s", ctx)
+	}
+	if !strings.Contains(ctx, "店铺知识") {
+		t.Fatalf("无线索时 FAQ 仍应注入: %s", ctx)
 	}
 }
 
@@ -631,8 +691,11 @@ func TestInferDeliveryHintsPrefersCardAuthoritativeChannels(t *testing.T) {
 	if strings.Contains(hint, "夸克网盘") {
 		t.Fatalf("描述里的夸克不应压过卡密渠道: %s", hint)
 	}
-	if !strings.Contains(hint, "按该商品卡密内容确定") || strings.Contains(hint, "仅参考") {
-		t.Fatalf("卡密渠道应标注为可确定: %s", hint)
+	if !strings.Contains(hint, "确定发货方式") || strings.Contains(hint, "仅参考") {
+		t.Fatalf("卡密渠道应输出确定结论: %s", hint)
+	}
+	if !strings.Contains(hint, "优先于店铺通用说明") {
+		t.Fatalf("卡密渠道必须声明优先于店铺通用说明: %s", hint)
 	}
 }
 
