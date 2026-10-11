@@ -260,3 +260,72 @@ func TestValidateSamplesSkipsUnplayable(t *testing.T) {
 		t.Fatal("全部不可回放时应报错")
 	}
 }
+
+// TestDeriveExpectationLegacyFormat 旧格式提示也必须推导出同样的期望。
+// 这是跨版本可比性的前提：新格式若能推导而旧格式不能，提示词改动会同时改变判定口径，
+// 修复前后的评测结果将不可对照。
+func TestDeriveExpectationLegacyFormat(t *testing.T) {
+	// sample 使用修复前的旧格式提示。
+	sample := evalSampleWithPrompt(
+		"……该商品发货方式（按该商品卡密内容确定，可直接回答）：百度网盘、夸克网盘……", "")
+	// exp 是推导出的期望。
+	exp := sample.ResolveExpectation()
+	if exp == nil {
+		t.Fatal("旧格式也应能推导期望，否则判定口径随提示词格式漂移")
+	}
+	if len(exp.MustContainAny) != 2 || exp.MustContainAny[0] != "百度网盘" {
+		t.Fatalf("旧格式渠道解析错误: %v", exp.MustContainAny)
+	}
+}
+
+// TestDeriveExpectationLegacyNonAuthoritative 旧格式标注「仅参考」时不推导强期望，
+// 避免把推断当成确定事实去要求模型。
+func TestDeriveExpectationLegacyNonAuthoritative(t *testing.T) {
+	// sample 使用旧格式但依据为「仅参考」的提示。
+	sample := evalSampleWithPrompt("……该商品发货方式（按描述推断，仅参考）：夸克网盘……", "")
+	// exp 是推导结果，标注「仅参考」时应为空。
+	if exp := sample.ResolveExpectation(); exp != nil {
+		t.Fatalf("仅参考的推断不应推导强期望: %+v", exp)
+	}
+}
+
+// boolPtr 返回布尔值的指针，供期望字段声明使用。
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+// TestRunDecisionLayerSemantics 决策层判定必须按「期望不接管」的语义取反。
+// 该用例锁定一次真实事故：语义未取反时，全部「应转人工」场景被判失败，
+// 产出 escalation 0/6 的假警报，差点把正确的生产配置当成缺陷去改。
+func TestRunDecisionLayerSemantics(t *testing.T) {
+	// notTakenOver 是期望不接管、且生产判定确实不接管的样本。
+	notTakenOver := Sample{
+		Chat:     "c1",
+		Snapshot: &Snapshot{Takeover: false, MessageText: "我要退款", SystemPrompt: "p"},
+		Expectation: &Expectation{
+			MustNotTakeover: boolPtr(true),
+		},
+	}
+	// passResults 是该样本的回放结果。
+	passResults := Run(context.Background(), []Sample{notTakenOver}, nil, ModelConfig{}, ModelConfig{}, RunOptions{})
+	if len(passResults) != 1 || !passResults[0].Pass {
+		t.Fatalf("期望不接管且实际不接管应判通过: %+v", passResults)
+	}
+	if passResults[0].Layer != layerDecision {
+		t.Fatalf("判定层应为 decision: %s", passResults[0].Layer)
+	}
+
+	// wrongTakenOver 是期望不接管、但生产判定接管了的样本。
+	wrongTakenOver := Sample{
+		Chat:     "c2",
+		Snapshot: &Snapshot{Takeover: true, MessageText: "我要退款", SystemPrompt: "p"},
+		Expectation: &Expectation{
+			MustNotTakeover: boolPtr(true),
+		},
+	}
+	// failResults 是该样本的回放结果。
+	failResults := Run(context.Background(), []Sample{wrongTakenOver}, nil, ModelConfig{}, ModelConfig{}, RunOptions{})
+	if len(failResults) != 1 || failResults[0].Pass {
+		t.Fatalf("期望不接管但实际接管应判失败: %+v", failResults)
+	}
+}

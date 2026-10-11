@@ -15,8 +15,13 @@ import (
 	"strings"
 )
 
-// deliveryChannelPattern 匹配重建提示中「确定发货方式」声明的渠道正文。
-var deliveryChannelPattern = regexp.MustCompile(`【该商品确定发货方式】([^。\n]+)`)
+// deliveryChannelPattern 匹配提示中的发货渠道声明，同时兼容两种历史格式：
+// 旧格式「该商品发货方式（按该商品卡密内容确定，可直接回答）：渠道」
+// 与新格式「【该商品确定发货方式】渠道」。
+// 分组含义：1 是旧格式的依据说明，2 是旧格式的渠道正文，3 是新格式的渠道正文。
+// 兼容两种格式是可比性的前提：若新格式推导不出期望而旧格式能推导，
+// 提示词改动会同时改变判定口径，修复前后的评测结果将无法对照。
+var deliveryChannelPattern = regexp.MustCompile(`该商品发货方式（([^）]*)）[:：]\s*([^。；\n]+)|【该商品确定发货方式】\s*([^。；\n]+)`)
 
 // AITurn 是样本中的一条 AI 对话记录。
 type AITurn struct {
@@ -60,6 +65,8 @@ type Snapshot struct {
 	History []ConversationTurn `json:"History"`
 	// MessageText 是触发本次回复的买家消息。
 	MessageText string `json:"MessageText"`
+	// Takeover 表示该消息在生产判定链下是否允许 AI 接管。
+	Takeover bool `json:"Takeover"`
 	// Intent 是意图标签。
 	Intent string `json:"Intent"`
 	// ItemPrice 是商品标价。
@@ -78,8 +85,11 @@ type Expectation struct {
 	PromptMustContain []string `json:"prompt_must_contain,omitempty"`
 	// Derived 表示该期望由工具自动推导，人工复核确认后应清除该标记。
 	Derived bool `json:"derived,omitempty"`
-	// Note 是期望来源说明。
+	// Note 是期望来源说明；非空时会作为额外判定要求注入判定模型的提示。
 	Note string `json:"note,omitempty"`
+	// MustNotTakeover 显式声明该消息是否应被 AI 接管。
+	// 声明后走决策层判定：只校验接管结论，不调用任何模型，成本为零且完全确定。
+	MustNotTakeover *bool `json:"must_not_takeover,omitempty"`
 }
 
 // Sample 是缺陷样本库中的一条样本。
@@ -100,6 +110,10 @@ type Sample struct {
 	Snapshot *Snapshot `json:"snapshot"`
 	// Expectation 是人工标注的判定期望；为空时由工具自动推导。
 	Expectation *Expectation `json:"expectation"`
+	// Source 是样本来源：production 表示生产事故导出，synthetic 表示按场景合成。
+	Source string `json:"source,omitempty"`
+	// ScenarioID 是合成场景的稳定标识；生产样本为空。
+	ScenarioID string `json:"scenario_id,omitempty"`
 }
 
 // LoadSamples 从 JSONL 文件读取样本库。
@@ -158,19 +172,30 @@ func (s Sample) ResolveExpectation() *Expectation {
 }
 
 // deriveExpectation 从样本快照推导高置信的判定期望。
-// 仅做一条推导：重建提示已声明「确定发货方式」时，要求回复至少给出其中一个渠道。
+// 仅做一条推导：提示已声明「确定发货渠道」时，要求回复至少给出其中一个渠道。
 // 其余场景返回 nil，交由 LLM judge 判定，避免用不可靠的规则制造假阳性。
 func deriveExpectation(s Sample) *Expectation {
 	if s.Snapshot == nil {
 		return nil
 	}
-	// match 是提示中确定发货渠道声明的匹配结果。
+	// match 是提示中发货渠道声明的匹配结果。
 	match := deliveryChannelPattern.FindStringSubmatch(s.Snapshot.SystemPrompt)
-	if len(match) < 2 {
+	if len(match) < 4 {
+		return nil
+	}
+	// basis 是旧格式的依据说明；为空表示命中的是新格式。
+	basis := strings.TrimSpace(match[1])
+	// raw 是匹配到的渠道正文。
+	raw := strings.TrimSpace(match[2])
+	if raw == "" {
+		raw = strings.TrimSpace(match[3])
+	}
+	// 旧格式只有依据含「确定」时才是权威结论；标注「仅参考」时不推导强期望。
+	if basis != "" && !strings.Contains(basis, "确定") {
 		return nil
 	}
 	// channels 是声明中的渠道名列表。
-	channels := splitChannels(match[1])
+	channels := splitChannels(raw)
 	if len(channels) == 0 {
 		return nil
 	}

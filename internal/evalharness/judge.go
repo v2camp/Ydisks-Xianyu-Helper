@@ -25,6 +25,8 @@ const (
 	layerRule = "rule"
 	// layerJudge 是模型层：由判定模型评估回复质量。
 	layerJudge = "judge"
+	// layerDecision 是决策层：只校验「该不该接管」，不生成也不判定回复。
+	layerDecision = "decision"
 )
 
 // Verdict 是一条样本的判定结果。
@@ -148,7 +150,8 @@ const judgeSystemPrompt = `你是严格的客服回复评审员。判断给定�
 {"pass": true 或 false, "reason": "一句话理由"}`
 
 // judgeUserPrompt 拼装判定模型的用户输入。
-func judgeUserPrompt(sample Sample, reply string) string {
+// exp 为空表示无额外判定要求；其 Note 非空时会追加为额外标准。
+func judgeUserPrompt(exp *Expectation, sample Sample, reply string) string {
 	// b 是判定输入的拼装缓冲。
 	var b strings.Builder
 	fmt.Fprintf(&b, "买家当前问题：%s\n", sample.Snapshot.MessageText)
@@ -156,6 +159,10 @@ func judgeUserPrompt(sample Sample, reply string) string {
 		fmt.Fprintf(&b, "\n知识上下文：\n%s\n", sample.Snapshot.KnowledgeContext)
 	}
 	fmt.Fprintf(&b, "\n客服回复：%s", reply)
+	// 场景自带的额外判定要求：合成样本用它表达「不得编造」这类难以用片段断言的约束。
+	if exp != nil && strings.TrimSpace(exp.Note) != "" {
+		fmt.Fprintf(&b, "\n\n额外判定要求：%s", exp.Note)
+	}
 	return b.String()
 }
 
@@ -169,9 +176,9 @@ type judgeResponse struct {
 
 // JudgeByModel 用判定模型评估回复是否恰当。
 // 判定模型无法给出可解析结论时，返回 JudgeFailed 为真的结果，该样本不计入指标分母。
-func JudgeByModel(ctx context.Context, gen GeneratorFunc, cfg ModelConfig, sample Sample, reply string) Verdict {
+func JudgeByModel(ctx context.Context, gen GeneratorFunc, cfg ModelConfig, exp *Expectation, sample Sample, reply string) Verdict {
 	// raw、err 是判定模型输出与调用失败原因。
-	raw, err := gen(ctx, cfg, judgeSystemPrompt, nil, judgeUserPrompt(sample, reply))
+	raw, err := gen(ctx, cfg, judgeSystemPrompt, nil, judgeUserPrompt(exp, sample, reply))
 	if err != nil {
 		return Verdict{Pass: false, Layer: layerJudge, Reply: reply, JudgeFailed: true, Reason: "判定模型调用失败: " + err.Error()}
 	}
