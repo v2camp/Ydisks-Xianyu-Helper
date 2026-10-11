@@ -383,3 +383,51 @@ func (a *AIReply) AddDecisionLog(ctx context.Context, rec AIDecisionRecord) erro
 		rec.IntentLabel, rec.Reason, rec.ConfigFingerprint)
 	return err
 }
+
+// AIGenerationRecord 是一次生成的归因记录。
+// 两个正交维度分别回答「谁答的」与「依据什么」：
+// AnswerSource 区分模型与策略话术，GroundingSource 区分事实与文本规则。
+type AIGenerationRecord struct {
+	// CookieID 是账号标识。
+	CookieID string
+	// ChatID 是会话标识。
+	ChatID string
+	// ItemID 是商品标识。
+	ItemID string
+	// MessageHash 是买家消息的短哈希。
+	MessageHash string
+	// MessagePreview 是买家消息的截断预览。
+	MessagePreview string
+	// AnswerSource 是答案来源简码，见 answerSourceLLM 等常量。
+	AnswerSource string
+	// Guarded 表示是否被价格守卫整段替换。
+	Guarded bool
+	// GuardReason 是拦截原因简码；未拦截时为空。
+	GuardReason string
+	// GroundingSource 是事实来源简码：卡密事实、发货配置、描述关键词或无。
+	GroundingSource string
+	// GroundingDetail 是具体依据内容，如识别出的渠道名。
+	GroundingDetail string
+	// Model 是生成使用的模型标识。
+	Model string
+	// PromptHash 是系统提示的哈希；不落全文，避免放大体积并复制敏感内容。
+	PromptHash string
+	// LatencyMS 是本次生成的耗时（毫秒）。
+	LatencyMS int64
+	// ReplyPreview 是回复的截断预览。
+	ReplyPreview string
+}
+
+// AddGenerationLog 写入一条生成归因记录。
+// 失败只影响可观测性，调用方须自行吞掉错误。
+func (a *AIReply) AddGenerationLog(ctx context.Context, rec AIGenerationRecord) error {
+	// err 是写入失败原因。
+	_, err := a.DB.ExecContext(ctx, `
+		INSERT INTO ai_generation_log
+		(cookie_id,chat_id,item_id,message_hash,message_preview,answer_source,guarded,guard_reason,grounding_source,grounding_detail,model,prompt_hash,latency_ms,reply_preview)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		rec.CookieID, rec.ChatID, rec.ItemID, rec.MessageHash, rec.MessagePreview,
+		rec.AnswerSource, rec.Guarded, rec.GuardReason, rec.GroundingSource, rec.GroundingDetail,
+		rec.Model, rec.PromptHash, rec.LatencyMS, rec.ReplyPreview)
+	return err
+}

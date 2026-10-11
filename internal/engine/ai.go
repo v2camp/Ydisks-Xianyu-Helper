@@ -153,6 +153,13 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	for _, message := range history {
 		historyTurns = append(historyTurns, ConversationTurn{Role: message.Role, Content: message.Content})
 	}
+	// answerSource 追踪本次答案的真正来源：默认模型产出，命中价格守卫被整段
+	// 替换为策略话术时改写，模型无产出时记为空答案。
+	answerSource := answerSourceLLM
+	// guardReason 记录拦截原因简码；未拦截时为空。
+	guardReason := ""
+	// startedAt 是生成开始时刻，用于计算本次耗时。
+	startedAt := time.Now()
 	// content、err 分别是模型返回的首个候选文本及其调用失败原因。
 	content, err := a.gen.Generate(ctx, GenerateRequest{
 		APIKey:      aiCfg.APIKey,
@@ -169,6 +176,9 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	// reply 用于本次流程后续判断的回复；生成器返回空文本视为模型无可用产出。
 	reply, markerPrice, markerOK := extractExecutableOffer(content)
 	if reply == "" {
+		// 模型没有产出任何内容：同样必须留痕，
+		// 否则「买家收到空回复」这类问题事后完全无法归因。
+		a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, answerSourceEmpty, guardReason, live, "", time.Since(startedAt))
 		return nil, nil
 	}
 	// minimumPrice 用于本次流程后续判断的minimumPrice
@@ -190,6 +200,9 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 				noDiscount = "抱歉，当前价格已经是最低价，暂时不能再优惠了。"
 			}
 			reply = noDiscount
+			// 答案已被策略话术整段替换，不再是模型产出。
+			answerSource = answerSourceNoDiscount
+			guardReason = "no-discount-scope"
 		} else {
 			// minPrice 是策略配置的最低价话术模板，{amount} 替换为该轮最低报价。
 			minPrice := policy.MinPriceReply
@@ -197,6 +210,8 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 				minPrice = "可以优惠的最低价格是 {amount} 元，低于这个价格暂时无法成交。"
 			}
 			reply = strings.ReplaceAll(minPrice, "{amount}", fmt.Sprintf("%.2f", minimumPrice))
+			answerSource = answerSourceMinPrice
+			guardReason = "offer-below-minimum"
 			if cfg.AutoAdjustPriceEnabled {
 				quote = &AIPriceQuoteProposal{PriceCents: priceToCents(minimumPrice)}
 			}
@@ -204,6 +219,8 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	} else if cfg.AutoAdjustPriceEnabled && markerOK && markerPrice > 0 && markerPrice+0.0001 < itemPrice && replyContainsOfferedPrice(reply, markerPrice) {
 		quote = &AIPriceQuoteProposal{PriceCents: priceToCents(markerPrice)}
 	}
+	// 生成归因必须先于对话落库：落库失败会直接返回，届时这条回复的事实来源就丢了。
+	a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, answerSource, guardReason, live, reply, time.Since(startedAt))
 	if m.ChatID != "" && m.ItemID != "" {
 		if // err 用于本次流程后续判断的err
 		err := a.store.AIReply.AddConversationExchange(ctx, a.cookieID, m.ChatID, m.SenderUserID, m.ItemID,
@@ -255,6 +272,64 @@ func (a *AIReplierImpl) recordDecision(ctx context.Context, m ChatMessage, finge
 	if err != nil {
 		a.logger.Debug("写入 AI 决策归因失败", "err", err)
 	}
+}
+
+// 生成答案来源简码：区分「模型写的」与「策略话术替换的」。
+// 业务方问「这条到底是策略给的还是模型给的」，答案就是这个字段的分布。
+const (
+	// answerSourceLLM 表示答案由模型生成。
+	answerSourceLLM = "llm"
+	// answerSourceNoDiscount 表示报价越界且不可再降，答案由拒绝兜底话术产生。
+	answerSourceNoDiscount = "policy-no-discount"
+	// answerSourceMinPrice 表示报价越界，答案由最低价话术模板产生。
+	answerSourceMinPrice = "policy-min-price"
+	// answerSourceEmpty 表示模型没有产出任何内容。
+	answerSourceEmpty = "empty"
+)
+
+// recordGeneration 记录一次生成的归因：谁答的、依据什么。
+//
+// 这是回答两类业务追问的唯一依据：
+//  1. 「这条是策略话术还是模型自己答的」——看 answerSource。价格守卫会整段替换
+//     模型原稿，不区分就会把策略产出的答案当成模型能力。
+//  2. 「发货是靠事实还是靠文本规则猜的」——看 groundingSource。只有 card-channel
+//     是卡密事实，delivery-config 与 item-text 都仍然是从文本里探测出来的。
+// 埋点失败只记 Debug，绝不影响回复链路。
+func (a *AIReplierImpl) recordGeneration(ctx context.Context, m ChatMessage, model, systemPrompt, answerSource, guardReason string, live liveKnowledge, reply string, latency time.Duration) {
+	// groundingSource 是事实来源简码；动态查询失败时为空，统一归为无。
+	groundingSource := live.DeliverySource
+	if groundingSource == "" {
+		groundingSource = deliverySourceNone
+	}
+	// err 是写入失败原因。
+	err := a.store.AIReply.AddGenerationLog(ctx, db.AIGenerationRecord{
+		CookieID:        a.cookieID,
+		ChatID:          m.ChatID,
+		ItemID:          m.ItemID,
+		MessageHash:     logsafe.ID(m.Text),
+		MessagePreview:  truncateForLog(m.Text, 60),
+		AnswerSource:    answerSource,
+		Guarded:         answerSource != answerSourceLLM && answerSource != answerSourceEmpty,
+		GuardReason:     guardReason,
+		GroundingSource: groundingSource,
+		GroundingDetail: strings.Join(live.DeliveryChannels, "、"),
+		Model:           model,
+		PromptHash:      logsafe.ID(systemPrompt),
+		LatencyMS:       latency.Milliseconds(),
+		ReplyPreview:    truncateForLog(reply, 120),
+	})
+	if err != nil {
+		a.logger.Debug("写入 AI 生成归因失败", "err", err)
+	}
+}
+
+// truncateForLog 按字符截断文本用于日志预览，避免中文被按字节截成乱码。
+func truncateForLog(text string, limit int) string {
+	// runes 是按字符计数的切片。
+	if runes := []rune(text); len(runes) > limit {
+		return string(runes[:limit]) + "…"
+	}
+	return text
 }
 
 // conversationContext 封装conversation上下文业务协调。

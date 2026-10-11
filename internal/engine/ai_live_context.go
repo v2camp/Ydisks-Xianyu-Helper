@@ -22,6 +22,35 @@ type liveKnowledge struct {
 	StockLines []string
 	// DeliveryHint 是按商品线索推断的发货方式说明；空表示无任何线索不注入。
 	DeliveryHint string
+	// DeliverySource 是发货渠道的来源简码，见 deliverySourceCard 等常量。
+	// 它是判断「卡密渠道能力是否真正启用」的唯一依据：只有 card-channel 才是事实，
+	// delivery-config 与 item-text 都仍是从文本里猜的。
+	DeliverySource string
+	// DeliveryChannels 是识别出的渠道名列表，便于归因时核对具体渠道。
+	DeliveryChannels []string
+}
+
+// 发货渠道来源简码。区分「事实」与「文本规则」是本项目的核心归因维度：
+// 业务方问「发货能力建设好并替换原来的文本规则了吗」，答案就在这个字段的分布上。
+const (
+	// deliverySourceCard 表示渠道来自卡密正文识别，属权威事实。
+	deliverySourceCard = "card-channel"
+	// deliverySourceConfig 表示渠道来自自动化发货配置的模板消息，仍属文本规则。
+	deliverySourceConfig = "delivery-config"
+	// deliverySourceItemText 表示渠道来自商品描述关键词探测，是最弱的文本规则。
+	deliverySourceItemText = "item-text"
+	// deliverySourceNone 表示没有任何渠道线索。
+	deliverySourceNone = "none"
+)
+
+// deliveryInference 是一次发货方式推断的结果与其事实来源。
+type deliveryInference struct {
+	// Hint 是注入提示词的发货说明；空表示无任何线索。
+	Hint string
+	// Source 是来源简码。
+	Source string
+	// Channels 是识别出的渠道名列表。
+	Channels []string
 }
 
 // deliveryAnswerConstraint 是回答发货方式类问题时必须写入 prompt 的系统约束。
@@ -83,11 +112,13 @@ func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, itemID string) li
 	} else {
 		live.StockLines = stockLines
 	}
-	// hint、err 是发货方式推断结果；失败降级为不注入。
-	if hint, err := a.inferDeliveryHints(ctx, itemID); err != nil {
+	// inference、err 是发货方式推断结果及其来源；失败降级为不注入。
+	if inference, err := a.inferDeliveryProvenance(ctx, itemID); err != nil {
 		a.logger.Debug("发货方式推断查询失败，降级为不注入", "err", err)
 	} else {
-		live.DeliveryHint = hint
+		live.DeliveryHint = inference.Hint
+		live.DeliverySource = inference.Source
+		live.DeliveryChannels = inference.Channels
 	}
 	return live
 }
@@ -175,7 +206,22 @@ var deliveryLinkKeywords = []string{"链接", "网盘", "url", "http"}
 
 // inferDeliveryHints 按商品标题/描述/详情与发货配置推断发货方式说明。
 // 无线索时返回空串（调用方不注入）；来源 b 查询失败时降级为只用来源 a。
+// 需要区分事实来源时改用 inferDeliveryProvenance。
 func (a *AIReplierImpl) inferDeliveryHints(ctx context.Context, itemID string) (string, error) {
+	// inference 是带来源的完整推断结果。
+	inference, err := a.inferDeliveryProvenance(ctx, itemID)
+	if err != nil {
+		return "", err
+	}
+	return inference.Hint, nil
+}
+
+// inferDeliveryProvenance 返回发货推断结果及其事实来源。
+//
+// 来源判定是本次归因埋点的核心：只有走卡密渠道识别的结果才来自**事实**，
+// 配置模板与商品描述关键词都属于**文本规则**。业务方问「发货能力建设好并替换掉
+// 原来的文本规则了吗」，答案只能来自这里的三档分布，不能靠读提示词推断。
+func (a *AIReplierImpl) inferDeliveryProvenance(ctx context.Context, itemID string) (deliveryInference, error) {
 	// corpus 是收集到的全部线索文本（商品文案 + 模板消息 + 卡组名）。
 	var corpus strings.Builder
 	// multiMessage 是发货模板最大消息条数；大于 1 时标注分条发送。
@@ -190,7 +236,7 @@ func (a *AIReplierImpl) inferDeliveryHints(ctx context.Context, itemID string) (
 		corpus.WriteString("\n")
 		corpus.WriteString(item.ItemDetail)
 	} else if err != nil && !errors.Is(err, db.ErrNotFound) {
-		return "", err
+		return deliveryInference{}, err
 	}
 	// sourceB 表示是否成功读到自动化发货配置（来源 b）；查询失败降级为只用来源 a。
 	// cardIDs 是发货规则绑定的卡券标识，用于读取卡密自身识别出的权威渠道。
@@ -219,11 +265,25 @@ func (a *AIReplierImpl) inferDeliveryHints(ctx context.Context, itemID string) (
 	if len(channels) == 0 {
 		channels = detectDeliveryChannels(text)
 	}
-	// 无任何渠道且无分条/分步线索时不注入。
-	if len(channels) == 0 && multiMessage <= 1 && !stepwise {
-		return "", nil
+	// source 是本次渠道的来源简码：卡密渠道属事实，其余都是文本规则。
+	source := deliverySourceNone
+	switch {
+	case len(authoritative) > 0:
+		source = deliverySourceCard
+	case len(channels) > 0 && sourceB:
+		source = deliverySourceConfig
+	case len(channels) > 0:
+		source = deliverySourceItemText
 	}
-	return formatDeliveryHint(channels, stepwise, multiMessage, sourceB, len(authoritative) > 0), nil
+	// 无任何渠道且无分条/分步线索时不注入，但仍保留来源以便归因。
+	if len(channels) == 0 && multiMessage <= 1 && !stepwise {
+		return deliveryInference{Source: source}, nil
+	}
+	return deliveryInference{
+		Hint:     formatDeliveryHint(channels, stepwise, multiMessage, sourceB, len(authoritative) > 0),
+		Source:   source,
+		Channels: channels,
+	}, nil
 }
 
 // appendDeliveryConfigClues 把商品相关自动化规则绑定的模板消息与卡组名追加进线索文本。
