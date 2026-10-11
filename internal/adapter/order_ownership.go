@@ -26,7 +26,7 @@ func (r OrderRepository) RecoverSoldOwnership(ctx context.Context, userID int64,
 	err := r.store.Orders.RecoverSoldOwnership(ctx, userID, cookieID,
 		db.OrderOwnership{OrderID: expected.OrderID, CookieID: expected.CookieID, ItemID: expected.ItemID, BuyerID: expected.BuyerID,
 			Version: expected.Version, Deleted: expected.Deleted, Owned: expected.Owned},
-		db.OrderUpsertOpts{CookieID: cookieID, ItemID: options.ItemID, BuyerID: options.BuyerID, CreatedAt: options.CreatedAt,
+		db.OrderUpsertOpts{CookieID: cookieID, ItemID: options.ItemID, ItemTitle: options.ItemTitle, BuyerID: options.BuyerID, CreatedAt: options.CreatedAt,
 			OrderStatus: options.OrderStatus, Quantity: options.Quantity, Amount: options.Amount, ReceiverName: options.ReceiverName,
 			ReceiverPhone: options.ReceiverPhone, ReceiverAddr: options.ReceiverAddress, ReceiverCity: options.ReceiverCity, IsBargain: options.IsBargain})
 	if errors.Is(err, db.ErrOrderRecoveryUnsafe) || errors.Is(err, db.ErrOrderConflict) {

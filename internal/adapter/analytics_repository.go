@@ -180,10 +180,12 @@ func (r *AnalyticsRepository) QueryItem(ctx context.Context, filter analyticsapp
 	where, args, clean, amountFilter := r.orderScope(filter, "amount")
 	// rows、err 是商品聚合查询结果及错误。
 	rows, err := r.store.Analytics.QueryContext(ctx, `
-		SELECT item_id, COUNT(DISTINCT order_id), COALESCE(SUM(`+clean+`),0), COALESCE(AVG(`+clean+`),0)
-		FROM orders `+where+amountFilter+`
-		  AND item_id IS NOT NULL AND item_id != ''
-		GROUP BY item_id ORDER BY COUNT(DISTINCT order_id) DESC LIMIT 20`, args...)
+		SELECT orders.item_id, COALESCE(MAX(NULLIF(orders.item_title,'')), MAX(item_info.item_title), ''),
+		       COUNT(DISTINCT orders.order_id), COALESCE(SUM(`+clean+`),0), COALESCE(AVG(`+clean+`),0)
+		FROM orders LEFT JOIN item_info ON item_info.cookie_id=orders.cookie_id AND item_info.item_id=orders.item_id
+		`+where+amountFilter+`
+		  AND orders.item_id IS NOT NULL AND orders.item_id != ''
+		GROUP BY orders.item_id ORDER BY COUNT(DISTINCT orders.order_id) DESC LIMIT 20`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +196,7 @@ func (r *AnalyticsRepository) QueryItem(ctx context.Context, filter analyticsapp
 		// record 是当前商品的聚合字段。
 		var record analyticsapp.ItemRecord
 		if // err 是当前商品记录读取错误。
-		err := rows.Scan(&record.ItemID, &record.Count, &record.TotalAmount, &record.AvgAmount); err != nil {
+		err := rows.Scan(&record.ItemID, &record.ItemTitle, &record.Count, &record.TotalAmount, &record.AvgAmount); err != nil {
 			return nil, err
 		}
 		records = append(records, record)
@@ -220,7 +222,7 @@ func (r *AnalyticsRepository) ListValidOrders(ctx context.Context, filter analyt
 	args = append(args, limit, offset)
 	// rows、err 是有效订单分页查询结果及错误。
 	rows, err := r.store.Analytics.QueryContext(ctx, `
-		SELECT orders.order_id, COALESCE(orders.item_id,''), COALESCE(item_info.item_title,''),
+		SELECT orders.order_id, COALESCE(orders.item_id,''), COALESCE(NULLIF(orders.item_title,''), item_info.item_title, ''),
 		       COALESCE(item_info.item_detail,''), COALESCE(orders.buyer_id,''), COALESCE(orders.quantity,'1'),
 		       orders.amount, COALESCE(orders.order_status,'unknown'), COALESCE(orders.cookie_id,''), orders.created_at
 		FROM orders LEFT JOIN item_info ON item_info.cookie_id=orders.cookie_id AND item_info.item_id=orders.item_id

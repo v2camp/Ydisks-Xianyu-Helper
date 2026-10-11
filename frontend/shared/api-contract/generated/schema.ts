@@ -3326,6 +3326,7 @@ export interface components {
             }[];
             item_stats: {
                 item_id: string;
+                item_title?: string;
                 order_count: number;
                 total_amount: number;
                 avg_amount: number;

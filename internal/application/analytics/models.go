@@ -95,6 +95,8 @@ type CityRecord struct {
 type ItemRecord struct {
 	// ItemID 是平台商品标识。
 	ItemID string
+	// ItemTitle 是商品标题；优先取订单自带的标题快照，商品表缺失时仍可读。
+	ItemTitle string
 	// Count 是该商品的去重订单数。
 	Count int
 	// TotalAmount 是该商品的金额合计。

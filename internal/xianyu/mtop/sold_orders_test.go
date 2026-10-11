@@ -334,6 +334,26 @@ func TestParseSoldOrderRejectsInvalidAndDefaultsQuantity(t *testing.T) {
 	}
 }
 
+// TestParseSoldOrderReadsItemTitleFromItemVO 验证订单解析会保留平台下发的商品标题快照。
+func TestParseSoldOrderReadsItemTitleFromItemVO(t *testing.T) {
+	// got、parsedOK 保存带商品对象的订单解析结果及成功标记。
+	got, parsedOK := parseSoldOrder(map[string]any{
+		"commonData": map[string]any{"orderId": "o-1", "itemId": "item-1"},
+		"itemVO":     map[string]any{"title": "  AI量化策略实战教学  ", "itemPicUrl": "http://img.example/p.png"},
+	})
+	if !parsedOK {
+		t.Fatal("order with itemVO should be parsed")
+	}
+	if got.ItemTitle != "AI量化策略实战教学" || got.ItemID != "item-1" {
+		t.Fatalf("商品标题快照解析异常 order=%+v", got)
+	}
+	// gotMissing 保存缺少商品对象的订单解析结果，标题必须为空而不是猜测值。
+	gotMissing, missingOK := parseSoldOrder(map[string]any{"commonData": map[string]any{"orderId": "o-2"}})
+	if !missingOK || gotMissing.ItemTitle != "" {
+		t.Fatalf("缺少 itemVO 时不应产生标题 order=%+v", gotMissing)
+	}
+}
+
 // TestNormalizeSoldOrderStatus 封装TestNormalizeSold订单状态业务协调。
 func TestNormalizeSoldOrderStatus(t *testing.T) {
 	// cases 用于本次流程后续判断的cases

@@ -37,6 +37,8 @@ type RefreshSoldOrder struct {
 	OrderID string
 	// ItemID 是关联商品标识。
 	ItemID string
+	// ItemTitle 是平台订单携带的商品标题快照，用于商品表缺失时仍保留订单商品名。
+	ItemTitle string
 	// BuyerID 是买家标识。
 	BuyerID string
 	// CreatedAt 是平台记录的买家下单时间。

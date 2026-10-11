@@ -34,7 +34,9 @@ type SoldOrdersPage struct {
 type SoldOrder struct {
 	OrderID string
 	ItemID  string
-	BuyerID string
+	// ItemTitle 是平台订单携带的商品标题快照，用于订单不依赖本地商品表也能显示商品名。
+	ItemTitle string
+	BuyerID   string
 	// CreatedAt 是平台记录的买家下单时间，缺失时保持空值让本地数据库沿用默认时间。
 	CreatedAt      string
 	OrderStatus    string
@@ -283,6 +285,8 @@ func parseSoldOrder(raw any) (SoldOrder, bool) {
 	price, _ := item["priceVO"].(map[string]any)
 	// rights 用于本次流程后续判断的rights
 	rights, _ := item["rightVO"].(map[string]any)
+	// itemVO 是平台随订单下发的商品对象，提供标题快照。
+	itemVO, _ := item["itemVO"].(map[string]any)
 	// orderID 用于本次流程后续判断的订单ID
 	orderID := strings.TrimSpace(mtopString(common["orderId"]))
 	if orderID == "" {
@@ -317,6 +321,7 @@ func parseSoldOrder(raw any) (SoldOrder, bool) {
 	return SoldOrder{
 		OrderID:        orderID,
 		ItemID:         strings.TrimSpace(mtopString(common["itemId"])),
+		ItemTitle:      strings.TrimSpace(mtopString(itemVO["title"])),
 		BuyerID:        strings.TrimSpace(mtopString(buyer["buyerId"])),
 		CreatedAt:      createdAt,
 		OrderStatus:    status,
