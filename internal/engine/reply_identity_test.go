@@ -87,12 +87,12 @@ func TestBuyerMessagesRemainVisibleWithoutAutoReply(t *testing.T) {
 				cleanup()
 				t.Fatal(fixtureErr)
 			}
-			// sender 记录真实回复链发送的文本和图片；主测试仅在完成通道关闭后读取。
-			sender := &recordingSender{}
+		// sender 记录真实回复链发送的文本；主测试仅在完成通道关闭后读取。
+		sender := &recordingSender{}
 			// api 提供可计数的 API 回复，禁止买家侧执行外部回复查询。
 			api := &fakeAPIReplier{result: &ReplyResult{Text: "API 回复"}}
 			// reply 是待测回复链，默认场景不装配 API 优先层。
-			reply := NewReplyService("cid", store, sender, nil, nil, nil, nil)
+			reply := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
 			if apiReply {
 				reply.api = api
 			}
@@ -123,9 +123,9 @@ func TestBuyerMessagesRemainVisibleWithoutAutoReply(t *testing.T) {
 			if seller && len(sender.texts) != 1 {
 				t.Fatal("卖家没有收到预期的自动回复")
 			}
-			if !seller && (len(sender.texts) != 0 || len(sender.images) != 0 || api.called != 0) {
-				t.Fatal("买家侧错误进入自动回复或发送消息")
-			}
+		if !seller && (len(sender.texts) != 0 || api.called != 0) {
+			t.Fatal("买家侧错误进入自动回复或发送消息")
+		}
 			if observer.roleWrites != 1 {
 				t.Fatalf("本地商品归属应只写入一次角色事实: save=%d", observer.roleWrites)
 			}

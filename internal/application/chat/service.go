@@ -250,6 +250,9 @@ type Service struct {
 	senders SenderProvider
 	// uploader 保存图片上传的平台适配端口。
 	uploader ImageUploader
+	// imageDownloader 保存按 URL 下载图片的网络端口，供自动回复等仅持有图片地址的用例使用；
+	// 为 nil 时 SendImageURL 不可用，人工上传路径不受影响。
+	imageDownloader ImageURLDownloader
 	// identityResolver 保存平台身份查询端口，凭证只在适配器内部短暂存在。
 	identityResolver IdentityResolver
 	// subscription 保存实时事件订阅端口；平台和领域实现不会泄露到 HTTP 层。

@@ -383,7 +383,7 @@ func TestResolve_PluginLayerOrder(t *testing.T) {
 	// ai 是预设命中的 AI 回复 mock。
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI 回复"}}
 	// service 是接入插件层的回复服务。
-	service := NewReplyService("cid", store, nil, nil, ai, plugin, pluginTestLogger())
+	service := NewReplyService("cid", store, nil, nil, nil, ai, plugin, pluginTestLogger())
 	// res 是关键词与插件同时可用时的解析结果。
 	res := service.resolve(ctx, chatMsg("有《三体》吗", "item1", "chat1"))
 	if res == nil || res.Source != "关键词" {

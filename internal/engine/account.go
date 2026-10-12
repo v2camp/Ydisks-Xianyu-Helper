@@ -336,6 +336,9 @@ type Config struct {
 	SendGate *sendGateConfig
 	// ReplyReviewNotifier 可选：AI 回复人工确认通知器；nil 时确认通知静默跳过，仅拦截发送。
 	ReplyReviewNotifier ReplyReviewNotifier
+	// ReplyImageDelivery 可选：图片自动回复的投递端口；nil 时含图片的回复整体跳过，不退化直发。
+	// 生产实现由组合层经账号管理器懒提供，破解「管理器先于聊天应用服务构造」的装配顺序。
+	ReplyImageDelivery ReplyImageDelivery
 	// GlobalBudget 可选：多账号共享的全局日发送预算；nil 表示不启用全局额度。
 	GlobalBudget *SendBudget
 	// AIGeneratorFactory 可选：按账号构造模型生成接缝；nil 或返回 nil 时使用默认单次问答。
@@ -409,7 +412,7 @@ func New(cfg Config) *Account {
 				gens = append(gens, injected)
 			}
 		}
-		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger, gens...), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
+		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, cfg.ReplyImageDelivery, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger, gens...), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
 	}
 	a.messageDispatcher = newMessageDispatcher(messageDispatcherConfig{
 		CookieID:        cfg.CookieID,

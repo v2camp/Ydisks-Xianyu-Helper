@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -37,12 +38,10 @@ func (f *fakeAIReplier) Reply(_ context.Context, _ ChatMessage) (*ReplyResult, e
 	return f.result, f.err
 }
 
-// recordingSender 记录发送的文本/图片，用于断言回复投递。
+// recordingSender 记录发送的文本，用于断言回复投递。
 type recordingSender struct {
-	texts    []textSent
-	images   []imageSent
-	textErr  error
-	imageErr error
+	texts   []textSent
+	textErr error
 	// textCalls 统计文本发送尝试次数，包含返回错误的传输调用。
 	textCalls int
 	// beforeTextError 在文本发送返回错误前执行，用于模拟发送过程中取消请求上下文。
@@ -52,14 +51,6 @@ type recordingSender struct {
 // textSent 用于本次流程后续判断的文本Sent
 type textSent struct {
 	chatID, toUserID, text string
-}
-
-// imageSent 用于本次流程后续判断的图片Sent
-type imageSent struct {
-	chatID, toUserID, url string
-	cardID                int64
-	// width 和 height 保存交给 WebSocket 的图片像素尺寸。
-	width, height int
 }
 
 // SendText 封装Send文本业务协调。
@@ -73,6 +64,25 @@ func (r *recordingSender) SendText(_ context.Context, chatID, toUserID, text str
 	}
 	r.texts = append(r.texts, textSent{chatID, toUserID, text})
 	return nil
+}
+
+// recordingImageDelivery 记录图片回复投递调用，用于断言委托链路。
+type recordingImageDelivery struct {
+	// err 保存投递阶段需要返回的错误。
+	err error
+	// images 保存按顺序收到的图片投递请求。
+	images []imageDeliveryCall
+}
+
+// imageDeliveryCall 保存一次图片回复投递的目标与原始图片地址。
+type imageDeliveryCall struct {
+	accountID, chatID, toUserID, imageURL string
+}
+
+// SendReplyImage 记录投递参数并返回预设错误。
+func (d *recordingImageDelivery) SendReplyImage(_ context.Context, accountID, chatID, toUserID, imageURL string) error {
+	d.images = append(d.images, imageDeliveryCall{accountID, chatID, toUserID, imageURL})
+	return d.err
 }
 
 // TestReplyOnceMarksDefiniteFailureWithIndependentContext 验证取消发送上下文时确定未发送状态仍可被领取重试。
@@ -89,7 +99,7 @@ func TestReplyOnceMarksDefiniteFailureWithIndependentContext(t *testing.T) {
 	// sender 模拟确定未发送错误，并在返回前取消原始请求上下文。
 	sender := &recordingSender{textErr: automation.ErrMessageNotSent, beforeTextError: cancel}
 	// service 使用真实状态仓储验证失败状态可恢复。
-	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
 	// sendErr 保存确定未发送错误的回复结果。
 	if sendErr := service.Handle(requestCtx, chatMsg("你好", "", "chat-definite-failure")); !errors.Is(sendErr, automation.ErrMessageNotSent) {
 		t.Fatalf("确定未发送错误未透传: %v", sendErr)
@@ -107,28 +117,6 @@ func TestReplyOnceMarksDefiniteFailureWithIndependentContext(t *testing.T) {
 	}
 }
 
-// SendImage 记录聊天图片地址、关联卡密和像素尺寸，供回复投递测试断言。
-// ctx 是发送上下文；chatID/toUserID/url/cardID 标识消息身份；width/height 是发送协议中的图片像素尺寸。
-func (r *recordingSender) SendImage(_ context.Context, chatID, toUserID, url string, cardID int64, width, height int) error {
-	if r.imageErr != nil {
-		return r.imageErr
-	}
-	r.images = append(r.images, imageSent{chatID: chatID, toUserID: toUserID, url: url, cardID: cardID, width: width, height: height})
-	return nil
-}
-
-// fixedReplyImageDimensions 返回固定宽高，隔离自动回复参数透传测试与外部图片服务。
-// ctx 和 imageURL 是解析器输入但在该替身中不使用；宽高以像素返回且无解析错误。
-func fixedReplyImageDimensions(context.Context, string) (int, int, error) {
-	return 1920, 1080, nil
-}
-
-// failedReplyImageDimensions 模拟图片元数据不可读取，以验证回复继续沿用协议默认尺寸。
-// ctx 和 imageURL 是解析器输入但在该替身中不使用；返回零宽高和读取错误。
-func failedReplyImageDimensions(context.Context, string) (int, int, error) {
-	return 0, 0, errors.New("image metadata unavailable")
-}
-
 // TestAIQuoteSavedOnlyAfterTextDelivery 验证 AI 报价只有在回复发送成功后才成为可执行报价。
 func TestAIQuoteSavedOnlyAfterTextDelivery(t *testing.T) {
 	// store、cleanup 是回复链测试仓储及清理函数。
@@ -141,7 +129,7 @@ func TestAIQuoteSavedOnlyAfterTextDelivery(t *testing.T) {
 	// failedSender 模拟文本没有成功交给买家。
 	failedSender := &recordingSender{textErr: errors.New("send failed")}
 	// failedService 是注入发送失败替身的 AI 回复链。
-	failedService := NewReplyService("cid", store, failedSender, nil, &fakeAIReplier{result: result}, nil, nil)
+	failedService := NewReplyService("cid", store, failedSender, nil, nil, &fakeAIReplier{result: result}, nil, nil)
 	// err 是模拟发送失败时必须向调用方返回的错误。
 	if err := failedService.Handle(ctx, chatMsg("能便宜吗", "item-1", "chat-1")); err == nil {
 		t.Fatal("发送失败应返回错误")
@@ -152,7 +140,7 @@ func TestAIQuoteSavedOnlyAfterTextDelivery(t *testing.T) {
 		t.Fatalf("发送失败不应保存报价: quote=%+v err=%v", failedQuote, err)
 	}
 	// successService 是文本发送成功的 AI 回复链。
-	successService := NewReplyService("cid", store, &recordingSender{}, nil, &fakeAIReplier{result: result}, nil, nil)
+	successService := NewReplyService("cid", store, &recordingSender{}, nil, nil, &fakeAIReplier{result: result}, nil, nil)
 	if err = successService.Handle(ctx, chatMsg("能便宜吗", "item-1", "chat-1")); err != nil {
 		t.Fatal(err)
 	}
@@ -178,15 +166,16 @@ func TestReplyOnceRetriesOnlyFailedParts(t *testing.T) {
 	textFailure := errors.New("text failed")
 	// firstSender 用于本次流程后续判断的firstSender
 	firstSender := &recordingSender{textErr: textFailure}
+	// firstDelivery 记录首次回复的图片投递调用。
+	firstDelivery := &recordingImageDelivery{}
 	// service 用于本次流程后续判断的service
-	service := NewReplyService("cid", s, firstSender, nil, nil, nil, nil)
-	service.imageDimensions = fixedReplyImageDimensions
+	service := NewReplyService("cid", s, firstSender, firstDelivery, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := service.Handle(ctx, chatMsg("在吗", "", "chat-retry")); !errors.Is(err, textFailure) {
 		t.Fatalf("first error=%v want text failure", err)
 	}
-	if len(firstSender.images) != 1 || len(firstSender.texts) != 0 {
-		t.Fatalf("first delivery images=%+v texts=%+v", firstSender.images, firstSender.texts)
+	if len(firstDelivery.images) != 1 || len(firstSender.texts) != 0 {
+		t.Fatalf("first delivery images=%+v texts=%+v", firstDelivery.images, firstSender.texts)
 	}
 	// record、err 用于本次流程后续判断的record、err
 	record, err := s.DefaultReps.Record(ctx, "cid", "chat-retry")
@@ -196,14 +185,15 @@ func TestReplyOnceRetriesOnlyFailedParts(t *testing.T) {
 
 	// secondSender 用于本次流程后续判断的secondSender
 	secondSender := &recordingSender{}
-	service = NewReplyService("cid", s, secondSender, nil, nil, nil, nil)
-	service.imageDimensions = fixedReplyImageDimensions
+	// secondDelivery 记录重试回复的图片投递调用；图片分段已发送，不应再次投递。
+	secondDelivery := &recordingImageDelivery{}
+	service = NewReplyService("cid", s, secondSender, secondDelivery, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := service.Handle(ctx, chatMsg("再问", "", "chat-retry")); err != nil {
 		t.Fatal(err)
 	}
-	if len(secondSender.images) != 0 || len(secondSender.texts) != 1 {
-		t.Fatalf("retry should send text only: images=%+v texts=%+v", secondSender.images, secondSender.texts)
+	if len(secondDelivery.images) != 0 || len(secondSender.texts) != 1 {
+		t.Fatalf("retry should send text only: images=%+v texts=%+v", secondDelivery.images, secondSender.texts)
 	}
 	record, err = s.DefaultReps.Record(ctx, "cid", "chat-retry")
 	if err != nil || record.Status != "sent" || !record.ImageSent || !record.TextSent {
@@ -226,7 +216,7 @@ func TestReplyOnceQuarantinesUncertainSend(t *testing.T) {
 	// sender 模拟平台连接在发送后断开，无法判断消息是否已经送达。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证不确定结果隔离。
-	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain"))
 	if firstErr == nil {
@@ -262,7 +252,7 @@ func TestReplyOnceQuarantinesWhenUncertainStateIsRejected(t *testing.T) {
 	// sender 让平台返回可能已送达的未知结果。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证降级隔离。
-	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	if firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain-fallback")); firstErr == nil {
 		t.Fatal("不确定发送结果必须返回调用错误")
@@ -301,7 +291,7 @@ func TestReplyOnceDoesNotReclaimWhenUncertainPersistenceFails(t *testing.T) {
 	// sender 模拟平台可能已经送达但连接返回未知结果。
 	sender := &recordingSender{textErr: &ws.SendError{Kind: ws.SendUncertain}}
 	// service 使用真实投递记录存储验证 sending 状态的持久化保护。
-	service := NewReplyService("cid", store, sender, nil, nil, nil, nil)
+	service := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
 	// firstErr 保存首次发送返回的不确定错误。
 	if firstErr := service.Handle(ctx, chatMsg("你好", "", "chat-uncertain-db-down")); firstErr == nil {
 		t.Fatal("不确定发送结果必须返回调用错误")
@@ -338,7 +328,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 返回结果 → 用 API。
 	api := &fakeAPIReplier{result: &ReplyResult{Text: "API回复"}}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, api, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, api, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res == nil || res.Source != "API" || res.Text != "API回复" {
@@ -348,7 +338,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 报错 → 降级到关键词。
 	api2 := &fakeAPIReplier{err: errors.New("upstream down")}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, nil, api2, nil, nil, nil)
+	r2 := NewReplyService("cid", s, nil, nil, api2, nil, nil, nil)
 	// res2 用于本次流程后续判断的res2
 	res2 := r2.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res2 == nil || res2.Source != "关键词" || res2.Text != "关键词回复" {
@@ -358,7 +348,7 @@ func TestReply_APIPriorityAndError(t *testing.T) {
 	// API 返回 nil（无回复）→ 降级到关键词。
 	api3 := &fakeAPIReplier{result: nil}
 	// r3 用于本次流程后续判断的r3
-	r3 := NewReplyService("cid", s, nil, api3, nil, nil, nil)
+	r3 := NewReplyService("cid", s, nil, nil, api3, nil, nil, nil)
 	// res3 用于本次流程后续判断的res3
 	res3 := r3.resolve(ctx, chatMsg("在吗", "", "chat1"))
 	if res3 == nil || res3.Source != "关键词" {
@@ -378,7 +368,7 @@ func TestReply_AIPriorityOverDefault(t *testing.T) {
 	// ai 用于本次流程后续判断的人工智能
 	ai := &fakeAIReplier{result: &ReplyResult{Text: "AI回复"}}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, ai, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, ai, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("复杂问题", "", "chat1"))
 	if res == nil || res.Source != "AI" || res.Text != "AI回复" {
@@ -388,7 +378,7 @@ func TestReply_AIPriorityOverDefault(t *testing.T) {
 	// AI 报错 → 降级到默认。
 	ai2 := &fakeAIReplier{err: errors.New("model timeout")}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, nil, nil, ai2, nil, nil)
+	r2 := NewReplyService("cid", s, nil, nil, nil, ai2, nil, nil)
 	// res2 用于本次流程后续判断的res2
 	res2 := r2.resolve(ctx, chatMsg("复杂问题", "", "chat1"))
 	if res2 == nil || res2.Source != "默认" || res2.Text != "默认回复" {
@@ -406,7 +396,7 @@ func TestReply_ImageKeyword(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO keywords (cookie_id,keyword,reply,image_url,type) VALUES ('cid','看图','','http://img/x.png','image')`)
 
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, nil, nil, nil, nil, nil)
+	r := NewReplyService("cid", s, nil, nil, nil, nil, nil, nil)
 	// res 用于本次流程后续判断的响应
 	res := r.resolve(ctx, chatMsg("发看图", "item1", "chat1"))
 	if res == nil || res.Source != "关键词" || res.ImageURL != "http://img/x.png" {
@@ -414,7 +404,7 @@ func TestReply_ImageKeyword(t *testing.T) {
 	}
 }
 
-// TestReply_HandleSendsImageThenText 验证 Handle 先发带原始宽高的图片后发文本，且 Skip 不发送；t 管理本测试。
+// TestReply_HandleSendsImageThenText 验证 Handle 先经投递端口发图片后发文本，且 Skip 不发送；t 管理本测试。
 func TestReply_HandleSendsImageThenText(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newReplyStore(t)
@@ -425,15 +415,20 @@ func TestReply_HandleSendsImageThenText(t *testing.T) {
 
 	// sender 用于本次流程后续判断的sender
 	sender := &recordingSender{}
+	// delivery 记录图片回复经投递端口发送的目标与原始地址。
+	delivery := &recordingImageDelivery{}
 	// r 用于本次流程后续判断的r
-	r := NewReplyService("cid", s, sender, nil, nil, nil, nil)
-	r.imageDimensions = fixedReplyImageDimensions
+	r := NewReplyService("cid", s, sender, delivery, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := r.Handle(ctx, chatMsg("在吗", "", "chat9")); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(sender.images) != 1 || sender.images[0].url != "http://img/y.png" || sender.images[0].width != 1920 || sender.images[0].height != 1080 {
-		t.Fatalf("应先发图片，got %+v", sender.images)
+	// 图片必须先经投递端口发送，端口只收到规则配置的原始地址，尺寸由平台上传回传。
+	if len(delivery.images) != 1 || delivery.images[0].imageURL != "http://img/y.png" {
+		t.Fatalf("应先发图片，got %+v", delivery.images)
+	}
+	if delivery.images[0].accountID != "cid" || delivery.images[0].chatID != "chat9" || delivery.images[0].toUserID == "" {
+		t.Fatalf("图片投递目标不完整，got %+v", delivery.images[0])
 	}
 	if len(sender.texts) != 1 || sender.texts[0].text != "文字" {
 		t.Fatalf("再发文本，got %+v", sender.texts)
@@ -443,19 +438,21 @@ func TestReply_HandleSendsImageThenText(t *testing.T) {
 	s.DB.ExecContext(ctx, `UPDATE default_replies SET reply_content='', reply_image_url='' WHERE cookie_id='cid'`)
 	// sender2 用于本次流程后续判断的sender2
 	sender2 := &recordingSender{}
+	// delivery2 记录 Skip 场景下的图片投递调用。
+	delivery2 := &recordingImageDelivery{}
 	// r2 用于本次流程后续判断的r2
-	r2 := NewReplyService("cid", s, sender2, nil, nil, nil, nil)
+	r2 := NewReplyService("cid", s, sender2, delivery2, nil, nil, nil, nil)
 	if // err 用于本次流程后续判断的err
 	err := r2.Handle(ctx, chatMsg("在吗", "", "chat9")); err != nil {
 		t.Fatalf("Handle skip: %v", err)
 	}
-	if len(sender2.texts) != 0 || len(sender2.images) != 0 {
-		t.Fatalf("Skip 不应发送，got texts=%+v images=%+v", sender2.texts, sender2.images)
+	if len(sender2.texts) != 0 || len(delivery2.images) != 0 {
+		t.Fatalf("Skip 不应发送，got texts=%+v images=%+v", sender2.texts, delivery2.images)
 	}
 }
 
-// TestReply_HandleUsesProtocolDefaultWhenImageDimensionsCannotBeRead 验证元数据失败仍会投递图片；t 管理本测试。
-func TestReply_HandleUsesProtocolDefaultWhenImageDimensionsCannotBeRead(t *testing.T) {
+// TestReply_HandleDelegatesImageToDeliveryPort 验证图片回复整体委托投递端口，尺寸测量职责已从引擎移除；t 管理本测试。
+func TestReply_HandleDelegatesImageToDeliveryPort(t *testing.T) {
 	// store 和 cleanup 保存当前测试独占的回复数据库及关闭责任。
 	store, cleanup := newReplyStore(t)
 	defer cleanup()
@@ -466,17 +463,78 @@ func TestReply_HandleUsesProtocolDefaultWhenImageDimensionsCannotBeRead(t *testi
 	if setupErr != nil {
 		t.Fatal(setupErr)
 	}
-	// sender 记录解析失败后的实际图片发送尺寸。
-	sender := &recordingSender{}
-	// reply 使用元数据失败替身确认兼容路径仍发送图片。
-	reply := NewReplyService("cid", store, sender, nil, nil, nil, nil)
-	reply.imageDimensions = failedReplyImageDimensions
-	// sendErr 保存元数据读取失败后继续投递图片的结果。
-	if sendErr := reply.Handle(ctx, chatMsg("给我照片", "", "chat-image-dimensions-fallback")); sendErr != nil {
-		t.Fatalf("元数据读取失败不应阻断图片回复: %v", sendErr)
+	// delivery 记录图片关键词回复实际使用的投递端口。
+	delivery := &recordingImageDelivery{}
+	// reply 只注入投递端口，不注入任何尺寸解析能力。
+	reply := NewReplyService("cid", store, &recordingSender{}, delivery, nil, nil, nil, nil)
+	// sendErr 保存图片关键词回复经端口投递的结果。
+	if sendErr := reply.Handle(ctx, chatMsg("给我照片", "", "chat-image-delivery")); sendErr != nil {
+		t.Fatalf("图片回复应经投递端口发送: %v", sendErr)
 	}
-	if len(sender.images) != 1 || sender.images[0].width != 0 || sender.images[0].height != 0 {
-		t.Fatalf("元数据失败应保留协议默认尺寸，实际发送=%+v", sender.images)
+	// 端口必须收到规则配置的原始图片地址与完整投递目标。
+	if len(delivery.images) != 1 || delivery.images[0].imageURL != "https://images.example/photo.png" {
+		t.Fatalf("投递端口未收到原始图片地址，got %+v", delivery.images)
+	}
+	if delivery.images[0].accountID != "cid" || delivery.images[0].chatID != "chat-image-delivery" {
+		t.Fatalf("投递目标不完整，got %+v", delivery.images[0])
+	}
+}
+
+// TestReply_HandleSkipsImageWhenDeliveryMissing 验证投递端口缺失时含图片的回复整体跳过，不退化直发；t 管理本测试。
+func TestReply_HandleSkipsImageWhenDeliveryMissing(t *testing.T) {
+	// store 和 cleanup 保存当前测试独占的回复数据库及关闭责任。
+	store, cleanup := newReplyStore(t)
+	defer cleanup()
+	// ctx 是当前测试回复读取和投递使用的无截止上下文。
+	ctx := context.Background()
+	// setupErr 保存图片关键词回复配置写入结果。
+	_, setupErr := store.DB.ExecContext(ctx, `INSERT INTO keywords (cookie_id,keyword,reply,image_url,type) VALUES ('cid','照片','','https://images.example/photo.png','image')`)
+	if setupErr != nil {
+		t.Fatal(setupErr)
+	}
+	// sender 是注入了文本能力但未装配投递端口的回复服务替身。
+	sender := &recordingSender{}
+	// reply 不注入图片投递端口，模拟组合层未装配该副作用。
+	reply := NewReplyService("cid", store, sender, nil, nil, nil, nil, nil)
+	// handleErr 保存端口缺失时的回复结果，必须静默跳过而不是报错重试。
+	if handleErr := reply.Handle(ctx, chatMsg("给我照片", "", "chat-image-no-delivery")); handleErr != nil {
+		t.Fatalf("端口缺失应跳过回复，got err=%v", handleErr)
+	}
+	if len(sender.texts) != 0 {
+		t.Fatalf("端口缺失不应发送任何内容，got texts=%+v", sender.texts)
+	}
+	// recordErr 验证未领取任何发送任务：端口缺失时连 sending 记录都不应创建。
+	_, recordErr := store.DefaultReps.Record(ctx, "cid", "chat-image-no-delivery")
+	if !errors.Is(recordErr, sql.ErrNoRows) {
+		t.Fatalf("端口缺失不应创建发送记录，got err=%v", recordErr)
+	}
+}
+
+// TestReply_ImageDeliveryFailureMarksRecordFailed 验证投递端口失败时一次性默认回复进入可重试的失败状态；t 管理本测试。
+func TestReply_ImageDeliveryFailureMarksRecordFailed(t *testing.T) {
+	// store 和 cleanup 保存当前测试独占的回复数据库及关闭责任。
+	store, cleanup := newReplyStore(t)
+	defer cleanup()
+	// ctx 是当前测试回复读取和投递使用的无截止上下文。
+	ctx := context.Background()
+	// setupErr 保存启用一次性图片默认回复的配置写入结果。
+	if setupErr := store.DefaultReps.Upsert(ctx, "cid", db.DefaultReply{Enabled: true, ReplyOnce: true, ReplyImageURL: "https://images.example/photo.png"}); setupErr != nil {
+		t.Fatal(setupErr)
+	}
+	// deliveryErr 是投递端口返回的确定未发送错误。
+	deliveryErr := errors.New("平台上传失败")
+	// delivery 模拟图片投递确定失败。
+	delivery := &recordingImageDelivery{err: deliveryErr}
+	// reply 注入失败投递端口。
+	reply := NewReplyService("cid", store, &recordingSender{}, delivery, nil, nil, nil, nil)
+	// handleErr 保存投递失败后向上透传的错误。
+	if handleErr := reply.Handle(ctx, chatMsg("在吗", "", "chat-image-delivery-failure")); !errors.Is(handleErr, deliveryErr) {
+		t.Fatalf("投递失败应透传，got err=%v", handleErr)
+	}
+	// record 验证失败状态可被后续请求重新领取，图片分段未标记为已发送。
+	record, recordErr := store.DefaultReps.Record(ctx, "cid", "chat-image-delivery-failure")
+	if recordErr != nil || record.Status != "failed" || record.ImageSent {
+		t.Fatalf("record=%+v err=%v", record, recordErr)
 	}
 }
 

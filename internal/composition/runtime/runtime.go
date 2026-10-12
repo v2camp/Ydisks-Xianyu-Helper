@@ -65,6 +65,9 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	var services *composition.Services
 	// supportAgentFactory 是账号级客服 Agent 生成器工厂；依赖不完整时为 nil，全部账号沿用默认单次问答。
 	supportAgentFactory := buildSupportAgentFactory(infrastructure.Store, func() *composition.Services { return services }, infrastructure.Logger)
+	// replyImageDeliveryProvider 在账号启动时解析图片自动回复投递端口；
+	// 与 supportAgentFactory 同样经闭包延迟读取 services，破解应用服务晚于账号管理器构造的顺序环。
+	replyImageDeliveryProvider := buildReplyImageDeliveryProvider(func() *composition.Services { return services })
 	// initialOrderSync 是账号首次消息传输就绪后的订单同步回调，失败交给 Adapter 记录，不影响连接。
 	initialOrderSync := func(ctx context.Context, accountID string) error {
 		if services == nil {
@@ -78,7 +81,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		browserManager = browser.NewManager(infrastructure.Logger)
 	}
 	// runtimeBundle、bundleErr 分别是账号运行时依赖集合及其构造失败原因。
-	runtimeBundle, bundleErr := adapter.NewRuntimeBundle(infrastructure.Store, browserManager, infrastructure.Logger, initialOrderSync, supportAgentFactory)
+	runtimeBundle, bundleErr := adapter.NewRuntimeBundle(infrastructure.Store, browserManager, infrastructure.Logger, initialOrderSync, supportAgentFactory, replyImageDeliveryProvider)
 	if bundleErr != nil {
 		return Runtime{}, fmt.Errorf("构造账号运行时依赖失败: %w", bundleErr)
 	}

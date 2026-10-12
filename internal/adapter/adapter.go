@@ -161,7 +161,9 @@ type RuntimeBundle struct {
 
 // NewRuntimeBundle 在进程启动前一次性完成运行时闭环装配，禁止通过运行期 setter 补齐必需依赖。
 // supportAgentFactory 是账号级模型生成器工厂：nil 表示不启用客服 Agent，全部账号沿用默认单次问答。
-func NewRuntimeBundle(store *db.Store, bm *browser.Manager, logger *slog.Logger, initialOrderSync func(context.Context, string) error, supportAgentFactory engine.AIGeneratorFactory) (*RuntimeBundle, error) {
+// replyImageDelivery 是账号启动时解析图片自动回复投递端口的提供者：nil 或返回 nil 时含图片的回复不发送；
+// 聊天应用服务晚于本函数构造，因此与 supportAgentFactory 一样采用懒提供者破解装配顺序。
+func NewRuntimeBundle(store *db.Store, bm *browser.Manager, logger *slog.Logger, initialOrderSync func(context.Context, string) error, supportAgentFactory engine.AIGeneratorFactory, replyImageDelivery func() engine.ReplyImageDelivery) (*RuntimeBundle, error) {
 	if store == nil {
 		return nil, fmt.Errorf("运行时装配需要数据库存储")
 	}
@@ -182,6 +184,7 @@ func NewRuntimeBundle(store *db.Store, bm *browser.Manager, logger *slog.Logger,
 	// manager 是自动化中心的在线发送器来源，同时在启动期把 Adapter 固定为账号事件处理器。
 	manager := accountmanager.NewManager(store, runtimeAdapter, logger, accountmanager.ManagerOptions{
 		ReviewNotifier: notifier, AIGeneratorFactory: supportAgentFactory,
+		ReplyImageDeliveryProvider: replyImageDelivery,
 	})
 	// automationSenders 为自动化图片卡密注入“临时下载、平台上传、WebSocket 发送”链路，不在本地保存图片。
 	automationSenders := NewAutomationImageSenderProvider(store, manager, func() mtop.Client { return mtop.NewClient() })
