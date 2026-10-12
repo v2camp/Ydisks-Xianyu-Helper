@@ -1,6 +1,7 @@
 import { expect,test } from 'vitest';
 import type { NotificationChannel } from './api';
-import { buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,notificationEventSummary,notificationEvents,validateNotificationForm } from './state';
+import { qqBotConnector } from './registry';
+import { buildConnectorSettings,buildNotificationPayload,connectorReady,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,notificationEventSummary,notificationEvents,validateNotificationForm } from './state';
 import type { NotificationForm } from './types';
 
 // createForm 创建通知渠道校验使用的最小表单对象。
@@ -81,3 +82,26 @@ test('邮件编辑保留现有 SMTP，显式替换仍需完整配置', /* preser
   expect(validateNotificationForm({ ...form, config: {} })).toContain('收件邮箱');
   expect(buildNotificationPayload({ ...form, preserveSMTP: false, config: { to_email: 'new@example.com', use_custom_smtp: false } })).toMatchObject({ config: { to_email: 'new@example.com', use_custom_smtp: false } });
 });
+
+// 连接器就绪判定要求非敏感凭据非空，且敏感凭据已配置或本次新填。
+test('连接器就绪判定覆盖缺凭据、已配置与服务端不回显三种状态',
+  // 就绪测试验证 AppID 与 AppSecret 的必需组合。
+  () => {
+    expect(connectorReady(qqBotConnector, {})).toBe(false);
+    expect(connectorReady(qqBotConnector, { 'qqbot.app_id': '102012345' })).toBe(false);
+    expect(connectorReady(qqBotConnector, { 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true })).toBe(true);
+    expect(connectorReady(qqBotConnector, { 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'bot-secret-plain' })).toBe(true);
+  });
+
+// 连接器保存载荷只提交注册表登记的键，敏感键留空时保持服务端原值。
+test('连接器保存载荷收窄到注册表键并保留未改动的敏感值',
+  // 载荷测试验证敏感键的三态语义与未登记键的过滤。
+  () => {
+    expect(buildConnectorSettings([qqBotConnector], { 'qqbot.app_id': '102012345', unrelated: 'drop-me' }))
+      .toEqual({ 'qqbot.app_id': '102012345' });
+    expect(buildConnectorSettings([qqBotConnector], { 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'bot-secret-plain' }))
+      .toEqual({ 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'bot-secret-plain' });
+    expect(buildConnectorSettings([qqBotConnector], { 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' }))
+      .toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' });
+    expect(buildConnectorSettings([qqBotConnector], {})).toEqual({});
+  });

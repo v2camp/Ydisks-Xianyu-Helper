@@ -95,7 +95,7 @@ func FormatUnauthorized(openID string) string {
 	if sender == "" {
 		return "未授权执行 QQ 命令，请联系管理员开通。"
 	}
-	return fmt.Sprintf("未授权执行 QQ 命令。如需开通，请把标识 %s 加入系统设置「QQ 连接器」的命令白名单。", sender)
+	return fmt.Sprintf("未授权执行 QQ 命令。如需开通，请把标识 %s 加入「连接器」页 QQ 机器人连接器的命令白名单。", sender)
 }
 
 // FormatFailure 渲染命令执行失败时的兜底文案，不泄露内部错误细节。
@@ -105,7 +105,7 @@ func FormatFailure() string {
 
 // FormatDenied 渲染策略拒绝时的兜底文案，不回显能力名或内部判定细节。
 func FormatDenied() string {
-	return "该命令当前不可执行。如需排查，请检查系统设置中的 QQ 连接器与 Agent 配置。"
+	return "该命令当前不可执行。如需排查，请检查「连接器」页的 QQ 机器人连接器与 Agent 配置。"
 }
 
 // execute 按命令标识读取数据并渲染文本；未知命令回退到命令清单。

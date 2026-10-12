@@ -118,9 +118,9 @@ send(channel) → case "qq" → sendQQ(ctx, cfg, message, channelUserID)
 - **前端**：`frontend/app/features/notifications/models.ts` 的 `NotificationChannelType` 联合类型加 `'qq'`；`state.ts` 的 `notificationChannelTypes` 增加 qq 元数据（字段/图标/引导）。无硬编码枚举限制。
 - **MCP 工具描述**：`internal/mcp/tools_notifications.go` 已把 `qq` 作为示例，无需改。
 
-### 3.7 系统级 QQ 连接器与设置页模块（后补）
+### 3.7 系统级 QQ 连接器与连接器页模块（后补）
 
-凭据两级来源要求在系统设置页提供一处连接器配置，避免每条渠道重复填 AppID/AppSecret：
+凭据两级来源要求在「连接器」页提供一处连接器配置，避免每条渠道重复填 AppID/AppSecret：
 
 | 设置键 | 敏感 | 说明 |
 |---|---|---|
@@ -131,8 +131,10 @@ send(channel) → case "qq" → sendQQ(ctx, cfg, message, channelUserID)
 落点：
 
 - **后端**：`internal/db/secrets.go` 把 `qqbot.app_secret` 加入敏感键白名单（`isSensitiveSettingKey` + `SensitiveSettingKeys()`）；设置应用服务与 HTTP 层是泛型实现，无需额外改动即可获得「脱敏读取 + 三态写入 + 访问审计」。
-- **前端**：`frontend/shared/api-contract/settings.ts` 的 `SENSITIVE_SYSTEM_SETTING_KEYS` 同步新增该键（前端镜像）；`frontend/app/features/settings/constants.ts` 的 `SYSTEM_SETTING_KEYS` 新增两个可保存键、`SETTINGS_SAVE_OMIT_KEYS` 新增派生标记；`QQConnectorCard.tsx` 提供引导：前往 QQ 开放平台 `q.qq.com` 扫码登录 → 创建机器人 → 复制 AppID/AppSecret，并在卡片内明示主动推送额度与 openid 绑定约束。
+- **前端**：`frontend/shared/api-contract/settings.ts` 的 `SENSITIVE_SYSTEM_SETTING_KEYS` 同步新增该键（前端镜像）；`frontend/app/features/connectors/registry.ts` 的连接器注册表声明 `qqbot.app_id` / `qqbot.app_secret` 字段与入站命令能力开关（含敏感标记与服务端派生标记），`ConnectorCard` 由注册表驱动渲染，并提供引导：前往 QQ 开放平台 `q.qq.com` 扫码登录 → 创建机器人 → 复制 AppID/AppSecret，同时明示主动推送额度与 openid 绑定约束。
 - **读取路径**：`Notifier.settingValue` 经 `settingsRepository` 按渠道所有者读取，未装配仓储或键缺失时回退空串，最终由 `sendQQ` 的校验统一报错。
+
+> **位置调整（2026-10-12）**：连接器最初挂在系统设置页。后续把「通知设置」整体升级为「连接器」页（路由 `/app/connectors`，feature `connectors`），因为连接器本质是通知渠道的上游共享凭据——出站通知与入站命令共用同一份系统级凭据，二者需要在同一页面闭环。系统设置页不再承载连接器配置，`SYSTEM_SETTING_KEYS` 同步移除四个 `qqbot.*` 键；后端键名、出站/入站逻辑与敏感键白名单不变。详见 `docs/architecture/connector-page-plan.md`。
 
 ## 4. 未来扩展边界（本次不实现，仅定方向）
 

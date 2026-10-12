@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'orders', icon: ShoppingBag, label: '订单管理' },
     { id: 'delivery-templates', icon: FileStack, label: '发货模板' },
     { id: 'rules', icon: Zap, label: '自动化规则' },
-    { id: 'notifications', icon: Bell, label: '通知设置' },
+    { id: 'connectors', icon: Bell, label: '连接器' },
     ...(isAdmin ? [{ id: 'settings', icon: Settings, label: '系统设置' }, { id: 'ai-settings', icon: Sparkles, label: 'AI 设置' }, { id: 'agent-center', icon: Bot, label: 'Agent 中心' }] : []),
   ];
   // displayVersion 显示版本号。

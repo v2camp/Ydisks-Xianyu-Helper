@@ -3,7 +3,7 @@ import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
 import type { NotificationChannel,SystemSettings } from './api';
 import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
-import { useNotifications } from './hooks';
+import { useConnectors } from './hooks';
 
 vi.mock('./api', /* notificationsApiMockFactory 提供通知 Hook 的确定性 API 替身。 */ () => ({
   createNotificationChannel: vi.fn(),
@@ -38,7 +38,7 @@ const channelFixture: NotificationChannel = { id: 'channel-1', name: '测试渠�
 // smtpFixture 是管理员 SMTP 配置对象。
 const smtpFixture: SystemSettings = { smtp_server: 'smtp.example.com', smtp_port: 587, smtp_user: 'sender@example.com', smtp_password: 'secret' };
 
-describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作状态。 */ () => {
+describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状态。 */ () => {
   beforeEach(/* 当前回调重置通知 API 替身和浏览器确认框。 */ () => {
     vi.clearAllMocks();
     getChannelsMock.mockResolvedValue({ success: true, data: [channelFixture] });
@@ -56,7 +56,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是管理员通知 Hook 的渲染结果。
     const hook = renderHook(
       // adminHookFactory 创建管理员通知 Hook。
-      () => useNotifications(true),
+      () => useConnectors(true),
     );
     await waitFor(
       // loadingAssertion 等待通知渠道加载完成。
@@ -103,7 +103,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     const emailChannel: NotificationChannel = { id: 'email-1', name: '邮件通知', type: 'email', config: {}, enabled: true, event_types: [] };
     getChannelMock.mockResolvedValueOnce({ id: 1, name: '邮件通知', type: 'email', enabled: true, to_email: 'receiver@example.com', use_custom_smtp: false });
     // hook 是邮件渠道编辑场景的 Hook 渲染结果。
-    const hook = renderHook(/* editHookFactory 创建邮件渠道编辑场景的 Hook。 */ () => useNotifications(false));
+    const hook = renderHook(/* editHookFactory 创建邮件渠道编辑场景的 Hook。 */ () => useConnectors(false));
     await waitFor(/* loadingAssertion 等待渠道摘要加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* editAction 读取脱敏编辑配置并打开邮件渠道弹窗。 */ async () => hook.result.current.openEdit(emailChannel));
@@ -118,7 +118,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
       smtp_server: 'smtp.example.com', smtp_port: 587, smtp_user: 'sender@example.com', smtp_password_configured: true,
     });
     // hook 是脱敏 SMTP 配置场景下的通知 Hook 渲染结果。
-    const hook = renderHook(/* hookFactory 创建管理员通知 Hook。 */ () => useNotifications(true));
+    const hook = renderHook(/* hookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
     // loadingAssertion 等待脱敏 SMTP 配置加载完成。
     await waitFor(/* loadingAssertion 检查异步加载状态。 */ () => expect(hook.result.current.loading).toBe(false));
 
@@ -134,7 +134,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是渠道校验和删除场景下的通知 Hook 渲染结果。
     const hook = renderHook(
       // userHookFactory 创建普通用户通知 Hook。
-      () => useNotifications(false),
+      () => useConnectors(false),
     );
     await waitFor(
       // loadingAssertion 等待普通用户渠道加载完成。
@@ -168,7 +168,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是通知测试失败场景下的 Hook 渲染结果。
     const hook = renderHook(
       // failureHookFactory 创建测试通知失败场景的 Hook。
-      () => useNotifications(false),
+      () => useConnectors(false),
     );
     await waitFor(
       // loadingAssertion 等待失败场景的渠道列表加载完成。
@@ -186,7 +186,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是管理员通知错误场景的 Hook 渲染结果。
     const hook = renderHook(
       // errorHookFactory 创建管理员通知错误场景的 Hook。
-      () => useNotifications(true),
+      () => useConnectors(true),
     );
     await waitFor(
       // loadingAssertion 等待首次通知渠道加载完成。
@@ -237,7 +237,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是 SMTP 初始化失败场景的通知 Hook 渲染结果。
     const hook = renderHook(
       // smtpFailureHookFactory 创建 SMTP 初始化失败场景的 Hook。
-      () => useNotifications(true),
+      () => useConnectors(true),
     );
     await waitFor(
       // loadingAssertion 等待通知渠道列表加载完成。
@@ -254,7 +254,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
       // hook 是通知提示和弹窗状态场景的 Hook 渲染结果。
       const hook = renderHook(
         // toastHookFactory 创建通知提示场景的 Hook。
-        () => useNotifications(false),
+        () => useConnectors(false),
       );
       await act(
         // toastAction 展示一条短暂提示。
@@ -317,7 +317,7 @@ describe('useNotifications', /* 当前回调处理通知渠道、SMTP 和动作�
     // hook 是通知渠道刷新竞态场景的 Hook 渲染结果。
     const hook = renderHook(
       // staleHookFactory 创建通知渠道旧响应场景的 Hook。
-      () => useNotifications(false),
+      () => useConnectors(false),
     );
     await act(
       // refreshAction 发起第二次渠道刷新并使首次请求过期。
@@ -346,7 +346,7 @@ test.each(['ready', 'close', 'create', 'switch', 'failure'] as const)('编辑加
   let failEditor!: (reason: Error) => void;
   getChannelMock.mockImplementationOnce(/* pendingEditorResponse 暂存读取响应的控制函数。 */ () => new Promise(/* pendingEditorExecutor 等待测试完成首个读取。 */ (resolve, reject) => { finishEditor = resolve; failEditor = reject; }));
   // hook 是本场景独立的通知状态，卸载会取消仍在等待的请求。
-  const hook = renderHook(/* editorHookFactory 创建无系统 SMTP 查询的编辑状态。 */ () => useNotifications(false));
+  const hook = renderHook(/* editorHookFactory 创建无系统 SMTP 查询的编辑状态。 */ () => useConnectors(false));
   await waitFor(/* editorLoadedAssertion 等待初始渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
   // pending 保存首个异步编辑，用于等待它完成后确认没有旧响应覆盖。
   let pending!: Promise<void>;

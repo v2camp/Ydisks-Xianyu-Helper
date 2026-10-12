@@ -35,7 +35,7 @@ describe('frontend navigation routing', () => {
 
   test('route pages are lazy-loaded behind a shared Suspense boundary', () => {
     const app = readFrontendFile('app/shell/AuthenticatedShell.tsx'); /* app 表示认证后页面组合器源码。 */
-    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|AgentCenter|Settings|Rules|Notifications|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
+    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|AgentCenter|Settings|Rules|Connectors|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
 
     expect(lazyPageCount).toBe(11);
     expect(app).toContain('const PageLoading: React.FC');
@@ -137,39 +137,44 @@ describe('frontend navigation routing', () => {
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);
 
   test('settings page exposes the QQ connector guide for official bot credentials', () => {
-    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示settings。 */
-    const connector = readFrontendFile('app/features/settings/components/QQConnectorCard.tsx'); /* connector 表示connector。 */
-    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示settingsConstants。 */
+    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示系统设置页源码，用于确认连接器已移出。 */
+    const connectors = readFrontendFile('app/features/connectors/pages/Connectors.tsx'); /* connectors 表示连接器页源码，用于确认引导挂载。 */
+    const registry = readFrontendFile('app/features/connectors/registry.ts'); /* registry 表示连接器注册表源码，用于确认凭据字段来源。 */
+    const card = readFrontendFile('app/features/connectors/components/ConnectorCard.tsx'); /* card 表示注册表驱动的连接器卡源码。 */
 
-    expect(settings).toContain('连接器');
-    expect(settings).toContain("import { QQConnectorCard } from '../components/QQConnectorCard'");
-    expect(settings).toContain('<QQConnectorCard');
-    expect(connector).toContain('https://q.qq.com/');
-    expect(connector).toContain('QQ 机器人 AppID');
-    expect(connector).toContain('QQ 机器人 AppSecret');
-    expect(connector).toContain("'qqbot.app_secret'");
-    expect(settingsConstants).toContain("'qqbot.app_id'");
-  } /* 测试回调断言设置页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
+    expect(connectors).toContain('连接器');
+    expect(connectors).toContain("import { ConnectorCard } from '../components/ConnectorCard'");
+    expect(connectors).toContain('<ConnectorCard');
+    expect(settings).not.toContain('QQConnectorCard');
+    expect(registry).toContain('https://q.qq.com/');
+    expect(registry).toContain('机器人 AppID');
+    expect(registry).toContain('机器人 AppSecret');
+    expect(registry).toContain("'qqbot.app_secret'");
+    expect(registry).toContain("'qqbot.app_id'");
+    expect(card).toContain('connector.fields.map');
+  } /* 测试回调断言连接器页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
 
   test('QQ connector gates inbound commands behind an openid allowlist', () => {
-    const connector = readFrontendFile('app/features/settings/components/QQConnectorCard.tsx'); /* connector 表示connector。 */
-    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示settingsConstants。 */
+    const registry = readFrontendFile('app/features/connectors/registry.ts'); /* registry 表示连接器注册表源码。 */
+    const card = readFrontendFile('app/features/connectors/components/ConnectorCard.tsx'); /* card 表示注册表驱动的连接器卡源码。 */
+    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示系统设置页字段白名单。 */
 
-    expect(connector).toContain('启用 QQ 入站命令');
-    expect(connector).toContain('QQ 命令发送者白名单');
-    expect(connector).toContain("'qqbot.commands_enabled'");
-    expect(connector).toContain("'qqbot.command_openids'");
-    expect(connector).toContain('销量 / 健康 / 会话 / 帮助');
-    expect(settingsConstants).toContain("'qqbot.commands_enabled'");
-    expect(settingsConstants).toContain("'qqbot.command_openids'");
-  } /* 测试回调断言入站命令默认关闭且必须由 openid 白名单授权。 */);
+    expect(registry).toContain('启用入站命令');
+    expect(registry).toContain('命令发送者白名单（openid）');
+    expect(registry).toContain("'qqbot.commands_enabled'");
+    expect(registry).toContain("'qqbot.command_openids'");
+    expect(registry).toContain('销量 / 健康 / 会话 / 帮助');
+    expect(card).toContain('capability.allowlistKey');
+    expect(settingsConstants).not.toContain("'qqbot.commands_enabled'");
+    expect(settingsConstants).not.toContain("'qqbot.command_openids'");
+  } /* 测试回调断言入站命令默认关闭、由注册表声明且必须经 openid 白名单授权。 */);
 
   test('email notification config separates system and custom SMTP modes', () => {
-    const notifications = readFrontendFile('app/features/notifications/pages/Notifications.tsx'); /* notifications 表示notifications。 */
-    const notificationState = readFrontendFile('app/features/notifications/state.ts'); /* notificationState 表示notificationState。 */
-    const notificationModal = readFrontendFile('app/features/notifications/components/NotificationChannelModal.tsx'); /* notificationModal 表示notificationModal。 */
+    const notifications = readFrontendFile('app/features/connectors/pages/Connectors.tsx'); /* notifications 表示连接器页源码。 */
+    const notificationState = readFrontendFile('app/features/connectors/state.ts'); /* notificationState 表示连接器页纯函数源码。 */
+    const notificationModal = readFrontendFile('app/features/connectors/components/NotificationChannelModal.tsx'); /* notificationModal 表示渠道编辑弹窗源码。 */
 
-    expect(notifications).toContain('interface NotificationsProps');
+    expect(notifications).toContain('interface ConnectorsProps');
     expect(notifications).toContain('{isAdmin && <NotificationSmtpSettings');
     expect(notificationState).toContain("key: 'to_email'");
     expect(notificationModal).toContain('完整继承系统 SMTP');

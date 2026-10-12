@@ -89,8 +89,8 @@ export interface NotificationToast {
   text: string;
 }
 
-// NotificationState 暴露通知页面的数据、表单和操作边界。
-export interface NotificationState {
+// ConnectorsState 暴露连接器页面的数据、表单和操作边界。
+export interface ConnectorsState {
   // channels 是当前用户可用的通知渠道列表。
   channels: NotificationChannel[];
   // loading 表示渠道列表是否正在加载。
@@ -107,6 +107,10 @@ export interface NotificationState {
   toast: NotificationToast | null;
   // smtp 是系统级邮件配置。
   smtp: SystemSettings;
+  // connectorSettings 是连接器凭据与能力开关的系统配置草稿。
+  connectorSettings: SystemSettings;
+  // connectorSaving 表示连接器配置是否正在保存。
+  connectorSaving: boolean;
   // smtpSaving 表示系统 SMTP 是否正在保存。
   smtpSaving: boolean;
   // showSmtpPassword 控制系统 SMTP 密码明文展示。
@@ -119,6 +123,8 @@ export interface NotificationState {
   setForm: Dispatch<SetStateAction<NotificationForm>>;
   // setSmtp 更新系统 SMTP 配置表单。
   setSmtp: Dispatch<SetStateAction<SystemSettings>>;
+  // setConnectorSettings 更新连接器配置草稿。
+  setConnectorSettings: Dispatch<SetStateAction<SystemSettings>>;
   // setShowSmtpPassword 更新系统 SMTP 密码展示状态。
   setShowSmtpPassword: Dispatch<SetStateAction<boolean>>;
   // setShowChannelSmtpPassword 更新独立 SMTP 密码展示状态。
@@ -143,4 +149,6 @@ export interface NotificationState {
   handleTest: (channel: NotificationChannel) => Promise<void>;
   // handleSaveSmtp 保存系统级 SMTP 配置。
   handleSaveSmtp: () => Promise<void>;
+  // handleSaveConnector 保存连接器凭据与能力开关。
+  handleSaveConnector: () => Promise<void>;
 }
