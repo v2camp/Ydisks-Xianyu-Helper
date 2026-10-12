@@ -34,12 +34,14 @@ func NewChatSendingApplication(domainService *domainchat.Service, store *db.Stor
 		service := chatapp.NewWithSendingSubscriptionAndRefresh(NewChatRepository(store), nil, nil, nil, nil, nil, NewChatIdentityResolver(store, clientProvider, manager))
 		return chatapp.WithPlatformReadReporter(chatapp.WithChatItemCatalog(service, NewChatItemCatalog(store, clientProvider, manager)), readReporter)
 	}
-	// service 是装配历史、发送、订阅、刷新和身份能力的聊天应用服务。
-	service := chatapp.NewWithSendingSubscriptionAndRefresh(
+	// service 是装配历史、发送、订阅、刷新、URL 图片下载和身份能力的聊天应用服务。
+	// URL 图片下载端口使自动回复等只持有图片地址的用例复用人工发送的完整链路。
+	service := chatapp.NewWithSendingSubscriptionAndRefreshAndDownloader(
 		NewChatRepository(store),
 		NewChatOutgoingRepository(domainService),
 		NewChatSenderProvider(manager),
 		NewChatImageUploader(store, clientProvider, manager),
+		NewChatImageDownloader(),
 		NewChatSubscriptionProvider(domainService),
 		NewChatRefreshProvider(domainService, manager),
 		NewChatIdentityResolver(store, clientProvider, manager),

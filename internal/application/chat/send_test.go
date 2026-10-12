@@ -61,7 +61,7 @@ func TestServiceAvailabilityReportsRequiredPorts(t *testing.T) {
 		t.Fatal("缺少外发端口时不应报告聊天能力可用")
 	}
 	// available 是同时装配文字发送和图片上传端口的聊天应用服务。
-	available := NewWithSending(nil, &sendRepository{}, sendProvider{}, sendUploader{})
+	available := NewWithSending(nil, &sendRepository{}, sendProvider{}, &sendUploader{})
 	if !available.SendingAvailable() || !available.ImageUploadAvailable() {
 		t.Fatal("完整装配的聊天能力应报告可用")
 	}
@@ -126,11 +126,33 @@ type sendUploader struct {
 	result ImageUpload
 	// err 保存上传或凭证刷新阶段需要返回的错误。
 	err error
+	// gotFilename、gotContentType 和 gotData 保存最近一次上传收到的文件名、媒体类型与图片字节。
+	gotFilename, gotContentType string
+	gotData                     []byte
 }
 
-// UploadChatImage 返回预设上传结果，不接收明文 Cookie 参数。
-func (u sendUploader) UploadChatImage(context.Context, string, string, string, []byte) (ImageUpload, error) {
+// UploadChatImage 记录上传入参并返回预设结果，不接收明文 Cookie 参数。
+func (u *sendUploader) UploadChatImage(_ context.Context, _ string, filename, contentType string, data []byte) (ImageUpload, error) {
+	u.gotFilename, u.gotContentType, u.gotData = filename, contentType, data
 	return u.result, u.err
+}
+
+// sendDownloader 是 URL 图片下载端口的测试替身。
+type sendDownloader struct {
+	// data、contentType 和 filename 保存下载成功时返回的图片字节、媒体类型与上传文件名。
+	data        []byte
+	contentType string
+	filename    string
+	// err 保存下载阶段需要返回的错误。
+	err error
+	// requestedURL 保存最近一次收到的图片地址，用于断言透传。
+	requestedURL string
+}
+
+// DownloadChatImage 记录请求地址并返回预设下载结果或错误。
+func (d *sendDownloader) DownloadChatImage(_ context.Context, rawURL string) ([]byte, string, string, error) {
+	d.requestedURL = rawURL
+	return d.data, d.contentType, d.filename, d.err
 }
 
 // TestSendTextSuccessPreservesIdempotencyKey 验证成功发送会写入 sent 状态并传递本地幂等键。
@@ -229,7 +251,7 @@ func TestSendImageDoesNotExposeCredentials(t *testing.T) {
 	// repository、sender、uploader 保存图片发送的测试端口。
 	repository, sender := &sendRepository{}, &sendSender{}
 	// uploader 保存固定图片地址的测试上传端口。
-	uploader := sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg", Width: 1280, Height: 720}}
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg", Width: 1280, Height: 720}}
 	// service 保存使用测试端口构造的聊天发送服务。
 	service := NewWithSending(nil, repository, sendProvider{sender: sender}, uploader)
 	// message 和 err 保存图片发送结果。
@@ -244,7 +266,7 @@ func TestSendImagePropagatesCredentialWritebackFailure(t *testing.T) {
 	// repository、sender、uploader 保存凭证写回失败场景的测试端口。
 	repository, sender := &sendRepository{}, &sendSender{}
 	// uploader 保存模拟凭证写回失败的测试上传端口。
-	uploader := sendUploader{err: errors.New("凭证写回失败")}
+	uploader := &sendUploader{err: errors.New("凭证写回失败")}
 	// service 保存使用测试端口构造的聊天发送服务。
 	service := NewWithSending(nil, repository, sendProvider{sender: sender}, uploader)
 	// _, err 保存图片上传适配器返回的确定性错误。
@@ -259,7 +281,7 @@ func TestSendImageStatusFailureReturnsSentMessage(t *testing.T) {
 	// repository、sender、uploader 保存图片状态写入失败场景的测试端口。
 	repository, sender := &sendRepository{statusErr: errors.New("状态写入失败")}, &sendSender{}
 	// uploader 保存固定图片地址的测试上传端口。
-	uploader := sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}}
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}}
 	// service 保存使用测试端口构造的聊天发送服务。
 	service := NewWithSending(nil, repository, sendProvider{sender: sender}, uploader)
 	// message 和 err 保存图片状态写入失败后的返回值。
@@ -285,7 +307,7 @@ func TestSendImageCoversValidationUploadCreationAndPlatformFailures(t *testing.T
 	emptyData := input
 	emptyData.Data = nil
 	// ready 是具备所有图片发送端口的服务。
-	ready := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
+	ready := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, &sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
 	// emptyDataErr 保存空图片内容的输入错误。
 	if _, emptyDataErr := ready.SendImage(context.Background(), emptyData); !errors.Is(emptyDataErr, ErrSendInvalidInput) {
 		t.Fatalf("empty image error=%v", emptyDataErr)
@@ -298,25 +320,25 @@ func TestSendImageCoversValidationUploadCreationAndPlatformFailures(t *testing.T
 		t.Fatalf("invalid image session error=%v", invalidSessionErr)
 	}
 	// offline 是没有在线发送器的图片服务。
-	offline := NewWithSending(nil, &sendRepository{}, sendProvider{}, sendUploader{})
+	offline := NewWithSending(nil, &sendRepository{}, sendProvider{}, &sendUploader{})
 	// offlineErr 保存离线账号的图片发送错误。
 	if _, offlineErr := offline.SendImage(context.Background(), input); !errors.Is(offlineErr, ErrOffline) {
 		t.Fatalf("offline image error=%v", offlineErr)
 	}
 	// uploadFailure 是图片上传返回错误的服务。
-	uploadFailure := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, sendUploader{err: errors.New("upload failed")})
+	uploadFailure := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, &sendUploader{err: errors.New("upload failed")})
 	// uploadErr 保存图片上传失败的错误。
 	if _, uploadErr := uploadFailure.SendImage(context.Background(), input); !errors.Is(uploadErr, ErrSend) {
 		t.Fatalf("upload failure=%v", uploadErr)
 	}
 	// emptyURL 是图片上传没有返回可发送地址的服务。
-	emptyURL := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, sendUploader{result: ImageUpload{}})
+	emptyURL := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, &sendUploader{result: ImageUpload{}})
 	// emptyURLErr 保存图片上传没有地址时的错误。
 	if _, emptyURLErr := emptyURL.SendImage(context.Background(), input); !errors.Is(emptyURLErr, ErrSend) {
 		t.Fatalf("empty URL error=%v", emptyURLErr)
 	}
 	// createFailure 是本地待发送图片消息写入失败的服务。
-	createFailure := NewWithSending(nil, &sendRepository{createErr: errors.New("create failed")}, sendProvider{sender: &sendSender{}}, sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
+	createFailure := NewWithSending(nil, &sendRepository{createErr: errors.New("create failed")}, sendProvider{sender: &sendSender{}}, &sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
 	// createErr 保存本地图片消息写入失败的错误。
 	if _, createErr := createFailure.SendImage(context.Background(), input); createErr == nil {
 		t.Fatalf("create failure=%v", createErr)
@@ -325,10 +347,122 @@ func TestSendImageCoversValidationUploadCreationAndPlatformFailures(t *testing.T
 	// senderFailureRepository 保存平台发送失败后的本地状态记录。
 	senderFailureRepository := &sendRepository{}
 	// senderFailure 是平台图片发送失败的聊天服务。
-	senderFailure := NewWithSending(nil, senderFailureRepository, sendProvider{sender: &sendSender{sendErr: errors.New("send failed")}}, sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
+	senderFailure := NewWithSending(nil, senderFailureRepository, sendProvider{sender: &sendSender{sendErr: errors.New("send failed")}}, &sendUploader{result: ImageUpload{URL: "https://cdn.example/image.jpg"}})
 	// message、sendErr 保存平台图片发送失败后的本地消息及错误。
 	message, sendErr := senderFailure.SendImage(context.Background(), input)
 	if !errors.Is(sendErr, ErrSend) || message == nil || len(senderFailureRepository.statuses) != 1 || senderFailureRepository.statuses[0] != "failed" {
 		t.Fatalf("message=%+v err=%v statuses=%v", message, sendErr, senderFailureRepository.statuses)
+	}
+}
+
+// TestSendImageURLDownloadsUploadsAndSendsPlatformDimensions 验证 URL 图片经下载、上传后按平台回传尺寸发送。
+func TestSendImageURLDownloadsUploadsAndSendsPlatformDimensions(t *testing.T) {
+	// repository、sender 保存 URL 图片发送的测试端口。
+	repository, sender := &sendRepository{}, &sendSender{}
+	// uploader 记录下载内容并返回平台回传的图片地址与宽高。
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/uploaded.jpg", Width: 1280, Height: 720}}
+	// downloader 返回待发送的远程图片字节。
+	downloader := &sendDownloader{data: []byte("remote-image"), contentType: "image/jpeg", filename: "remote.jpg"}
+	// service 保存装配完整 URL 图片链路的聊天发送服务。
+	service := NewWithSendingAndDownloader(nil, repository, sendProvider{sender: sender}, uploader, downloader)
+	// message 和 err 保存 URL 图片发送结果。
+	message, err := service.SendImageURL(context.Background(), ImageURLInput{Session: Session{AccountID: "acc-1", ChatID: "chat-1", PeerUserID: "buyer-1"}, ImageURL: "  https://img.example/raw.jpg  "})
+	if err != nil || message == nil || message.Status != "sent" || message.Content != "https://cdn.example/uploaded.jpg" {
+		t.Fatalf("message=%+v err=%v", message, err)
+	}
+	// 应用层先裁剪首尾空白再下载，下载字节与媒体类型原样进入上传端口。
+	if downloader.requestedURL != "https://img.example/raw.jpg" {
+		t.Fatalf("downloader url=%q", downloader.requestedURL)
+	}
+	if string(uploader.gotData) != "remote-image" || uploader.gotContentType != "image/jpeg" || uploader.gotFilename != "remote.jpg" {
+		t.Fatalf("uploader got data=%q type=%q filename=%q", uploader.gotData, uploader.gotContentType, uploader.gotFilename)
+	}
+	// 平台宽高必须透传到发送端口，本地消息按上传地址落库。
+	if sender.imageWidth != 1280 || sender.imageHeight != 720 || sender.sentKey != "local-image" {
+		t.Fatalf("sender width=%d height=%d key=%q", sender.imageWidth, sender.imageHeight, sender.sentKey)
+	}
+	if len(repository.statuses) != 1 || repository.statuses[0] != "sent" {
+		t.Fatalf("statuses=%v", repository.statuses)
+	}
+}
+
+// TestSendImageURLDownloadFailureIsDefinitelyNotSent 验证下载失败属于确定未发送，不触碰上传与平台发送。
+func TestSendImageURLDownloadFailureIsDefinitelyNotSent(t *testing.T) {
+	// repository、sender、uploader 保存下载失败场景的测试端口。
+	repository, sender := &sendRepository{}, &sendSender{}
+	// uploader 记录是否被误用；下载失败时上传端口不应被调用。
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/uploaded.jpg"}}
+	// downloader 模拟远程图片不可读取。
+	downloader := &sendDownloader{err: errors.New("图片地址无法访问")}
+	// service 保存装配完整 URL 图片链路的聊天发送服务。
+	service := NewWithSendingAndDownloader(nil, repository, sendProvider{sender: sender}, uploader, downloader)
+	// message 和 err 保存下载失败后的返回值。
+	message, err := service.SendImageURL(context.Background(), ImageURLInput{Session: Session{AccountID: "acc-1", ChatID: "chat-1", PeerUserID: "buyer-1"}, ImageURL: "https://img.example/raw.jpg"})
+	if !errors.Is(err, ErrSend) || message != nil {
+		t.Fatalf("message=%+v err=%v", message, err)
+	}
+	// 下载失败发生在任何平台动作之前：无上传、无发送、无本地消息状态写入。
+	if uploader.gotData != nil || sender.sentKey != "" || len(repository.statuses) != 0 {
+		t.Fatalf("download failure touched side effects uploader=%+v sender=%q statuses=%v", uploader, sender.sentKey, repository.statuses)
+	}
+}
+
+// TestSendImageURLRejectsMissingPortsAndInvalidInputs 验证缺少下载端口与非法输入均在下载前失败。
+func TestSendImageURLRejectsMissingPortsAndInvalidInputs(t *testing.T) {
+	// session 保存可复用的有效会话参数。
+	session := Session{AccountID: "acc-1", ChatID: "chat-1", PeerUserID: "buyer-1"}
+	// input 保存可复用的有效 URL 图片输入。
+	input := ImageURLInput{Session: session, ImageURL: "https://img.example/raw.jpg"}
+	// uploader 提供可用的上传端口，隔离本次测试只关注下载端口缺失。
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/uploaded.jpg"}}
+	// missingDownloader 是装配上传但未装配下载端口的服务。
+	missingDownloader := NewWithSending(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, uploader)
+	// missingDownloaderErr 保存缺少下载端口时的错误。
+	if _, missingDownloaderErr := missingDownloader.SendImageURL(context.Background(), input); !errors.Is(missingDownloaderErr, ErrUnavailable) {
+		t.Fatalf("missing downloader error=%v", missingDownloaderErr)
+	}
+	// ready 是装配完整 URL 图片链路的服务。
+	ready := NewWithSendingAndDownloader(nil, &sendRepository{}, sendProvider{sender: &sendSender{}}, uploader, &sendDownloader{data: []byte("x"), contentType: "image/jpeg", filename: "a.jpg"})
+	// emptyURL 保存空图片地址的非法输入。
+	emptyURL := input
+	emptyURL.ImageURL = "   "
+	// emptyURLErr 保存空图片地址的输入错误。
+	if _, emptyURLErr := ready.SendImageURL(context.Background(), emptyURL); !errors.Is(emptyURLErr, ErrSendInvalidInput) {
+		t.Fatalf("empty url error=%v", emptyURLErr)
+	}
+	// invalidSession 保存缺少会话标识的非法输入。
+	invalidSession := input
+	invalidSession.Session.ChatID = ""
+	// invalidSessionErr 保存会话标识缺失的输入错误。
+	if _, invalidSessionErr := ready.SendImageURL(context.Background(), invalidSession); !errors.Is(invalidSessionErr, ErrSendInvalidInput) {
+		t.Fatalf("invalid session error=%v", invalidSessionErr)
+	}
+	// offline 是没有在线发送器的服务。
+	offline := NewWithSendingAndDownloader(nil, &sendRepository{}, sendProvider{}, uploader, &sendDownloader{})
+	// offlineErr 保存离线账号的错误。
+	if _, offlineErr := offline.SendImageURL(context.Background(), input); !errors.Is(offlineErr, ErrOffline) {
+		t.Fatalf("offline error=%v", offlineErr)
+	}
+}
+
+// TestSendImageURLPlatformFailureMarksMessageFailed 验证平台发送失败时 URL 图片消息保留可重试的 failed 状态。
+func TestSendImageURLPlatformFailureMarksMessageFailed(t *testing.T) {
+	// repository 记录平台失败后的本地状态迁移。
+	repository := &sendRepository{}
+	// sender 模拟平台拒绝本次图片发送。
+	sender := &sendSender{sendErr: errors.New("平台拒绝")}
+	// uploader 提供可用的上传结果。
+	uploader := &sendUploader{result: ImageUpload{URL: "https://cdn.example/uploaded.jpg"}}
+	// downloader 提供可用的下载结果。
+	downloader := &sendDownloader{data: []byte("remote-image"), contentType: "image/jpeg", filename: "remote.jpg"}
+	// service 保存装配完整 URL 图片链路的聊天发送服务。
+	service := NewWithSendingAndDownloader(nil, repository, sendProvider{sender: sender}, uploader, downloader)
+	// message 和 err 保存平台发送失败后的返回值。
+	message, err := service.SendImageURL(context.Background(), ImageURLInput{Session: Session{AccountID: "acc-1", ChatID: "chat-1", PeerUserID: "buyer-1"}, ImageURL: "https://img.example/raw.jpg"})
+	if !errors.Is(err, ErrSend) || message == nil || message.Status != "failed" {
+		t.Fatalf("message=%+v err=%v", message, err)
+	}
+	if len(repository.statuses) != 1 || repository.statuses[0] != "failed" {
+		t.Fatalf("statuses=%v", repository.statuses)
 	}
 }
