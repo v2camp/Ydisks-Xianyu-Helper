@@ -33,6 +33,16 @@ export interface SystemSettings {
   'captcha.remote_secret_key_configured'?: boolean;
   /** 远程验证码服务 Cookie 配置。 */
   'captcha.remote_pass_cookies'?: boolean | string;
+  /** QQ 连接器机器人的 AppID，明文保存且可被通知渠道继承。 */
+  'qqbot.app_id'?: string;
+  /** QQ 连接器机器人的 AppSecret 草稿，仅存在于提交请求中，服务端不回显明文。 */
+  'qqbot.app_secret'?: string;
+  /** QQ 连接器机器人的 AppSecret 是否已在服务端配置。 */
+  'qqbot.app_secret_configured'?: boolean;
+  /** 是否启用 QQ 入站命令（连接 QQ 网关接收销量/健康/会话命令）。 */
+  'qqbot.commands_enabled'?: boolean;
+  /** 允许发送 QQ 入站命令的 openid 白名单，逗号或换行分隔；为空表示拒绝所有发送者。 */
+  'qqbot.command_openids'?: string;
   /** 兼容未来配置键的扩展字段。 */
   /** 未知设置键只能承载服务端声明的标量值，敏感值不进入该 UI 模型。 */
   [key: string]: string | number | boolean | undefined;

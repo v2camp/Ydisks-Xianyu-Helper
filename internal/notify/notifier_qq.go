@@ -91,7 +91,7 @@ func (n *Notifier) sendQQ(ctx context.Context, cfg map[string]any, message strin
 	// appSecret 是机器人接入密钥，来自渠道配置或系统连接器设置，禁止写入日志。
 	appSecret := n.qqCredential(ctx, cfg, "app_secret", "qqbot.app_secret", channelUserID)
 	if appID == "" || appSecret == "" {
-		return fmt.Errorf("qq app_id/app_secret 不完整，请在 QQ 通知渠道或系统设置「QQ 连接器」中配置")
+		return fmt.Errorf("qq app_id/app_secret 不完整，请在 QQ 通知渠道或「连接器」页的 QQ 机器人连接器中配置")
 	}
 	// userOpenID 是平台分配的单聊目标标识；不同 AppID 拿到的 openid 不同。
 	userOpenID := strOr(cfg, "user_openid", "")

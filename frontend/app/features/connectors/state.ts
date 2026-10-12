@@ -1,6 +1,8 @@
 import { Bell,Mail,MessageCircle,Send as Telegram,Webhook } from 'lucide-react';
 import { buildEmailChannelConfig,enableCustomSMTP,normalizeEmailChannelConfig } from '../../../notificationEmailConfig';
 import type { NotificationChannel,NotificationChannelType,NotificationEventType,SystemSettings } from './api';
+import type { ConnectorMeta } from './registry';
+import { connectorSettingsKeys } from './registry';
 import type { NotificationChannelMeta,NotificationEventMeta,NotificationForm,NotificationPayload } from './types';
 import { normalizeNotificationEventTypes } from './models';
 
@@ -154,3 +156,31 @@ export const isCurrentNotificationRequest = (generation: number, currentGenerati
 
 // notificationErrorMessage 将未知异常转换为用户可读的通知错误。
 export const notificationErrorMessage = (error: unknown, fallback: string): string => error instanceof Error && error.message ? error.message : fallback;
+
+// connectorReady 判断连接器草稿是否已具备全部必需凭据：非敏感字段要求非空，敏感字段要求服务端已配置或本次新填。
+export const connectorReady = (connector: ConnectorMeta, settings: SystemSettings): boolean => connector.fields
+  .filter(/* requiredFilter 只保留参与就绪判定的必需字段。 */ field => field.required === true)
+  .every(/* readinessPredicate 判断单个必需字段在草稿中是否已具备。 */ field => {
+    if (field.sensitive) {
+      // configured 表示服务端已保存该敏感值，草稿不回显明文时仍视为具备。
+      const configured = field.configuredKey ? settings[field.configuredKey] === true : false;
+      return configured || String(settings[field.key] ?? '').trim() !== '';
+    }
+    return String(settings[field.key] ?? '').trim() !== '';
+  });
+
+// buildConnectorSettings 从连接器草稿提取本次需要提交的系统设置键值；敏感键仅在本次显式输入时提交，避免加载后误清空服务端秘密。
+export const buildConnectorSettings = (connectors: ConnectorMeta[], settings: SystemSettings): Record<string, string | number | boolean> => {
+  // payload 保存按连接器注册表收窄后的提交字段，未登记键一律不下发。
+  const payload: Record<string, string | number | boolean> = {};
+  for (const /* descriptor 是当前待处理的连接器设置键定义。 */ descriptor of connectorSettingsKeys(connectors)) {
+    // hasDraftValue 表示草稿中是否显式存在该键；敏感键缺失该键时保持服务端原值。
+    const hasDraftValue = Object.prototype.hasOwnProperty.call(settings, descriptor.key);
+    if (descriptor.sensitive && !hasDraftValue) continue;
+    // value 是草稿中该键的当前值。
+    const value = settings[descriptor.key];
+    if (value === undefined || value === null) continue;
+    payload[descriptor.key] = descriptor.sensitive ? String(value) : (value as string | number | boolean);
+  }
+  return payload;
+};

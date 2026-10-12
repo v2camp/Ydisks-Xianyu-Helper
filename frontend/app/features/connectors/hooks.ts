@@ -1,12 +1,13 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import type { NotificationChannel,SystemSettings } from './api';
 import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
-import { buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
-import type { NotificationForm,NotificationState } from './types';
+import { connectorTypes } from './registry';
+import { buildConnectorSettings,buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
+import type { ConnectorsState,NotificationForm } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 
-// useNotifications 统一管理通知渠道、事件订阅和系统 SMTP 的异步状态。
-export const useNotifications = (isAdmin: boolean): NotificationState => {
+// useConnectors 统一管理连接器凭据、通知渠道、事件订阅和系统 SMTP 的异步状态。
+export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   // channels 保存当前用户可用的通知渠道。
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   // loading 表示通知渠道列表是否正在加载。
@@ -20,9 +21,13 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
   // testingId 保存当前正在测试发送的渠道 ID。
   const [testingId, setTestingId] = useState('');
   // toast 保存当前短暂操作提示。
-  const [toast, setToast] = useState<NotificationState['toast']>(null);
+  const [toast, setToast] = useState<ConnectorsState['toast']>(null);
   // smtp 保存系统级邮件发送配置。
   const [smtp, setSmtp] = useState<SystemSettings>({});
+  // connectorSettings 保存连接器凭据与能力开关的系统配置草稿，与 SMTP 草稿分开以免互相提交。
+  const [connectorSettings, setConnectorSettings] = useState<SystemSettings>({});
+  // connectorSaving 表示连接器配置保存是否正在执行。
+  const [connectorSaving, setConnectorSaving] = useState(false);
   // smtpSaving 表示系统 SMTP 保存是否正在执行。
   const [smtpSaving, setSmtpSaving] = useState(false);
   // showSmtpPassword 控制系统 SMTP 密码是否明文显示。
@@ -39,6 +44,10 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
   const smtpGeneration = useRef(0);
   // smtpAbort 保存当前 SMTP 设置请求的取消控制器。
   const smtpAbort = useRef<AbortController | null>(null);
+  // connectorGeneration 隔离连接器保存动作的旧响应，不与 SMTP 保存共用代次。
+  const connectorGeneration = useRef(0);
+  // connectorAbort 保存当前连接器保存请求的取消控制器。
+  const connectorAbort = useRef<AbortController | null>(null);
   // actionGeneration 隔离保存、删除和测试动作的旧响应。
   const actionGeneration = useRef(0);
   // actionAbort 保存当前渠道变更动作的取消控制器。
@@ -53,7 +62,7 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
   // showToast 展示短暂提示并清理上一条提示的定时器。
   const showToast = useCallback(
     // 提示回调写入提示状态并安排自动清理。
-    (type: NonNullable<NotificationState['toast']>['type'], text: string) => {
+    (type: NonNullable<ConnectorsState['toast']>['type'], text: string) => {
     setToast({ type, text });
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(
@@ -106,9 +115,12 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
     const controller = new AbortController();
     smtpAbort.current = controller;
     try {
-      // settings 是系统 SMTP 配置快照。
+      // settings 是系统 SMTP 与连接器共用的系统设置快照。
       const settings = await getSystemSettings({ signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) setSmtp(settings || {});
+      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) {
+        setSmtp(settings || {});
+        setConnectorSettings(settings || {});
+      }
     } catch (error: unknown /* SMTP 加载异常 */) {
       if (isCurrentNotificationRequest(generation, smtpGeneration.current) && !controller.signal.aborted) {
         console.error('加载 SMTP 配置失败', error);
@@ -127,7 +139,10 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
       } else {
         smtpGeneration.current += 1;
         smtpAbort.current?.abort();
+        connectorGeneration.current += 1;
+        connectorAbort.current?.abort();
         setSmtp({});
+        setConnectorSettings({});
       }
       return (
         // 通知数据清理回调取消渠道和 SMTP 请求。
@@ -136,6 +151,8 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
           channelAbort.current?.abort();
           smtpGeneration.current += 1;
           smtpAbort.current?.abort();
+          connectorGeneration.current += 1;
+          connectorAbort.current?.abort();
           editorGeneration.current += 1;
           editorAbort.current?.abort();
         }
@@ -379,10 +396,38 @@ export const useNotifications = (isAdmin: boolean): NotificationState => {
     [showToast, smtp],
   );
 
+  // handleSaveConnector 保存连接器配置：仅提交注册表登记的键，敏感键由传输层转成三态命令。
+  const handleSaveConnector = useCallback(
+    // 连接器保存回调提交当前连接器草稿。
+    async () => {
+    // generation 标记当前连接器保存动作的代次。
+    const generation = ++connectorGeneration.current;
+    connectorAbort.current?.abort();
+    // controller 允许重复保存时取消上一轮请求。
+    const controller = new AbortController();
+    connectorAbort.current = controller;
+    setConnectorSaving(true);
+    try {
+      // payload 是按连接器注册表收窄后的系统设置提交字段。
+      const payload = buildConnectorSettings(connectorTypes, connectorSettings);
+      await updateSystemSettings(payload, { signal: controller.signal });
+      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) showToast('success', '连接器配置已保存');
+    } catch (error: unknown /* 连接器保存异常 */) {
+      if (isCurrentNotificationRequest(generation, connectorGeneration.current) && !controller.signal.aborted) {
+        showToast('error', notificationErrorMessage(error, '保存失败'));
+      }
+    } finally {
+      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) setConnectorSaving(false);
+    }
+    },
+    [connectorSettings, showToast],
+  );
+
   return {
     channels, loading, showModal, editing, saving, testingId, toast, smtp, smtpSaving,
-    showSmtpPassword, showChannelSmtpPassword, form, setForm, setSmtp, setShowSmtpPassword,
+    connectorSettings, connectorSaving,
+    showSmtpPassword, showChannelSmtpPassword, form, setForm, setSmtp, setConnectorSettings, setShowSmtpPassword,
     setShowChannelSmtpPassword, loadChannels, openCreate, openEdit, closeModal, showToast,
-    handleSave, handleDelete, handleToggleEnabled, handleTest, handleSaveSmtp,
+    handleSave, handleDelete, handleToggleEnabled, handleTest, handleSaveSmtp, handleSaveConnector,
   };
 };

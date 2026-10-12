@@ -131,7 +131,7 @@ const AgentCenter: React.FC = () => {
         </div>
       </section>
 
-      {/* 运营 Agent：启用前提是 QQ 机器人凭据已配置，配置项就地留在 QQ 连接器卡片，本页只作指引。 */}
+      {/* 运营 Agent：启用前提是 QQ 机器人凭据已配置，配置项就地留在「连接器」页的 QQ 机器人卡片，本页只作指引。 */}
       <section className="space-y-4">
         <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-violet-500 text-white">
@@ -142,7 +142,7 @@ const AgentCenter: React.FC = () => {
         <div className="ios-card rounded-xl p-6 bg-white space-y-3">
           <p className="text-sm leading-6 text-gray-700">
             运营 Agent 走 QQ 通道，由管理员在 QQ 里直接下发指令，它的启用前提是 QQ 机器人凭据已经配置好。
-            因此开关与命令发送者白名单留在「系统设置」页的 QQ 机器人连接器卡片里，不迁到本页。
+            因此开关与命令发送者白名单留在「连接器」页的 QQ 机器人连接器卡片里，不迁到本页。
           </p>
           <p className="text-xs leading-5 text-gray-500">
             放在一起会出现「在 Agent 中心打开了、却因为 QQ 没配好而毫无反应」的困惑。

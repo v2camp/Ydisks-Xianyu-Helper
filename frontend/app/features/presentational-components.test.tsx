@@ -1,12 +1,12 @@
 import ReactDOMServer from 'react-dom/server';
 import { describe,expect,test } from 'vitest';
-import type { NotificationChannel } from './notifications/api';
+import type { NotificationChannel } from './connectors/api';
 import type { SystemSettings } from './settings/api';
 import { CardIcon } from './cards/components/CardIcon';
 import { BatchPhaseIndicator } from './items/components/BatchPhaseIndicator';
-import { NotificationChannelList } from './notifications/components/NotificationChannelList';
-import { NotificationEventSelector } from './notifications/components/NotificationEventSelector';
-import { NotificationSmtpSettings } from './notifications/components/NotificationSmtpSettings';
+import { NotificationChannelList } from './connectors/components/NotificationChannelList';
+import { NotificationEventSelector } from './connectors/components/NotificationEventSelector';
+import { NotificationSmtpSettings } from './connectors/components/NotificationSmtpSettings';
 import { OrderFilterBar } from './orders/components/OrderFilterBar';
 import type { AutomationRunIssue,DeferredAutomationIssue } from './rules/api';
 import { AutomationIssuePanel } from './rules/components/AutomationIssuePanel';
