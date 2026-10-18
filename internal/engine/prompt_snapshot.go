@@ -165,7 +165,7 @@ func (a *AIReplierImpl) ExportPromptSnapshot(ctx context.Context, m ChatMessage)
 		snap.Warnings = append(snap.Warnings, "读取语料配置失败: "+err.Error())
 	}
 	// live 是动态注入数据（在售列表、库存摘要、发货线索），实现内部已对查询失败降级为空。
-	live := a.loadLiveKnowledge(ctx, m.ItemID)
+	live := a.loadLiveKnowledge(ctx, m.ChatID, m.ItemID)
 	if knowledge != nil {
 		snap.KnowledgeContext = knowledge.buildKnowledgeContext(m.Text, live)
 	}

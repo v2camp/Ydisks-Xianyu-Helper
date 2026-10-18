@@ -370,6 +370,10 @@ type AIDecisionRecord struct {
 
 // AddDecisionLog 写入一条接管决策归因记录。
 // 失败只影响可观测性，调用方须自行吞掉错误，不得让埋点失败阻断回复链路。
+//
+// 布尔列必须显式转 int：takeover / negative_hit / extra_hit 在两方言里都是 INTEGER，
+// SQLite 能接受 bool 自动转换，PostgreSQL 的 pgx 二进制编码会直接拒绝
+// （unable to encode bool into int4），导致归因表在线上一行都写不进去。
 func (a *AIReply) AddDecisionLog(ctx context.Context, rec AIDecisionRecord) error {
 	// intents 是命中意图的逗号拼接结果。
 	intents := strings.Join(rec.HitIntents, ",")
@@ -379,7 +383,7 @@ func (a *AIReply) AddDecisionLog(ctx context.Context, rec AIDecisionRecord) erro
 		(cookie_id,chat_id,item_id,message_hash,message_preview,takeover,hit_intents,negative_hit,extra_hit,intent_label,reason,config_fingerprint)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		rec.CookieID, rec.ChatID, rec.ItemID, rec.MessageHash, rec.MessagePreview,
-		rec.Takeover, intents, rec.NegativeHit, rec.ExtraHit,
+		boolToInt(rec.Takeover), intents, boolToInt(rec.NegativeHit), boolToInt(rec.ExtraHit),
 		rec.IntentLabel, rec.Reason, rec.ConfigFingerprint)
 	return err
 }
@@ -420,6 +424,7 @@ type AIGenerationRecord struct {
 
 // AddGenerationLog 写入一条生成归因记录。
 // 失败只影响可观测性，调用方须自行吞掉错误。
+// guarded 是 INTEGER 列，必须显式转 int，理由同 AddDecisionLog。
 func (a *AIReply) AddGenerationLog(ctx context.Context, rec AIGenerationRecord) error {
 	// err 是写入失败原因。
 	_, err := a.DB.ExecContext(ctx, `
@@ -427,7 +432,7 @@ func (a *AIReply) AddGenerationLog(ctx context.Context, rec AIGenerationRecord) 
 		(cookie_id,chat_id,item_id,message_hash,message_preview,answer_source,guarded,guard_reason,grounding_source,grounding_detail,model,prompt_hash,latency_ms,reply_preview)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		rec.CookieID, rec.ChatID, rec.ItemID, rec.MessageHash, rec.MessagePreview,
-		rec.AnswerSource, rec.Guarded, rec.GuardReason, rec.GroundingSource, rec.GroundingDetail,
+		rec.AnswerSource, boolToInt(rec.Guarded), rec.GuardReason, rec.GroundingSource, rec.GroundingDetail,
 		rec.Model, rec.PromptHash, rec.LatencyMS, rec.ReplyPreview)
 	return err
 }
