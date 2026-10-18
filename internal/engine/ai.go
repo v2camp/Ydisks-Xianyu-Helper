@@ -131,8 +131,8 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	if err != nil {
 		return nil, err
 	}
-	// live 是动态注入数据（在售列表/库存摘要/发货推断），查询失败已降级为空。
-	live := a.loadLiveKnowledge(ctx, m.ItemID)
+	// live 是动态注入数据（在售列表/库存摘要/商品事实/订单履约/发货推断），查询失败已降级为空。
+	live := a.loadLiveKnowledge(ctx, m.ChatID, m.ItemID)
 	// knowledgeCtx 是命中 FAQ 与在售清单拼装的知识上下文；非空时注入 system 让 AI 有据可答。
 	knowledgeCtx := knowledge.buildKnowledgeContext(m.Text, live)
 	if knowledgeCtx != "" {
@@ -140,6 +140,8 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	}
 	// 发货方式回答约束始终注入，防止模型声称全店统一渠道。
 	systemPrompt += "\n\n" + deliveryAnswerConstraint
+	// 履约类回答约束始终注入：订单事实存在时必须按事实答，不存在时不得反推买家未付款。
+	systemPrompt += "\n\n" + fulfillmentAnswerConstraint
 	// policy 是策略配置（报价/拒绝兜底话术），未配置时回落内置文案。
 	policy, err := a.loadPolicy(ctx)
 	if err != nil {
@@ -418,6 +420,8 @@ func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, er
 }
 
 // itemInfo 取商品标题/价格/描述。
+// 描述经过清洗：平台详情是 UI JSON（图片、标签、埋点参数），整段注入只会挤占
+// 提示词预算并误导模型；人工填写的描述保持原样。可引用的规格事实另走 ItemFacts 注入。
 func (a *AIReplierImpl) itemInfo(ctx context.Context, itemID string) (title string, price float64, desc string) {
 	// it、err 用于本次流程后续判断的it、err
 	it, err := a.store.Items.Get(ctx, a.cookieID, itemID)
@@ -429,13 +433,7 @@ func (a *AIReplierImpl) itemInfo(ctx context.Context, itemID string) (title stri
 		title = "未知商品"
 	}
 	price = parsePrice(it.ItemPrice)
-	desc = it.ItemDescription
-	if desc == "" {
-		desc = it.ItemDetail
-	}
-	if desc == "" {
-		desc = "暂无商品描述"
-	}
+	desc = sanitizeItemDescription(it.ItemDescription, it.ItemDetail)
 	return
 }
 

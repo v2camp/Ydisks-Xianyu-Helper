@@ -15,7 +15,7 @@
 | 2 | **离线是「配置」不是「代码」**：代码内置词表已扩充，但线上 `ai_scope_config` 仍是 10-10 报告记录的那版旧词表 | 线上 delivery 词表与 10-10 报告 4.2 节原文逐字一致；无 refund/spec/usage 三个意图 |
 | 3 | **归因表从部署起一行都没写进去**，导致两报告要求的「量化验收」根本无法执行 | `ai_decision_log` / `ai_generation_log` 均 0 行；日志中 20 条 `unable to encode false into binary format for int4` |
 | 4 | 把配置补齐后，**接管率 23.9% → 41.0%（+17.1 个百分点）且零回落** | 对近 7 天 117 条真实买家消息做新旧配置对照判定 |
-| 5 | 但**商品同步已停摆 7 天**，归属门禁把四条回复通道一起拦掉，配置收益会被它吃掉大半 | `item_info` 最新更新 10-11 15:23；近 48h 6 次 `令牌为空`；近 24h 4 次「商品不在本地清单，跳过自动回复」 |
+| 5 | 但**商品同步曾停摆 7 天**，归属门禁把四条回复通道一起拦掉，配置收益会被它吃掉大半（用户已于 10-18 手动恢复，见 §3.4） | `item_info` 曾停在 10-11 15:23；近 48h 6 次 `令牌为空`；近 24h 4 次「商品不在本地清单，跳过自动回复」 |
 
 ---
 
@@ -69,9 +69,14 @@ item_info：27 个在售商品，21 个经自动化规则绑定到带渠道的�
 
 最后一行是隐形杀手：即使 `DeliveryHint` 置顶并声明优先，同一次注入里仍有一段被标为「必须以此为据」的相反指引，模型会在两者间摇摆。
 
-### 3.4 比配置更前置的阻断点：商品同步已停摆 7 天
+### 3.4 比配置更前置的阻断点：商品同步曾停摆 7 天
 
 本节是本次核对中最重要的发现，它把「配置对齐」的收益上限压低了。
+**状态更新（10-18 16:02）**：用户已手动触发同步，账号 `213683525` 同步 6 条、删除 2 条，
+`item_info` 更新至 10-18 08:02；账号 `11873716` 远端仍返回 0 条商品，
+由 `deleteGuardReason` 保护逻辑拦住未误删。因此该账号的商品事实仍不完整。
+
+以下是停摆期间的取证，保留作为机制说明：
 
 | 观测 | 值 |
 |---|---|
@@ -109,11 +114,11 @@ err="failed to encode args[5]: unable to encode false into binary format for int
 |---|---|---|---|---|
 | **P-1** | 恢复商品同步（mtop 令牌失效） | 解锁归属门禁、每日擦亮、AI 回复、关键词回复四条通道；否则下方 P0 全部打折 | 需重新登录账号刷新令牌，或修同步链路令牌刷新 | **阻断中** |
 | **P0** | 修复归因表在 PostgreSQL 下的布尔写入 | 恢复全部可观测性；无它则后续优化无法验收 | 4 行 + 1 条跨方言回归 | **已实施** |
-| **P0** | 线上三层配置对齐（意图补齐 + 词表扩充 + 负向收窄 + FAQ 文案） | **接管率 +17.1pp，零回落**，配置热生效无需重启 | 一次配置写入 | **待批准** |
+| **P0** | 线上三层配置对齐（意图补齐 + 词表扩充 + 负向收窄 + FAQ 文案） | **接管率 +17.1pp，零回落**，配置热生效无需重启 | 一次配置写入 | **已执行（生产）** |
 | **P1** | 负向词只收退款动作表达，解开售前咨询死锁 | refund 意图从「永不可达」变为可用 | 常量改写 + 2 条护栏测试 | **已实施** |
-| **P2** | 商品规格事实源（集数 / 册数 / 版本） | 消除「说不准」与「自信断言」自相矛盾 | 需规格抽取 + 注入，约 1~2 天 | 未做 |
-| **P3** | 链接失效 / 提取码核对 / 重发的确定性应答 | `link-code` 为最高频售后诉求 | 需引入订单履约只读端口 | 未做 |
-| **P4** | 履约状态查询（付款未收到 / 重发） | 闭环「付款—发货—查收」 | 能力扩展，1~2 天 | 未做 |
+| **P2** | 商品事实清洗 + 规格事实抽取 | 移除 26/26 商品的平台 JSON 噪音；标题规格变成可直答事实 | 新增 1 文件 + 抽取规则 + 测试 | **已实施** |
+| **P3** | 链接 / 提取码 / 付款未收到 的确定性应答 | 最高频售后诉求从「转人工」变为按订单事实作答 | 配置意图 + FAQ + 复用 P4 事实 | **已实施** |
+| **P4** | 订单履约状态按会话注入 | 回答「发了没有 / 什么时候发的」有确定依据 | 1 个只读查询 + 事实文案 + 双方言测试 | **已实施** |
 | **不做** | 新建 `item_delivery_channel` 表 + 历史链接反向抽取 | 已被卡券渠道覆盖 | —— | **建议放弃** |
 
 ### 4.1 为什么「配置对齐」能排到 P0
@@ -173,23 +178,77 @@ err="failed to encode args[5]: unable to encode false into binary format for int
 护栏：`internal/engine/escalation_guard_test.go` 新增 `TestRefundConsultationReachesAI`，
 同时锁两个方向——售前咨询必须由 `refund` 接管，售后动作必须拦截。
 
-### 5.3 验证证据
+### 5.3 P2：商品事实清洗与规格抽取
+
+取证发现：**26/26 商品的 `item_description` 为空，26/26 的 `item_detail` 是平台 UI JSON**
+（图片地址、标签样式、埋点参数）。原 `itemInfo()` 把 `item_detail` 当「商品描述」整段注入
+system prompt——每次请求都在为图片 URL 付 token，还要求模型从中读出「几季几集」。
+
+改为两条确定性动作：
+
+1. **描述清洗**（`sanitizeItemDescription`）：人工文案原样保留；平台 JSON 降级为中性描述；
+   普通文本详情照旧使用。JSON 的任一开头形态都不得进入提示词。
+2. **规格事实抽取**（`extractItemSpecFacts`）：从标题抽「1-4 季（共 4 季）」「全 8 册」「47 集」，
+   以「本商品确定事实」注入，并明确「可直接回答，无需再说以详情为准」。
+   另有 `extractTradePostInfo` 只承认平台明确写出的 包邮 / 不包邮 / 仅自提 三种取值。
+
+抽取规则被测试抓到一次真实误判：`1-4 季全集` 曾被计数规则当成「4 季全」抽出矛盾的第二个规格。
+修复方式是先抹掉区间匹配再跑全量与计数规则。
+
+### 5.4 P4 + P3：订单履约事实与链接类应答
+
+`orders` 表自带 `chat_id`，这是订单与会话的天然关联键，不需要靠买家昵称推断，
+因此不存在把别人订单答给当前买家的串单风险。
+
+- 新增 `Orders.FindLatestForFulfillment`：**不限订单状态**取最近一笔。
+  与既有的 `FindLatestOpenByChat` 关键差别是保留已发货与已完结订单——
+  只查未终结状态会把「已经发过」误判成「查不到订单」，进而产生错误承诺。
+- 履约状态判定：本地 `system_shipped` 优先于平台状态文本；状态缺失但有发货时间仍判为已发货。
+- 无订单时**不注入**任何事实（买家可能付的是别的商品，凭空说「没有订单」会误导），
+  并配 `fulfillmentAnswerConstraint` 禁止反推买家未付款、禁止推测物流单号、禁止承诺补偿。
+
+P3 在配置层落地：新增 `fulfillment` 意图（没收到 / 链接失效 / 提取码不对 / 重发 / 发货了），
+并补一条「链接与提取码」FAQ。**刻意不做自动重发凭证**：卡密正文属敏感数据，
+按会话自动回发一旦映射错位就是凭证泄漏，改由话术引导 + 必要时转人工。
+
+### 5.5 验证证据
 
 | 项 | 命令 | 结果 |
 |---|---|---|
-| 静态检查 | `go vet ./internal/db/ ./internal/engine/` | 通过 |
-| 引擎测试 | `go test ./internal/engine/... -count=1` | ok（52.6s） |
-| 数据库测试 | `go test ./internal/db/ -count=1` | ok（44.3s） |
-| 跨方言回归 | `REQUIRE_MULTIDB=1 go test ./internal/db/ -run TestMultiDB_AIAttribution` | sqlite + postgres 均 PASS |
+| 静态检查 | `go vet ./...` | 通过 |
+| 引擎测试 | `go test ./internal/engine/... -count=1` | ok（51.8s） |
+| 数据库测试 | `go test ./internal/db/ -count=1` | ok（47.1s） |
+| 跨方言回归 | `REQUIRE_MULTIDB=1 go test ./internal/db/ -run 'TestMultiDB_AIAttribution\|TestMultiDB_FindLatestForFulfillment'` | sqlite + postgres 均 PASS |
 | 注释门禁 | `go run ./tools/commentlint -mode check -root .` | 通过 |
+| 配置表达式 | 逐条 `aimatch.Compile` 8 个意图 | 全部可编译，无静默跳过 |
 
 ---
 
-## 六、待批准：线上配置对齐
+## 六、已执行：线上配置对齐
 
-属于生产数据变更，需要确认后执行。改动只落在 `system_settings` 两个键，不涉及表结构与代码，可秒级回滚。
+**执行状态**：已于 2026-10-18 写入生产 `system_settings`，备份表 `system_settings_bak_20261018`（2 行）。
+配置读取无缓存（`SystemSettings.Get` 直查），改动即时生效，无需重启。
 
-### 6.1 目标 `ai_scope_config`
+回读校验：
+
+```
+意图数=8
+意图=[bargain,product_qa,delivery,stock,refund,spec,usage,fulfillment]
+FAQ数=6
+发货FAQ=具体网盘以该商品实际发货为准；拍下付款后按该商品方式发货，可能是网盘链接、资源码，或先发资源码后发链接。
+```
+
+回滚（秒级，两条 UPDATE）：
+
+```sql
+UPDATE system_settings SET value=(SELECT value FROM system_settings_bak_20261018 WHERE key='ai_scope_config')    WHERE key='ai_scope_config';
+UPDATE system_settings SET value=(SELECT value FROM system_settings_bak_20261018 WHERE key='ai_knowledge_config') WHERE key='ai_knowledge_config';
+```
+
+写入前对 8 个意图逐条跑 `aimatch.Compile`，确认无语法错误——
+非法表达式会被 `loadScope` 静默跳过，必须在写入前拦住。
+
+### 6.1 实际写入的 `ai_scope_config`
 
 ```json
 {
@@ -207,7 +266,9 @@ err="failed to encode args[5]: unable to encode false into binary format for int
     {"id": "spec", "enabled": true, "ai": true,
      "match": "几本|全册|第几册|上册|下册|套装|版本|新版|规格|大班|中班|小班|教材|尺寸|颜色"},
     {"id": "usage", "enabled": true, "ai": true,
-     "match": "可以用吗|能用吗|支持吗|可以用|有效期|时间限制|到期|会员|试看|试一下|点读笔"}
+     "match": "可以用吗|能用吗|支持吗|可以用|有效期|时间限制|到期|会员|试看|试一下|点读笔"},
+    {"id": "fulfillment", "enabled": true, "ai": true,
+     "match": "没收到|未收到|收不到|没发|没有发货|还没发|发货了|发了吗|发没发|链接失效|链接打不开|打不开|提取码不对|提取码错误|提取码无效|失效了|重发|再发一次|再发一遍|已经付款|付过款"}
   ],
   "negative": ""
 }
@@ -216,39 +277,32 @@ err="failed to encode args[5]: unable to encode false into binary format for int
 `negative` 故意留空：让内置词表（已收窄）始终生效，未来内置更新不必再改配置。
 `spec` / `usage` 放 `ai: true` 是有意的——回测里这两类各只有 1 条，接管后由禁止编造清单兜住，风险低于继续沉默不答。
 
-### 6.2 目标 FAQ「发货」条目
+### 6.2 FAQ 改写结果
 
-把
-
-> 不同商品发货方式不同，请以商品详情页说明为准；拍下付款后按该商品方式发货，可能是网盘链接、资源码，或先发资源码后发链接。
-
-改为
+原「发货」条目把「请以商品详情页说明为准」写进了被标为「必须以此为据」的知识段，
+与商品级确定渠道直接冲突，是 2026-10-11 那次「答非所问」的残留。已改为：
 
 > 具体网盘以该商品实际发货为准；拍下付款后按该商品方式发货，可能是网盘链接、资源码，或先发资源码后发链接。
 
-删掉与商品级确定渠道冲突的那半句，其余保留。其余 4 条 FAQ（资源码 / 退款 / 更新 / 赠送）不动。
+另新增第 6 条「链接与提取码」FAQ（对应 P3），内容只写可核对的通用建议，
+**不承诺链接有效期**——那属于无法验证的事实，写进去就是给模型递编造材料。
+其余 4 条 FAQ（资源码 / 退款 / 更新 / 赠送）未改动。
 
-### 6.3 执行与回滚
+### 6.3 生效条件
 
-```bash
-# 1. 备份现值（务必先执行）
-docker exec ydisks-xianyu-helper-postgres-1 psql -U xianyu -d xianyu -c \
-  "CREATE TABLE IF NOT EXISTS system_settings_bak_20261018 AS
-   SELECT * FROM system_settings WHERE key IN ('ai_scope_config','ai_knowledge_config');"
+配置已即时生效，但**代码侧改动需要重新构建镜像并重启容器**才生效
+（当前运行镜像构建于 10-12 15:06，不含本轮任何代码变更）：
 
-# 2. 写入新配置（用上文 JSON，注意 SQL 内单引号需双写）
-#    建议通过 Web UI「AI 客服 → 边界/语料」粘贴保存，走既有校验与审计链路
+| 改动 | 是否需重启 |
+|---|---|
+| 配置对齐（意图 / FAQ） | 不需要，直查生效 |
+| 归因表写入修复 | 需要 |
+| 负向词收窄 | 需要 |
+| 商品事实清洗 / 规格抽取 | 需要 |
+| 订单履约事实 | 需要 |
 
-# 3. 观察 10 分钟后核对归因分布（修复镜像上线后才有数）
-#    reason: taken 占比应上升；hit_intents 中 delivery/stock 应显著变多
-```
-
-回滚：`UPDATE system_settings SET value=(SELECT value FROM system_settings_bak_20261018 WHERE key='ai_scope_config') WHERE key='ai_scope_config';`
-
-### 6.4 前置条件
-
-归因修复要**重新构建镜像并重启容器**才生效（当前镜像构建于 10-12 15:06，不含本次改动）。
-建议顺序：先发镜像 → 再改配置 → 用 `ai_decision_log` 对比改前改后的 `reason` 分布，形成闭环证据。
+也就是说：**在镜像发布前，本轮只兑现了「意图覆盖率」这一项收益**，
+负向词死锁与归因能力仍停留在旧二进制上。
 
 ---
 
@@ -265,13 +319,19 @@ docker exec ydisks-xianyu-helper-postgres-1 psql -U xianyu -d xianyu -c \
 
 ## 八、下一步建议
 
-1. **先恢复商品同步**（§3.4）。这是唯一能同时解锁归属门禁、擦亮与四条回复通道的动作，
-   在它修复前，任何意图或提示词优化的实测收益都会被门禁稀释。
-2. 批准配置对齐（§6），与镜像发布同批执行。
-3. 发布后 24 小时，用 `docs/attribution-queries.md` 的 SQL 出第一份真实 `answer_source` / `grounding_source` 分布，作为「事实源是否真正替换文本规则」的判据。
-4. 若 `grounding_source` 仍大量落在 `item-text`，说明卡券渠道未绑定到对应自动化规则，再针对性补规则——而不是继续调提示词。
-5. 规格事实源（P2）在拿到归因数据后再排期，避免在无法测量的情况下改动。
-6. 给商品同步失败加持续告警：当前只有 ERROR 日志，停摆 7 天无人发现，这是比任何单点 bug 都贵的过程缺口。
+1. **发布镜像**：本轮代码改动（归因修复、负向词、商品事实、订单履约）全部需要新镜像才生效。
+   商品同步用户已于 10-18 手动恢复，阻断点已解除，但 `item_info` 目前 26 条、
+   账号 11873716 远端仍返回 0 条（保护逻辑已阻止误删），该账号商品事实仍不完整。
+2. 发布后 24 小时，用 `docs/attribution-queries.md` 的 SQL 出第一份真实
+   `answer_source` / `grounding_source` 分布，作为「事实源是否真正替换文本规则」的判据。
+3. 若 `grounding_source` 仍大量落在 `item-text`，说明卡券渠道未绑定到对应自动化规则，
+   再针对性补规则——而不是继续调提示词。
+4. 用 `ai_decision_log` 对比发布前后的 `reason` 分布与 `hit_intents` 构成，
+   验证「接管率提升」是否真实发生，而不只是配置上写了。
+5. 给商品同步失败加持续告警：当前只有 ERROR 日志，停摆 7 天无人发现，
+   这是比任何单点 bug 都贵的过程缺口。
+6. 规格事实目前只覆盖「标题里写明的集数/册数」。若实测仍有大量规格类追问答不准，
+   再考虑从订单成交规格（`orders.spec_name/spec_value`）反推补全，而不是再抽平台 JSON。
 
 ---
 

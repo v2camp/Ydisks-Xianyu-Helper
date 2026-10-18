@@ -28,6 +28,12 @@ type liveKnowledge struct {
 	DeliverySource string
 	// DeliveryChannels 是识别出的渠道名列表，便于归因时核对具体渠道。
 	DeliveryChannels []string
+	// ItemFacts 是商品标题中可直接引用的规格事实（集数/册数/运费标注）；空表示无可抽取事实。
+	// 它与商品标题的差别在于「被显式声明为事实」：标题里的规格混在营销文案中，
+	// 模型时常看到却不敢用，导致同一商品出现「说不准」与「就是34集」两种相反回答。
+	ItemFacts []string
+	// OrderFact 是当前会话在本商品的履约事实说明；空表示无订单或状态不可判定，不注入。
+	OrderFact string
 }
 
 // 发货渠道来源简码。区分「事实」与「文本规则」是本项目的核心归因维度：
@@ -65,11 +71,22 @@ const deliveryHintAuthoritativeFormat = "【该商品确定发货方式】%s。"
 	"以上是该商品的确定事实，优先于店铺通用说明与商品描述；买家问到网盘或发货方式时必须直接回答，" +
 	"不得回答「以商品详情为准」或「以发货消息为准」。"
 
+// fulfillmentAnswerConstraint 是回答付款与发货进度类问题时必须写入 prompt 的系统约束。
+// 与 deliveryAnswerConstraint 分工：后者管「发什么渠道」，本约束管「发了没有、发过没有」。
+// 「不得反推未付款」是硬要求：无订单记录的原因可能是同步延迟或买家付的是别的商品，
+// 由机器断言买家未付款既是事实错误，也容易激化纠纷。
+const fulfillmentAnswerConstraint = "回答付款、发货进度、链接失效、提取码类问题时：提示词给出本会话订单事实时，必须按该事实回答，不得改口说「以发货消息为准」；没有订单事实时，不得断言买家未付款或未下单，应请其确认订单状态或转人工核实。禁止推测物流单号，禁止承诺补偿金额或具体发出时间。"
+
 // liveCatalogInstruction 是动态在售列表的注入指令文案。
 const liveCatalogInstruction = "本店在售列表（买家问有没有/单买/第几季时依此回答，不在列表的回答暂时没有）"
 
 // liveStockInstruction 是卡密库存摘要的注入指令文案。
 const liveStockInstruction = "库存参考（仅用于回答“还有货吗”类问题）"
+
+// liveItemFactInstruction 是商品规格事实的注入指令文案。
+// 「可直接回答」一句不可省略：标题里的规格混在营销文案中，不显式声明为事实时
+// 模型会退回「以商品详情为准」的回避回答（2026-10-17 复盘问题 B）。
+const liveItemFactInstruction = "本商品确定事实（来自商品标题与平台标注，可直接回答，无需再说以详情为准）"
 
 // deliveryChannelKeywords 是发货渠道关键词到展示名的映射（按优先级去重）。
 // 展示名用于提示词，与平台私聊敏感词解耦。
@@ -95,9 +112,10 @@ var deliveryStepwisePatterns = []string{
 	"稍后发码", "稍后发资源码", "稍后发链接", "分步发送",
 }
 
-// loadLiveKnowledge 汇总动态在售列表、库存摘要与发货推断。
+// loadLiveKnowledge 汇总动态在售列表、库存摘要、商品事实、订单履约与发货推断。
+// chatID 用于关联订单（orders.chat_id 是订单与会话的天然关联键）；itemID 用于串单防线。
 // 任一查询失败只跳过对应段落并记 Debug，返回值始终可用于拼装提示词。
-func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, itemID string) liveKnowledge {
+func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, chatID, itemID string) liveKnowledge {
 	// live 是本次动态注入数据的累积结果。
 	var live liveKnowledge
 	// catalogLines、err 是动态在售列表查询结果；失败降级为不注入，不阻断回复。
@@ -112,6 +130,14 @@ func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, itemID string) li
 	} else {
 		live.StockLines = stockLines
 	}
+	// 商品事实来自标题与平台详情；查询失败时保持为空，不阻断回复。
+	live.ItemFacts = a.loadItemFacts(ctx, itemID)
+	// orderFact、err 是当前会话的履约事实；失败降级为不注入。
+	if orderFact, err := a.loadOrderFulfillment(ctx, chatID, itemID); err != nil {
+		a.logger.Debug("订单履约事实查询失败，降级为不注入", "err", err)
+	} else {
+		live.OrderFact = orderFact
+	}
 	// inference、err 是发货方式推断结果及其来源；失败降级为不注入。
 	if inference, err := a.inferDeliveryProvenance(ctx, itemID); err != nil {
 		a.logger.Debug("发货方式推断查询失败，降级为不注入", "err", err)
@@ -121,6 +147,46 @@ func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, itemID string) li
 		live.DeliveryChannels = inference.Channels
 	}
 	return live
+}
+
+// loadItemFacts 汇总商品标题中的规格事实与平台运费标注。
+// 商品不存在或没有可抽取内容时返回 nil；查询错误只记 Debug，按无事实处理。
+func (a *AIReplierImpl) loadItemFacts(ctx context.Context, itemID string) []string {
+	// item、err 是当前商品记录；缺失时没有可抽取的标题。
+	item, err := a.store.Items.Get(ctx, a.cookieID, itemID)
+	if err != nil {
+		if !errors.Is(err, db.ErrNotFound) {
+			a.logger.Debug("商品事实查询失败，降级为不注入", "err", err)
+		}
+		return nil
+	}
+	if item == nil {
+		return nil
+	}
+	// facts 是标题中抽取到的规格事实。
+	facts := extractItemSpecFacts(item.ItemTitle)
+	// 平台运费标注同样属于确定事实，存在时并入事实列表。
+	if postInfo := extractTradePostInfo(item.ItemDetail); postInfo != "" {
+		facts = append(facts, "平台标注运费信息："+postInfo)
+	}
+	if len(facts) == 0 {
+		return nil
+	}
+	return facts
+}
+
+// loadOrderFulfillment 查询当前会话在本商品的最近订单并整理成履约事实。
+// 无订单时返回空串：买家可能付的是别的商品，凭空给出「没有订单」会误导回复。
+func (a *AIReplierImpl) loadOrderFulfillment(ctx context.Context, chatID, itemID string) (string, error) {
+	// order、err 是最近一笔订单；nil 表示该会话在本商品没有成交记录。
+	order, err := a.store.Orders.FindLatestForFulfillment(ctx, a.cookieID, chatID, itemID)
+	if err != nil {
+		return "", err
+	}
+	if order == nil {
+		return "", nil
+	}
+	return formatOrderFulfillment(order), nil
 }
 
 // loadLiveCatalogLines 查询当前账号在售商品并格式化为「- 标题（价格）」行。

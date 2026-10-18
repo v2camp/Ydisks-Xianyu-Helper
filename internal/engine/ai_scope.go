@@ -323,6 +323,14 @@ func (k *aiKnowledgeConfig) buildKnowledgeContext(text string, live liveKnowledg
 	if live.DeliveryHint != "" {
 		parts = append(parts, live.DeliveryHint)
 	}
+	// 商品规格事实与发货推断同级：都是该商品的确定事实，必须早于知识库通用话术。
+	if len(live.ItemFacts) > 0 {
+		parts = append(parts, liveItemFactInstruction+"：\n- "+strings.Join(live.ItemFacts, "\n- "))
+	}
+	// 订单履约事实仅在该会话确实有订单且状态可判定时注入。
+	if live.OrderFact != "" {
+		parts = append(parts, orderFactInstruction+"：\n"+live.OrderFact)
+	}
 	// faqHits 是当前文本命中的 FAQ 条目。
 	faqHits := k.matchedFAQ(text, 3)
 	if len(faqHits) > 0 {

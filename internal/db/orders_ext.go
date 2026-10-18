@@ -202,6 +202,41 @@ func (o *Orders) FindLatestOpenByChat(ctx context.Context, cookieID, chatID, buy
 	return o.findLatestByChat(ctx, cookieID, chatID, buyerID, itemID, orderStatusesOpen)
 }
 
+// FindLatestForFulfillment 按账号与会话查找最近一笔订单，不限订单状态。
+//
+// 与 FindLatestOpenByChat 的差别是刻意保留已发货与已完结订单：
+// AI 回答「付款了没收到 / 链接失效 / 提取码不对」时需要的是**履约事实**，
+// 只查未终结状态会把「已经发过」误判成「查不到订单」，进而产生错误承诺。
+// itemID 非空时作为串单防线，避免同一会话内跨商品取错订单。
+func (o *Orders) FindLatestForFulfillment(ctx context.Context, cookieID, chatID, itemID string) (*Order, error) {
+	// sessionID、accountID 分别是去除协议后缀的会话标识与账号标识。
+	sessionID, accountID := strings.TrimSuffix(strings.TrimSpace(chatID), "@goofish"), strings.TrimSpace(cookieID)
+	if o == nil || o.DB == nil || sessionID == "" || accountID == "" {
+		return nil, nil
+	}
+	// where 保存跨数据库通用的订单筛选条件；会话同时匹配裸值与历史后缀值。
+	where := []string{"cookie_id=?", "chat_id IN (?,?)", "deleted_at IS NULL"}
+	// args 保存 where 条件绑定参数，顺序须与 where 一致。
+	args := []any{accountID, sessionID, sessionID + "@goofish"}
+	// productID 是可选的商品约束，防止同一会话内跨商品串单。
+	if productID := strings.TrimSpace(itemID); productID != "" {
+		where = append(where, "item_id=?")
+		args = append(args, productID)
+	}
+	// orderID 保存查询出的最近订单业务标识。
+	var orderID string
+	// query 按创建时间倒序取最近一笔订单：履约问题问的是「最近那次购买」。
+	query := `SELECT order_id FROM orders WHERE ` + strings.Join(where, " AND ") + ` ORDER BY created_at DESC, order_id DESC LIMIT 1`
+	// err 保存候选订单查询或扫描错误。
+	if err := o.DB.QueryRowContext(ctx, query, args...).Scan(&orderID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return o.Get(ctx, orderID)
+}
+
 // findLatestByChat 按账号、会话与状态集合查找最近一笔订单；buyerID、itemID 非空时作为串单防线。
 // 状态集合为空时安全返回空结果，避免退化为按账号扫描全表。
 func (o *Orders) findLatestByChat(ctx context.Context, cookieID, chatID, buyerID, itemID string, statuses []string) (*Order, error) {

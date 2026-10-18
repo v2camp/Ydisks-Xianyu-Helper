@@ -166,8 +166,8 @@ func TestLoadLiveKnowledgeQueryErrorDegrade(t *testing.T) {
 		t.Fatalf("关闭数据库失败: %v", err)
 	}
 	// live 是降级后的注入数据，应全部为空且不 panic。
-	live := a.loadLiveKnowledge(context.Background(), "item-x")
-	if len(live.CatalogLines) != 0 || len(live.StockLines) != 0 || live.DeliveryHint != "" {
+	live := a.loadLiveKnowledge(context.Background(), "chat-x", "item-x")
+	if len(live.CatalogLines) != 0 || len(live.StockLines) != 0 || live.DeliveryHint != "" || len(live.ItemFacts) != 0 || live.OrderFact != "" {
 		t.Fatalf("查询失败应降级为空: %+v", live)
 	}
 }
