@@ -1827,3 +1827,70 @@ func tableExistsForDialect(t *testing.T, db *sql.DB, dialect Dialect, table stri
 
 // boolPtr 封装boolPtr业务协调。
 func boolPtr(b bool) *bool { return &b }
+
+// TestMultiDB_AIAttributionBoolEncoding 验证归因表布尔列在两方言都能写入。
+//
+// 该回归对应一次生产事故：布尔值直接作为参数写入 INTEGER 列时，
+// SQLite 会自动转换，PostgreSQL 的 pgx 二进制编码拒绝，
+// 结果是线上归因表长期零行且只在 Debug 日志里可见。
+// 断言取值而非仅断言无错误，避免「写进去但存错」也算通过。
+func TestMultiDB_AIAttributionBoolEncoding(t *testing.T) {
+	// target 表示当前归因回归使用的数据库目标。
+	for _, target := range allTestTargets(t) {
+		// target 保存当前子测试闭包独占的数据库目标副本，避免循环变量复用。
+		target := target
+		t.Run(target.name, func(t *testing.T) {
+			defer target.cleanup()
+			// ctx 是本次归因写入的数据库上下文。
+			ctx := context.Background()
+			// suffix 是当前临时数据库内唯一的归因记录后缀。
+			suffix := fmt.Sprintf("%d", atomic.AddUint64(&multidbCounter, 1))
+
+			// decisionErr 保存接管决策归因的写入错误。
+			decisionErr := target.store.AIReply.AddDecisionLog(ctx, AIDecisionRecord{
+				CookieID: "cookie-" + suffix, ChatID: "chat-" + suffix, ItemID: "item-" + suffix,
+				MessageHash: "hash", MessagePreview: "有夸克吗",
+				Takeover: true, HitIntents: []string{"delivery"},
+				NegativeHit: true, ExtraHit: true, IntentLabel: "delivery",
+				Reason: "taken", ConfigFingerprint: "fp",
+			})
+			if decisionErr != nil {
+				t.Fatalf("AddDecisionLog: %v", decisionErr)
+			}
+			// takeover、negativeHit、extraHit 保存按整数列读回的三个布尔列。
+			var takeover, negativeHit, extraHit int
+			// scanErr 保存读回归因记录时的数据库错误。
+			if scanErr := target.store.DB.QueryRowContext(ctx,
+				`SELECT takeover, negative_hit, extra_hit FROM ai_decision_log WHERE chat_id=?`,
+				"chat-"+suffix).Scan(&takeover, &negativeHit, &extraHit); scanErr != nil {
+				t.Fatalf("读回决策归因: %v", scanErr)
+			}
+			if takeover != 1 || negativeHit != 1 || extraHit != 1 {
+				t.Fatalf("决策归因布尔列落库错误 takeover=%d negative=%d extra=%d", takeover, negativeHit, extraHit)
+			}
+
+			// generationErr 保存生成归因的写入错误。
+			generationErr := target.store.AIReply.AddGenerationLog(ctx, AIGenerationRecord{
+				CookieID: "cookie-" + suffix, ChatID: "chat-" + suffix, ItemID: "item-" + suffix,
+				MessageHash: "hash", MessagePreview: "有夸克吗",
+				AnswerSource: "policy-min-price", Guarded: true, GuardReason: "below-min",
+				GroundingSource: "card-channel", GroundingDetail: "百度网盘",
+				Model: "m", PromptHash: "p", LatencyMS: 12, ReplyPreview: "发百度网盘",
+			})
+			if generationErr != nil {
+				t.Fatalf("AddGenerationLog: %v", generationErr)
+			}
+			// guarded 保存按整数列读回的守卫标记。
+			var guarded int
+			// scanErr 保存读回归因记录时的数据库错误。
+			if scanErr := target.store.DB.QueryRowContext(ctx,
+				`SELECT guarded FROM ai_generation_log WHERE chat_id=?`,
+				"chat-"+suffix).Scan(&guarded); scanErr != nil {
+				t.Fatalf("读回生成归因: %v", scanErr)
+			}
+			if guarded != 1 {
+				t.Fatalf("生成归因布尔列落库错误 guarded=%d", guarded)
+			}
+		})
+	}
+}

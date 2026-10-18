@@ -60,3 +60,53 @@ func TestBuiltinComplaintDoesNotBlockNormalInquiry(t *testing.T) {
 		}
 	}
 }
+
+// TestRefundConsultationReachesAI 售前退款咨询必须进入 AI，售后动作仍交人工。
+//
+// 背景：负向判定先于意图判定执行，内置负向词表原先收录「退款」整词，
+// 于是 refund 意图（builtinRefundExpr）永远不可达——这是 2026-10-17 复盘的
+// 问题 F「负向词与售前咨询死锁」。修复方式是负向只收动作表达。
+func TestRefundConsultationReachesAI(t *testing.T) {
+	// negative 是内置负向词表的判定函数。
+	negative := compileSafe(builtinComplaintExpr)
+	// consult 是售前政策咨询，买家只是问规则，AI 可依 FAQ 回答。
+	consult := []string{
+		"能退款吗",
+		"可以退款吗",
+		"支持退款吗",
+		"退款政策是什么",
+		"不喜欢能退吗",
+	}
+	// phrase 是当前遍历到的售前咨询表达。
+	for _, phrase := range consult {
+		if negative(phrase) {
+			t.Errorf("售前退款咨询被负向词误杀: %q", phrase)
+			continue
+		}
+		// takeover、hits 是内置边界的判定结果。
+		takeover, hits := defaultScope.decide(phrase)
+		if !takeover || len(hits) == 0 || hits[0] != IntentRefund {
+			t.Errorf("售前退款咨询应由 %s 接管: %q takeover=%v hits=%v", IntentRefund, phrase, takeover, hits)
+		}
+	}
+	// action 是售后动作表达：买家已在要求退款，必须转人工。
+	action := []string{
+		"我要退款",
+		"申请退款",
+		"那我退款吧",
+		"退掉吧",
+		"辛苦退下款",
+		"退货怎么弄",
+	}
+	// phrase 是当前遍历到的售后动作表达。
+	for _, phrase := range action {
+		if !negative(phrase) {
+			t.Errorf("售后退款动作未被拦截: %q", phrase)
+			continue
+		}
+		// takeover 是内置边界对售后动作的判定结果。
+		if takeover, _ := defaultScope.decide(phrase); takeover {
+			t.Errorf("售后退款动作不得由 AI 接管: %q", phrase)
+		}
+	}
+}
