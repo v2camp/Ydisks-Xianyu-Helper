@@ -322,11 +322,16 @@ func (e *Endpoint) registerItemSyncTools(items capability.ItemPorts, accountArg 
 // items 是商品应用用例端口；accountArg 是必填账号参数；requireAccount 负责发布前归属复核。
 func (e *Endpoint) registerItemPublishTools(items capability.ItemPorts, accountArg ArgSpec,
 	requireAccount func(context.Context, *CallIdentity, string) error) {
+	// locationArg 是可选发货地对象入参。平台缺少发货地时无法定位行政区并直接拒绝发布，
+	// 因此发布类工具都接受同一套字段，避免调用方只能退回 Web 端补齐。
+	locationArg := ArgSpec{Name: "location", Type: ArgObject, Description: "发货地对象。" +
+		"必填 province（省）、city（市）、division_id（行政区划编码）、longitude、latitude（非 0）；" +
+		"可选 area（区县）、poi_id、poi_name。"}
 	e.RegisterTools(
 		ToolDef{
 			Name: "item_publish_single",
 			Description: "向平台发布单个商品（真实平台触达）。图片仅接受公网 HTTP(S) URL；" +
-				"不传类目时沿用自动推荐与电子资料兜底。必须显式 confirm=true。",
+				"不传类目时沿用自动推荐与电子资料兜底。平台要求发货地，缺失会被拒绝。必须显式 confirm=true。",
 			Destructive: true,
 			Args: []ArgSpec{
 				accountArg,
@@ -339,6 +344,7 @@ func (e *Endpoint) registerItemPublishTools(items capability.ItemPorts, accountA
 				{Name: "postage_cents", Type: ArgInteger, Description: "固定邮费，单位分（postage_mode=fixed 时使用）。"},
 				{Name: "image_urls", Type: ArgArray, ItemType: ArgString, Description: "商品图片公网 URL 数组。"},
 				{Name: "category_cat_id", Type: ArgString, Description: "指定闲鱼类目 CatID；不传走自动推荐。"},
+				locationArg,
 			},
 			Handler: e.makePublishHandler(items, requireAccount),
 		},
@@ -356,12 +362,13 @@ func (e *Endpoint) registerItemPublishTools(items capability.ItemPorts, accountA
 		ToolDef{
 			Name: "item_batch_create",
 			Description: "把批量发布 JSON 行预检通过后持久化为待发布批次，返回 batch_id（不自动开始发布）。" +
-				"图片只接受公网 URL。",
+				"图片只接受公网 URL；location 为整批统一发货地，缺发布时平台会拒绝。",
 			Args: []ArgSpec{
 				{Name: "default_account_id", Type: ArgString, Description: "默认发布账号。"},
 				{Name: "rows", Type: ArgArray, Required: true, Description: "批量发布行对象数组。"},
 				{Name: "publish_interval_seconds", Type: ArgInteger, Description: "相邻发布请求最小间隔秒数。"},
 				{Name: "filename", Type: ArgString, Description: "来源名称标记，便于审计识别。"},
+				locationArg,
 			},
 			Handler: e.makeBatchCreateHandler(items),
 		},

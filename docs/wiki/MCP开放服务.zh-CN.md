@@ -111,9 +111,9 @@
 | `item_sync_all` | 破坏性；全量平台同步 |
 | `item_sync_page` | 破坏性；分页平台同步 |
 | `item_category_recommend` | 只读；发布类目推荐 |
-| `item_publish_single` | 破坏性；单商品发布 |
+| `item_publish_single` | 破坏性；单商品发布（可传 `location` 发货地） |
 | `item_batch_preview` | 只读；批量发布预检 |
-| `item_batch_create` | 只读（本地写入）；创建发布批次 |
+| `item_batch_create` | 只读（本地写入）；创建发布批次（可传 `location` 作为整批发货地） |
 | `item_batch_start` | 破坏性；启动批量发布 |
 | `item_batch_list` | 只读；批次列表 |
 | `item_batch_get` | 只读；批次详情 |
@@ -121,6 +121,11 @@
 | `item_batch_retry_failed` | 破坏性；重试失败行 |
 | `item_batch_delete` | 破坏性；删除批次 |
 | `item_batch_result_csv` | 只读；批次结果 CSV |
+
+发布类工具（`item_publish_single`、`item_batch_create`）的两条平台约束：
+
+- `location` 是可选对象：`province`、`city`、`division_id`、`longitude`、`latitude` 必填，经纬度不能同时为 0；`area`、`poi_id`、`poi_name` 可选。平台缺少发货地时以 `FAIL_BIZ_ITEM_EDIT_INVALID_MAP_LOCATION` 拒绝发布，因此实际发布必须提供。
+- 图片只接受公网 URL；平台对上传文件名有长度上限，服务端会把 URL 基名压到 32 字符内并保留扩展名，超长图床文件名不再触发 `FILE_NAME_LENGTH_IS_OVER_RANGE`。
 
 ### 卡密库存（7）
 

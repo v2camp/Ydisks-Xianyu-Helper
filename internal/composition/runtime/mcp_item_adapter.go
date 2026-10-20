@@ -6,9 +6,9 @@ package runtime
 
 import (
 	"context"
-	"path/filepath"
 	"time"
 
+	"xianyu-go/internal/adapter"
 	itemapp "xianyu-go/internal/application/items"
 	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
@@ -97,7 +97,8 @@ func (a *itemPorts) PublishSingle(ctx context.Context, input capability.SinglePu
 			return itemapp.PublishOutcome{}, downloadErr
 		}
 		images = append(images, itemapp.Image{
-			Filename:    filepath.Base(rawURL),
+			// 平台按上传文件名长度设限，图床长文件名会被拒绝，统一走短名规则。
+			Filename:    adapter.PublishImageFilename(rawURL),
 			ContentType: contentType,
 			Data:        data,
 		})
@@ -108,7 +109,8 @@ func (a *itemPorts) PublishSingle(ctx context.Context, input capability.SinglePu
 		Description: input.Description, PriceCents: input.PriceCents,
 		OriginalPriceCents: input.OriginalPriceCents, Quantity: input.Quantity,
 		PostageMode: input.PostageMode, PostageCents: input.PostageCents,
-		Images: images,
+		Location: input.Location,
+		Images:   images,
 	}
 	if input.CatID != "" {
 		appInput.Category = &itemapp.PublishCategory{CatID: input.CatID}

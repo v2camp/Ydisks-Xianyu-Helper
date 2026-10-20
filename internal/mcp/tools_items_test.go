@@ -20,6 +20,10 @@ type fakeItemPorts struct {
 	syncedAll []string
 	// published 记录单发布标题。
 	published []string
+	// lastPublish 记录最近一次单发布的完整入参，供发货地透传断言。
+	lastPublish capability.SinglePublishInput
+	// lastBatch 记录最近一次批次持久化入参，供发货地透传断言。
+	lastBatch itemapp.BatchPreviewPersistenceBatch
 	// batchStarted 记录启动的批次。
 	batchStarted []string
 	// previewCalls 记录预检次数。
@@ -74,6 +78,7 @@ func (f *fakeItemPorts) SyncItemsPage(context.Context, itemapp.SyncQuery) (itema
 // PublishSingle 记录发布标题并返回成功结果（模拟响应 Cookie 警告）。
 func (f *fakeItemPorts) PublishSingle(_ context.Context, input capability.SinglePublishInput) (itemapp.PublishOutcome, error) {
 	f.published = append(f.published, input.Title)
+	f.lastPublish = input
 	return itemapp.PublishOutcome{
 		Result:            &itemapp.PublishResult{ItemID: "new-1", ItemURL: "https://goofish.com/item/new-1", Title: input.Title, Quantity: input.Quantity},
 		ResponseCookieErr: nil,
@@ -104,6 +109,7 @@ func (f *fakeItemPorts) PreviewBatch(_ context.Context, input itemapp.BatchPrevi
 // PersistBatch 记录调用并回传成功持久化结果。
 func (f *fakeItemPorts) PersistBatch(_ context.Context, batch itemapp.BatchPreviewPersistenceBatch, rows []itemapp.BatchPreviewRow) (itemapp.BatchPreviewPersistenceResult, error) {
 	f.persistCalls++
+	f.lastBatch = batch
 	return itemapp.BatchPreviewPersistenceResult{Success: true, PreviewID: batch.ID, Total: len(rows), Valid: len(rows)}, nil
 }
 
@@ -307,5 +313,71 @@ func TestNewBatchIDUnique(t *testing.T) {
 			t.Fatalf("批次标识重复: %s", id)
 		}
 		ids[id] = true
+	}
+}
+
+// TestPublishLocationArgMapping 验证发货地对象被解析为应用模型并透传到单发布与批次创建。
+func TestPublishLocationArgMapping(t *testing.T) {
+	// endpoint、items、ctx 是商品工具端点、假端口与上下文。
+	endpoint, items, ctx := newItemToolEndpoint(t)
+	// location 是标准发货地对象，经纬度用浮点写法模拟 JSON 解码结果。
+	location := map[string]any{
+		"province": "浙江省", "city": "杭州市", "area": "西湖区",
+		"division_id": "330106", "longitude": 120.13, "latitude": 30.26,
+	}
+	// publishOK 是带发货地的单商品发布。
+	publishOK := invoke(endpoint, ctx, "item_publish_single", map[string]any{
+		"account_id": "a1", "title": "课程", "price_cents": 550.0,
+		"image_urls": []any{"https://example.com/a.jpg"}, "location": location, "confirm": true,
+	})
+	if publishOK.IsError {
+		t.Fatalf("带发货地的发布应执行: %s", resultJSON(t, publishOK))
+	}
+	if items.lastPublish.Location == nil || items.lastPublish.Location.DivisionID != "330106" ||
+		items.lastPublish.Location.Longitude != 120.13 || items.lastPublish.Location.Province != "浙江省" {
+		t.Fatalf("单发布发货地透传异常: %+v", items.lastPublish.Location)
+	}
+	// created 是带发货地的批次创建。
+	created := invoke(endpoint, ctx, "item_batch_create", map[string]any{
+		"rows": []any{map[string]any{"title": "课程", "price": "5.50"}}, "location": location,
+	})
+	if created.IsError {
+		t.Fatalf("带发货地的批次创建应成功: %s", resultJSON(t, created))
+	}
+	if items.lastBatch.Location.DivisionID != "330106" || items.lastBatch.Location.City != "杭州市" {
+		t.Fatalf("批次发货地透传异常: %+v", items.lastBatch.Location)
+	}
+}
+
+// TestPublishLocationArgRejectsIncomplete 验证不完整或缺坐标的发货地在触达发布前被拒绝。
+func TestPublishLocationArgRejectsIncomplete(t *testing.T) {
+	// endpoint、items、ctx 是商品工具端点、假端口与上下文。
+	endpoint, items, ctx := newItemToolEndpoint(t)
+	// cases 保存不同非法发货地输入。
+	cases := []struct {
+		name     string
+		location any
+	}{
+		{name: "not object", location: "杭州市"},
+		{name: "missing division", location: map[string]any{"province": "浙江省", "city": "杭州市", "longitude": 120.1, "latitude": 30.2}},
+		{name: "zero gps", location: map[string]any{"province": "浙江省", "city": "杭州市", "division_id": "330100"}},
+		{name: "bad number", location: map[string]any{"province": "浙江省", "city": "杭州市", "division_id": "330100", "longitude": "abc", "latitude": 30.2}},
+		{name: "out of range", location: map[string]any{"province": "浙江省", "city": "杭州市", "division_id": "330100", "longitude": 200.0, "latitude": 30.2}},
+	}
+	// testCase 是当前非法发货地场景。
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// result 是应被拒绝的发布调用。
+			result := invoke(endpoint, ctx, "item_publish_single", map[string]any{
+				"account_id": "a1", "title": "课程", "price_cents": 550.0,
+				"location": testCase.location, "confirm": true,
+			})
+			if !result.IsError {
+				t.Fatalf("非法发货地必须拒绝: %s", resultJSON(t, result))
+			}
+		})
+	}
+	if len(items.published) != 0 {
+		t.Fatalf("非法发货地不得触达发布，实际调用 %d 次", len(items.published))
 	}
 }
