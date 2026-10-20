@@ -142,6 +142,8 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	systemPrompt += "\n\n" + deliveryAnswerConstraint
 	// 履约类回答约束始终注入：订单事实存在时必须按事实答，不存在时不得反推买家未付款。
 	systemPrompt += "\n\n" + fulfillmentAnswerConstraint
+	// 运费类回答约束始终注入：未标注时必须答「需另议」，禁止主动承诺包邮。
+	systemPrompt += "\n\n" + shippingAnswerConstraint
 	// policy 是策略配置（报价/拒绝兜底话术），未配置时回落内置文案。
 	policy, err := a.loadPolicy(ctx)
 	if err != nil {

@@ -149,3 +149,29 @@ func extractTradePostInfo(detail string) string {
 		return ""
 	}
 }
+
+// shippingFactNoAnnotation 是平台未标注运费时的确定事实文案。
+// 必须显式写「未标注」而不是省略整段：省略会让模型把「没有信息」当成可以自由发挥，
+// 在议价场景里主动承诺包邮（2026-10-18 复盘：包邮是最易引发纠纷且无法事后追偿的承诺）。
+const shippingFactNoAnnotation = "平台未标注运费与包邮信息，运费需与卖家另行商议，以拍下时页面显示为准。"
+
+// formatShippingFact 把平台运费标注整理成可注入提示词的运费事实。
+// postInfo 为空表示平台未标注；itemExists 为 false 表示当前商品不在本地库，
+// 此时没有任何可断言的事实，返回空串而非「未标注」，避免把「查不到」说成「没标注」。
+func formatShippingFact(postInfo string, itemExists bool) string {
+	if !itemExists {
+		return ""
+	}
+	// trimmed 是去首尾空白后的平台标注文本。
+	trimmed := strings.TrimSpace(postInfo)
+	switch trimmed {
+	case "包邮":
+		return "平台标注运费信息：包邮，运费由卖家承担。"
+	case "不包邮":
+		return "平台标注运费信息：不包邮，运费由买家承担，具体金额以拍下时页面显示为准。"
+	case "仅自提":
+		return "平台标注运费信息：仅支持自提，不发快递。"
+	default:
+		return shippingFactNoAnnotation
+	}
+}

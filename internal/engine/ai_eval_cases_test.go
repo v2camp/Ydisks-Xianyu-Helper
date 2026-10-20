@@ -44,16 +44,18 @@ type aiEvalGroup struct {
 	Cases []aiEvalCase
 }
 
-// aiEvalSeedScopeJSON 是生产种子边界配置：砍价/商品/发货/库存四类意图接管，
+// aiEvalSeedScopeJSON 是生产种子边界配置：砍价/商品/发货/库存/运费五类意图接管，
 // 负向词表为内置词表追加违规/扣分/封号/申诉，与升级计划第六节一致。
 // 评测驱动优化：负向词表追加口语表达「退了|扣了」，覆盖升级计划第五节真实话术
 // 「那我退了吧」「扣了20」的漏拦（详见 customer-service-agent-upgrade-plan.md 九、遗留）。
+// shipping 意图按 2026-10-21 决策新增：商品未标注运费时答「需另议」，不得承诺包邮。
 // 该配置是评测集标注的期望基线；生产库 ai_scope_config 的 negative 需同步更新后才生效。
 const aiEvalSeedScopeJSON = `{"intents":[
 	{"id":"bargain","enabled":true,"ai":true,"match":"便宜|优惠|少点|最低|砍价|降价|打折"},
 	{"id":"product","enabled":true,"ai":true,"match":"正版|音频|文字版"},
 	{"id":"delivery","enabled":true,"ai":true,"match":"发货|网盘|夸克|资源码|提取码|下载"},
-	{"id":"stock","enabled":true,"ai":true,"match":"\"有.{0,4}季\"|全集|单买|在售"}
+	{"id":"stock","enabled":true,"ai":true,"match":"\"有.{0,4}季\"|全集|单买|在售"},
+	{"id":"shipping","enabled":true,"ai":true,"match":"运费|邮费|邮寄|快递费|包邮|能寄|寄到|运到|自提"}
 ],"negative":"退款|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|违规|扣分|封号|申诉|退了|扣了"}`
 
 // aiEvalBadScopeJSON 是语法非法的边界配置，用于验证非法配置回落内置行为。
@@ -76,7 +78,9 @@ var aiEvalSetV1 = []aiEvalGroup{
 			{Name: "发货咨询只标注", Text: "什么时候发货", WantIntent: IntentOrder, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
 			{Name: "提取码咨询只标注", Text: "提取码是多少", WantIntent: IntentOrder, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
 			{Name: "询价只标注", Text: "多少钱", WantIntent: IntentInquiry, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
-			{Name: "包邮咨询只标注", Text: "包邮吗", WantIntent: IntentInquiry, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
+			{Name: "包邮咨询接管", Text: "包邮吗", WantIntent: IntentShipping, WantTakeover: true},
+			{Name: "运费咨询接管", Text: "运费多少", WantIntent: IntentShipping, WantTakeover: true},
+			{Name: "邮寄咨询接管", Text: "能邮寄吗", WantIntent: IntentShipping, WantTakeover: true},
 			{Name: "适合咨询只标注", Text: "这个适合吗", WantIntent: IntentConsult, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
 			{Name: "内容咨询只标注", Text: "内容是什么", WantIntent: IntentConsult, WantTakeover: false, Special: aiEvalSpecialLabelOnly},
 			{Name: "退款负向拦截", Text: "我要退款", WantIntent: IntentComplaint, WantTakeover: false, WantNegative: true},
@@ -110,6 +114,9 @@ var aiEvalSetV1 = []aiEvalGroup{
 			{Name: "库存季数接管", Text: "有第三季了吗", WantIntent: "stock", WantTakeover: true},
 			{Name: "库存单买接管", Text: "可以单买第二季吗", WantIntent: "stock", WantTakeover: true},
 			{Name: "库存全集接管", Text: "是全集吗", WantIntent: "stock", WantTakeover: true},
+			{Name: "运费咨询接管", Text: "运费多少钱", WantIntent: "shipping", WantTakeover: true},
+			{Name: "包邮咨询接管", Text: "可以包邮吗", WantIntent: "shipping", WantTakeover: true},
+			{Name: "邮寄咨询接管", Text: "能邮寄到南京吗", WantIntent: "shipping", WantTakeover: true},
 			{Name: "退款负向拦截", Text: "那我退款吧", WantIntent: IntentComplaint, WantTakeover: false, WantNegative: true},
 			{Name: "举报负向拦截", Text: "被举报了", WantIntent: IntentComplaint, WantTakeover: false, WantNegative: true},
 			{Name: "扣分负向拦截", Text: "会不会扣分", WantIntent: IntentComplaint, WantTakeover: false, WantNegative: true},

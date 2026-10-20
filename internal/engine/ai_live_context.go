@@ -28,10 +28,14 @@ type liveKnowledge struct {
 	DeliverySource string
 	// DeliveryChannels 是识别出的渠道名列表，便于归因时核对具体渠道。
 	DeliveryChannels []string
-	// ItemFacts 是商品标题中可直接引用的规格事实（集数/册数/运费标注）；空表示无可抽取事实。
+	// ItemFacts 是商品标题中可直接引用的规格事实（集数/册数/册套范围）；空表示无可抽取事实。
 	// 它与商品标题的差别在于「被显式声明为事实」：标题里的规格混在营销文案中，
 	// 模型时常看到却不敢用，导致同一商品出现「说不准」与「就是34集」两种相反回答。
 	ItemFacts []string
+	// ShippingFact 是当前商品的运费事实（平台标注 包邮/不包邮/仅自提，或未标注时的另议口径）。
+	// 空表示商品不在本地库、没有可断言的事实；非空时按确定事实注入并优先于店铺通用话术。
+	// 它与 ItemFacts 分开的理由：运费问法需要「不能承诺包邮」的硬约束，规格问法不需要。
+	ShippingFact string
 	// OrderFact 是当前会话在本商品的履约事实说明；空表示无订单或状态不可判定，不注入。
 	OrderFact string
 }
@@ -77,6 +81,12 @@ const deliveryHintAuthoritativeFormat = "【该商品确定发货方式】%s。"
 // 由机器断言买家未付款既是事实错误，也容易激化纠纷。
 const fulfillmentAnswerConstraint = "回答付款、发货进度、链接失效、提取码类问题时：提示词给出本会话订单事实时，必须按该事实回答，不得改口说「以发货消息为准」；没有订单事实时，不得断言买家未付款或未下单，应请其确认订单状态或转人工核实。禁止推测物流单号，禁止承诺补偿金额或具体发出时间。"
 
+// shippingAnswerConstraint 是回答运费与邮寄类问题时必须写入 prompt 的系统约束。
+// 与 deliveryAnswerConstraint 同构：平台标注是确定事实必须直答，未标注时必须明确另议。
+// 「禁止承诺包邮」是硬要求：包邮承诺无法事后追偿，且买家会把它当作成交条件；
+// 2026-10-18 复盘的议价会话里，模型在无标注时主动送包邮正是这类事故的雏形。
+const shippingAnswerConstraint = "回答运费、邮费、包邮、能不能邮寄类问题时：提示词给出本商品运费口径时，必须按该口径直接回答（包邮则答包邮；不包邮则说明运费由买家承担、金额以拍下时页面显示为准；仅自提则说明不发快递）；该结论优先于店铺通用说明与商品描述。提示词未给出运费口径时必须回答「运费需要和您单独确认，以拍下时页面显示为准」，禁止承诺包邮，禁止编造运费金额。"
+
 // liveCatalogInstruction 是动态在售列表的注入指令文案。
 const liveCatalogInstruction = "本店在售列表（买家问有没有/单买/第几季时依此回答，不在列表的回答暂时没有）"
 
@@ -87,6 +97,11 @@ const liveStockInstruction = "库存参考（仅用于回答“还有货吗”�
 // 「可直接回答」一句不可省略：标题里的规格混在营销文案中，不显式声明为事实时
 // 模型会退回「以商品详情为准」的回避回答（2026-10-17 复盘问题 B）。
 const liveItemFactInstruction = "本商品确定事实（来自商品标题与平台标注，可直接回答，无需再说以详情为准）"
+
+// shippingFactInstruction 是运费事实段的注入指令文案。
+// 「不得承诺包邮」一句不可省略：运费是买家最容易索要的让步项，模型天然倾向用
+// 「可以包邮」换成交，但商品未标注包邮时这就是实际损失，且平台不支持事后追偿。
+const shippingFactInstruction = "本商品运费口径（回答运费、邮费、包邮、能不能邮寄时以此为准，优先于店铺通用说明；不得承诺包邮，不得编造运费金额）"
 
 // deliveryChannelKeywords 是发货渠道关键词到展示名的映射（按优先级去重）。
 // 展示名用于提示词，与平台私聊敏感词解耦。
@@ -130,8 +145,8 @@ func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, chatID, itemID st
 	} else {
 		live.StockLines = stockLines
 	}
-	// 商品事实来自标题与平台详情；查询失败时保持为空，不阻断回复。
-	live.ItemFacts = a.loadItemFacts(ctx, itemID)
+	// 商品事实来自标题与平台标注；查询失败时保持为空，不阻断回复。
+	live.ItemFacts, live.ShippingFact = a.loadItemFacts(ctx, itemID)
 	// orderFact、err 是当前会话的履约事实；失败降级为不注入。
 	if orderFact, err := a.loadOrderFulfillment(ctx, chatID, itemID); err != nil {
 		a.logger.Debug("订单履约事实查询失败，降级为不注入", "err", err)
@@ -150,29 +165,29 @@ func (a *AIReplierImpl) loadLiveKnowledge(ctx context.Context, chatID, itemID st
 }
 
 // loadItemFacts 汇总商品标题中的规格事实与平台运费标注。
-// 商品不存在或没有可抽取内容时返回 nil；查询错误只记 Debug，按无事实处理。
-func (a *AIReplierImpl) loadItemFacts(ctx context.Context, itemID string) []string {
+// 返回的 specFacts 是规格事实（可为空），shipping 是运费事实（商品不存在时为空）。
+// 两者分开返回：运费需要独立的「不得承诺包邮」约束，不能混进规格段。
+// 商品不存在或查询错误时两者都为空，按「无事实」处理。
+func (a *AIReplierImpl) loadItemFacts(ctx context.Context, itemID string) (specFacts []string, shipping string) {
 	// item、err 是当前商品记录；缺失时没有可抽取的标题。
 	item, err := a.store.Items.Get(ctx, a.cookieID, itemID)
 	if err != nil {
 		if !errors.Is(err, db.ErrNotFound) {
 			a.logger.Debug("商品事实查询失败，降级为不注入", "err", err)
 		}
-		return nil
+		return nil, ""
 	}
 	if item == nil {
-		return nil
+		return nil, ""
 	}
 	// facts 是标题中抽取到的规格事实。
 	facts := extractItemSpecFacts(item.ItemTitle)
-	// 平台运费标注同样属于确定事实，存在时并入事实列表。
-	if postInfo := extractTradePostInfo(item.ItemDetail); postInfo != "" {
-		facts = append(facts, "平台标注运费信息："+postInfo)
-	}
+	// shipping 是平台运费标注整理出的事实；未标注时给出「需另议」口径。
+	shipping = formatShippingFact(extractTradePostInfo(item.ItemDetail), true)
 	if len(facts) == 0 {
-		return nil
+		return nil, shipping
 	}
-	return facts
+	return facts, shipping
 }
 
 // loadOrderFulfillment 查询当前会话在本商品的最近订单并整理成履约事实。
