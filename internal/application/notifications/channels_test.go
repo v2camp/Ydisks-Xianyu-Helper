@@ -549,3 +549,147 @@ func TestEmailRecipientPatchRejectsAmbiguousUpdates(t *testing.T) {
 		t.Fatal("空收件地址必须拒绝")
 	}
 }
+
+// TestChannelServiceQQEditorExposesTargetsAndCredentialPresence 验证 qq 编辑器回读两个 openid 与渠道级凭据是否存在，且不返回凭据内容。
+func TestChannelServiceQQEditorExposesTargetsAndCredentialPresence(t *testing.T) {
+	// scenario 枚举 qq 配置的凭据齐备、缺失、不完整和损坏四种状态，配置值均为虚构占位。
+	for _, scenario := range []struct {
+		// name 是失败输出使用的场景名称。
+		name string
+		// config 是存储中的 qq 配置 JSON。
+		config string
+		// wantUserOpenID 是期望回显的单聊目标。
+		wantUserOpenID string
+		// wantGroupOpenID 是期望回显的群聊目标。
+		wantGroupOpenID string
+		// wantCredentials 表示期望的渠道级凭据存在性。
+		wantCredentials bool
+	}{
+		{name: "自填凭据", config: `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"fixture-user","group_openid":"fixture-group"}`, wantUserOpenID: "fixture-user", wantGroupOpenID: "fixture-group", wantCredentials: true},
+		{name: "缺少凭据", config: `{"user_openid":" fixture-user ","group_openid":"fixture-group"}`, wantUserOpenID: "fixture-user", wantGroupOpenID: "fixture-group", wantCredentials: false},
+		{name: "凭据不完整", config: `{"app_id":"fixture-app","app_secret":"","group_openid":"fixture-group"}`, wantGroupOpenID: "fixture-group", wantCredentials: false},
+		{name: "配置损坏", config: `broken`, wantCredentials: false},
+	} {
+		// repository 提供当前场景的 qq 记录，不接触真实机器人凭据。
+		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: "qq", Type: "qq", Config: scenario.config}}
+		// editor、err 保存脱敏编辑视图及读取错误。
+		editor, err := NewChannelService(repository, nil).GetChannelEditor(context.Background(), 7, 1)
+		if err != nil {
+			t.Fatalf("场景 %s 读取编辑视图失败: %v", scenario.name, err)
+		}
+		if editor.UserOpenID != scenario.wantUserOpenID || editor.GroupOpenID != scenario.wantGroupOpenID || editor.HasChannelCredentials != scenario.wantCredentials {
+			t.Fatalf("场景 %s 编辑视图字段异常: %+v", scenario.name, editor)
+		}
+	}
+}
+
+// TestChannelServiceQQUpdateMergesConfig 验证 qq 更新按键合并：未提交的键保留、空串值删除该键、旧配置损坏按空对象处理。
+func TestChannelServiceQQUpdateMergesConfig(t *testing.T) {
+	// oldConfig 是包含目标与渠道级凭据的虚构 qq 配置。
+	const oldConfig = `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"old-user","group_openid":"fixture-group","extra":{"n":2}}`
+	// repository 保存原记录的端口替身，updatedRecord 用于断言合并结果。
+	repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: "qq", Type: "qq", Config: oldConfig}}
+	// service 是待验证的渠道应用服务。
+	service := NewChannelService(repository, nil)
+	// openIDPatch 只提交新的单聊目标，未提交的凭据与群聊目标必须保留。
+	openIDPatch := `{"user_openid":"new-user"}`
+	// err 保存合并单聊目标后的更新结果。
+	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &openIDPatch}); err != nil {
+		t.Fatalf("合并 openid 更新失败: %v", err)
+	}
+	// config 保存首次合并后的配置，仅用于断言，禁止输出到日志。
+	var config map[string]any
+	// err 校验首次合并结果可解析，失败信息不输出配置内容。
+	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &config); err != nil {
+		t.Fatal("合并后的 qq 配置不是合法 JSON")
+	}
+	if config["user_openid"] != "new-user" || config["group_openid"] != "fixture-group" || config["app_id"] != "fixture-app" || config["app_secret"] != "fixture-secret" || config["extra"] == nil {
+		t.Fatal("qq 合并更新丢失了未提交的键")
+	}
+
+	// clearPatch 用空串表示删除渠道级凭据，以便回退到连接器凭据。
+	clearPatch := `{"app_id":"","app_secret":" "}`
+	// err 保存清空渠道级凭据的更新结果。
+	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &clearPatch}); err != nil {
+		t.Fatalf("清空渠道级凭据失败: %v", err)
+	}
+	// cleared 保存清空凭据后的配置。
+	var cleared map[string]any
+	// err 校验清空凭据后的配置可解析。
+	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &cleared); err != nil {
+		t.Fatal("清空后的 qq 配置不是合法 JSON")
+	}
+	// exists 表示被删除的 app_id 键是否仍残留在配置中。
+	if _, exists := cleared["app_id"]; exists {
+		t.Fatal("空串提交必须删除 app_id 键")
+	}
+	// exists 表示被删除的 app_secret 键是否仍残留在配置中。
+	if _, exists := cleared["app_secret"]; exists {
+		t.Fatal("空串提交必须删除 app_secret 键")
+	}
+	if cleared["user_openid"] != "new-user" || cleared["group_openid"] != "fixture-group" {
+		t.Fatal("清空凭据不应影响 qq 目标配置")
+	}
+
+	// emptyPatch 提交空对象，等价于不修改任何键。
+	emptyPatch := `{}`
+	// err 保存空对象提交的更新结果。
+	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &emptyPatch}); err != nil {
+		t.Fatalf("空对象更新失败: %v", err)
+	}
+	// preserved 保存空对象提交后的配置。
+	var preserved map[string]any
+	// err 校验空对象提交后的配置可解析。
+	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &preserved); err != nil {
+		t.Fatal("空对象更新后的 qq 配置不是合法 JSON")
+	}
+	if preserved["user_openid"] != "new-user" || preserved["group_openid"] != "fixture-group" {
+		t.Fatal("空对象提交不应删除已有 qq 键")
+	}
+
+	// brokenRepository 模拟历史损坏配置，合并时必须按空对象处理且不报错。
+	brokenRepository := &channelRepositoryStub{record: &ChannelRecord{ID: 2, Name: "qq", Type: "qq", Config: `broken`}}
+	// brokenPatch 提交完整目标，结果只包含本次提交的键。
+	brokenPatch := `{"user_openid":"fixture-user"}`
+	// err 保存损坏配置合并的更新结果，非法旧配置不得导致失败。
+	if err := NewChannelService(brokenRepository, nil).UpdateChannel(context.Background(), 7, 2, ChannelPatch{Config: &brokenPatch}); err != nil {
+		t.Fatalf("损坏配置合并失败: %v", err)
+	}
+	// repaired 保存损坏配置合并后的结果。
+	var repaired map[string]any
+	// err 校验损坏配置合并结果可解析。
+	if err := json.Unmarshal([]byte(brokenRepository.updatedRecord.Config), &repaired); err != nil {
+		t.Fatal("损坏配置合并结果不是合法 JSON")
+	}
+	if repaired["user_openid"] != "fixture-user" {
+		t.Fatal("损坏配置合并未写入本次提交的键")
+	}
+}
+
+// TestChannelServiceNonQQUpdateReplacesConfig 验证非 qq 渠道保持整体替换语义，避免合并规则被误扩大。
+func TestChannelServiceNonQQUpdateReplacesConfig(t *testing.T) {
+	// scenario 枚举邮件与 webhook 两类非 qq 渠道，配置值均为虚构占位。
+	for _, scenario := range []struct {
+		// name 是失败输出使用的场景名称。
+		name string
+		// channelType 是现有渠道协议。
+		channelType string
+		// oldConfig 是原始存储配置。
+		oldConfig string
+		// submitted 是本次提交的配置。
+		submitted string
+	}{
+		{name: "邮件", channelType: "email", oldConfig: `{"to_email":"old@example.com","smtp_password":"fixture-secret"}`, submitted: `{"to_email":"new@example.com"}`},
+		{name: "webhook", channelType: "webhook", oldConfig: `{"url":"https://fixture.invalid/hook","token":"fixture-token"}`, submitted: `{"url":"https://fixture.invalid/new"}`},
+	} {
+		// repository 提供当前场景的原记录，更新结果必须与提交值完全一致。
+		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: scenario.name, Type: scenario.channelType, Config: scenario.oldConfig}}
+		// err 保存更新结果。
+		if err := NewChannelService(repository, nil).UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &scenario.submitted}); err != nil {
+			t.Fatalf("场景 %s 更新失败: %v", scenario.name, err)
+		}
+		if repository.updatedRecord.Config != scenario.submitted {
+			t.Fatal("非 qq 渠道必须保持整体替换语义")
+		}
+	}
+}

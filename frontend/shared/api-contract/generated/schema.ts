@@ -2732,6 +2732,12 @@ export interface components {
             enabled: boolean;
             to_email?: string;
             use_custom_smtp?: boolean;
+            /** @description qq 渠道的单聊目标 openid；其他渠道为空，不是发送凭据。 */
+            user_openid?: string;
+            /** @description qq 渠道的群聊目标 openid；其他渠道为空，不是发送凭据。 */
+            group_openid?: string;
+            /** @description qq 渠道配置是否自填了 app_id 与 app_secret；只表示存在性，不回传 AppSecret。 */
+            has_channel_credentials?: boolean;
         };
         NotificationChannelCreateRequest: {
             name: string;

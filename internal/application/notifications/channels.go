@@ -54,6 +54,12 @@ type ChannelEditor struct {
 	ToEmail string
 	// UseCustomSMTP 表示邮件渠道是否使用独立 SMTP；不代表任何 SMTP 凭据内容。
 	UseCustomSMTP bool
+	// UserOpenID 是 qq 渠道配置里的单聊目标 openid；其他渠道为空。它只是平台目标标识，不是发送凭据。
+	UserOpenID string
+	// GroupOpenID 是 qq 渠道配置里的群聊目标 openid；其他渠道为空。它只是平台目标标识，不是发送凭据。
+	GroupOpenID string
+	// HasChannelCredentials 表示 qq 渠道配置里 app_id 与 app_secret 均非空；只回传存在性，不回传 AppSecret 本身。
+	HasChannelCredentials bool
 }
 
 // ChannelRecord 是通知渠道更新时由持久化端口返回的内部记录，Config 仅允许留在应用编排与存储边界。
@@ -190,12 +196,24 @@ func (s *ChannelService) GetChannelEditor(ctx context.Context, userID, channelID
 	}
 	// editor 保存剔除敏感配置后的编辑器视图。
 	editor := ChannelEditor{ID: record.ID, Name: record.Name, Type: record.Type, EventTypes: record.EventTypes, Enabled: record.Enabled}
-	if record.Type != "email" {
-		return editor, nil
-	}
-	// config 保存仅为读取收件地址和 SMTP 模式而解析的渠道配置；不会被原样返回。
+	// config 保存仅为回显非敏感字段而解析的渠道配置；解析失败时按空对象处理，不向响应输出任何配置原文。
 	var config map[string]any
 	if json.Unmarshal([]byte(record.Config), &config) != nil {
+		config = nil
+	}
+	if record.Type == "qq" {
+		// 目标是平台分配的 openid，不同 AppID 下取值不同；此处只回显目标标识，不回传 AppSecret。
+		editor.UserOpenID = strings.TrimSpace(stringValue(config["user_openid"]))
+		editor.GroupOpenID = strings.TrimSpace(stringValue(config["group_openid"]))
+		// 只回传渠道级凭据是否齐备的布尔结论，前端据此区分「渠道自填凭据」与「改用连接器凭据」。
+		// appID 是渠道级机器人接入标识，仅用于判断凭据是否齐备。
+		appID := strings.TrimSpace(stringValue(config["app_id"]))
+		// appSecret 是渠道级机器人密钥，只参与存在性判断，禁止进入响应。
+		appSecret := strings.TrimSpace(stringValue(config["app_secret"]))
+		editor.HasChannelCredentials = appID != "" && appSecret != ""
+		return editor, nil
+	}
+	if record.Type != "email" {
 		return editor, nil
 	}
 	// recipient 保存兼容 to_email/email 两种历史字段后的收件地址。
@@ -245,6 +263,8 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 	if record == nil {
 		return ErrChannelForbidden
 	}
+	// existingType 保存更新前的渠道协议类型，用于判定本次配置提交是否需要按键合并。
+	existingType := record.Type
 	if patch.EmailRecipient != nil {
 		if record.Type != "email" || patch.Config != nil || (patch.Type != nil && *patch.Type != "email") {
 			return ErrChannelInvalidInput
@@ -263,7 +283,12 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 		record.Type = *patch.Type
 	}
 	if patch.Config != nil {
-		record.Config = *patch.Config
+		if existingType == "qq" {
+			// qq 渠道的配置含目标 openid 与渠道级凭据，编辑器不会回传它们，因此必须按键合并而不是整体替换。
+			record.Config = mergeQQConfig(record.Config, *patch.Config)
+		} else {
+			record.Config = *patch.Config
+		}
 	}
 	if patch.EventTypes != nil {
 		record.EventTypes = *patch.EventTypes
@@ -296,6 +321,41 @@ func patchEmailRecipient(config, recipient string) (string, error) {
 	// encoded、err 保存合并后的完整配置及序列化错误，内容仅用于持久化。
 	encoded, err := json.Marshal(fields)
 	return string(encoded), err
+}
+
+// mergeQQConfig 把提交的 qq 渠道配置按键合并进现有配置，用空串值表示删除该键，未提交的键保留原值。
+// 旧配置为空或不是 JSON 对象时按空对象处理，不因历史脏数据拒绝更新；提交内容不是 JSON 对象时视为未提交任何键。
+func mergeQQConfig(existing, submitted string) string {
+	// fields 保存现有配置的每个键及其原始 JSON 表达；其值可能包含渠道级凭据，禁止日志和 HTTP 响应使用。
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(existing), &fields) != nil || fields == nil {
+		fields = make(map[string]json.RawMessage)
+	}
+	// incoming 保存本次提交的键集合；无法解析为对象时保持原配置，避免把非对象内容写入 qq 渠道。
+	var incoming map[string]json.RawMessage
+	if json.Unmarshal([]byte(submitted), &incoming) == nil && incoming != nil {
+		// key、raw 是当前提交的配置键及其原始 JSON 值。
+		for key, raw := range incoming {
+			if rawIsBlankString(raw) {
+				delete(fields, key)
+				continue
+			}
+			fields[key] = raw
+		}
+	}
+	// encoded 是合并后的完整配置；两侧值都来自已解析的 JSON，序列化不会失败。
+	encoded, _ := json.Marshal(fields)
+	return string(encoded)
+}
+
+// rawIsBlankString 判断配置值是否为去空白后为空的 JSON 字符串，用于识别「删除该键」的提交约定。
+func rawIsBlankString(raw json.RawMessage) bool {
+	// text 保存配置值的字符串解析结果；非字符串值不参与删除判定。
+	var text string
+	if json.Unmarshal(raw, &text) != nil {
+		return false
+	}
+	return strings.TrimSpace(text) == ""
 }
 
 // DeleteChannel 删除用户拥有的通知渠道。
