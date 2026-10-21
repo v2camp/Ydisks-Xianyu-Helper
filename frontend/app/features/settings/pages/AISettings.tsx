@@ -1,26 +1,51 @@
 import {
+  ArrowRight,
   Check,
   ChevronDown,
   Eye,EyeOff,
   RefreshCw,
-  Save,
   Sparkles,
   Zap
 } from 'lucide-react';
-import React from 'react';
+import React, { useCallback,useState } from 'react';
+import { PageHeader } from '../../../../shared/ui/PageHeader';
+import { PageShell } from '../../../../shared/ui/PageShell';
+import { SaveBar } from '../../../../shared/ui/SaveBar';
+import type { SaveBarState } from '../../../../shared/ui/SaveBar';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import { DEFAULT_AI_API_URL } from '../constants';
 import { useSettings } from '../hooks';
 import { AIConfigEditor } from '../components/AIConfigEditor';
 import { MCPServerList } from '../components/MCPServerList';
 
+// AISettingsProps 描述 AI 设置页可选的跨页跳转能力。
+export interface AISettingsProps {
+  /** onNavigate 由外层提供时渲染可点击的「Agent 中心」入口；未提供时只展示说明文字，页面自身不依赖路由。 */
+  onNavigate?: (tab: string) => void;
+}
+
 // AISettings 展示 AI 智能回复、AI 客服接管、人工确认开关与 MCP 服务器配置；保存只提交 AI 白名单字段。
-const AISettings: React.FC = () => {
+const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
   // featureState 是 Settings Hook 提供的状态与动作集合，scope=ai 只保存 AI 白名单字段并启用模型发现与连接测试。
   const {
-    settings, loading, loadError, saving, saveError, aiModels, modelsLoading, modelError, modelDropdownOpen,
+    settings, loading, loadError, saveError, aiModels, modelsLoading, modelError, modelDropdownOpen,
     showApiKey, modelPickerRef, loadSettings, loadAIModels, testConnection, connectionTestLoading,
     connectionTestMessage, handleSave, setSettings, setModelDropdownOpen, setShowApiKey,
   } = useSettings('ai');
+
+  // saveBarState 是页级保存条的四态，由一次保存的结果驱动，成功提示展示完毕后回落为空闲。
+  const [saveBarState, setSaveBarState] = useState<SaveBarState>('idle');
+
+  // handlePageSave 触发 AI 白名单配置保存，并把返回值映射为保存条的成功或失败态。
+  const handlePageSave = useCallback(/* 当前回调把保存请求的进展映射为保存条状态。 */ async () => {
+    setSaveBarState('saving');
+    // saved 是本次保存是否成功；失败时保存条常驻并提供重试入口。
+    const saved = await handleSave({ silentSuccess: true });
+    setSaveBarState(saved ? 'success' : 'error');
+  }, [handleSave]);
+
+  // settleSaveBar 在成功提示展示满 2 秒后把保存条复位为空闲待提交。
+  const settleSaveBar = useCallback(/* 当前回调在成功提示超时后把保存条复位为空闲。 */ () => setSaveBarState('idle'), []);
 
   if (!settings) {
     return (
@@ -41,43 +66,43 @@ const AISettings: React.FC = () => {
   const visibleAIModels = aiModels;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-24">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-gray-600" />
-          </div>
-          <div>
-              <h2 className="text-3xl font-extrabold text-gray-900">AI 设置</h2>
-              <p className="text-gray-500 mt-1 text-sm font-medium">配置 AI 智能回复、客服接管范围与扩展服务</p>
-          </div>
-        </div>
-        <button
-          onClick={loadSettings}
-          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          刷新
-        </button>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={Sparkles}
+        title="AI 设置"
+        subtitle="配置 AI 引擎本身的能力：它同时被客服 Agent 与既有规则通道消费"
+        actions={(
+          <button
+            onClick={loadSettings}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            刷新
+          </button>
+        )}
+      />
 
-      {saveError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <span>{saveError}</span>
-          <button type="button" className="font-bold underline" onClick={/* 点击重试提交 AI 白名单配置。 */ () => void handleSave()}>重试保存</button>
-        </div>
-      )}
+      {/* 指引条：这些能力由 Agent 中心消费；未接入跳转时只作说明，避免出现点了没反应的入口。 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <span className="text-xs text-gray-500">谁在使用这些能力 →</span>
+        {onNavigate ? (
+          <button
+            type="button"
+            onClick={/* 点击跳转到 Agent 中心，查看消费这些能力的 Agent。 */ () => onNavigate('agent-center')}
+            className="text-xs font-bold text-brand hover:underline flex items-center gap-1"
+          >
+            Agent 中心
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <span className="text-xs font-bold text-gray-500">Agent 中心</span>
+        )}
+      </div>
 
       <div className="space-y-8">
         {/* AI Configuration */}
         <section className="space-y-4">
-          <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-brand text-white">
-                  <Sparkles className="w-4 h-4" />
-              </div>
-              AI 智能回复配置
-          </h3>
+          <SectionHeader icon={Sparkles} title="模型与凭据" tone="brand" />
 
           <div className="ios-card rounded-xl p-6 bg-white space-y-6">
             <div className="space-y-3">
@@ -210,12 +235,7 @@ const AISettings: React.FC = () => {
 
         {/* AI 回复人工确认：开关，开启后 AI 回复先拦截待人工确认再发送。 */}
         <section className="space-y-4">
-          <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-blue-500 text-white">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            AI 回复人工确认
-          </h3>
+          <SectionHeader icon={Sparkles} title="AI 回复人工确认" tone="brand" />
           <div className="ios-card rounded-xl p-6 bg-white">
             <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 cursor-pointer">
               <input type="checkbox" className="mt-1" checked={settings.ai_reply_review_mode || false} onChange={/* 勾选变化更新 AI 回复人工确认开关草稿。 */ event => setSettings({ ...settings, ai_reply_review_mode: event.target.checked })} />
@@ -231,18 +251,17 @@ const AISettings: React.FC = () => {
         <MCPServerList settings={settings} onChange={/* patch 是 MCP 列表写回的字段，合并进当前草稿。 */ patch => setSettings({ ...settings, ...patch })} />
       </div>
 
-      {/* Save Button */}
-      <div className="fixed bottom-10 right-10 z-30">
-        <button
-            onClick={handleSave}
-            disabled={saving}
-            className="ios-btn-primary px-10 py-5 rounded-xl text-lg shadow-2xl shadow-blue-200 flex items-center gap-3 transform hover:scale-105 active:scale-95 transition-all disabled:opacity-70"
-        >
-            <Save className="w-6 h-6" />
-            {saving ? '保存中...' : '保存 AI 配置'}
-        </button>
-      </div>
-    </div>
+      {/* 页级保存条：AI 设置只有一份草稿，提交动作与成功/失败反馈都在这里，不再用模态弹窗。 */}
+      <SaveBar
+        state={saveBarState}
+        onSave={/* 点击主按钮或失败态重试都重新提交同一份 AI 草稿。 */ () => void handlePageSave()}
+        label="保存 AI 配置"
+        errorMessage={/* 使用 Hook 捕获的具体失败原因，未取到时回落到保存条默认文案。 */ saveError || undefined}
+        successMessage="AI 配置已保存"
+        sticky
+        onSettled={settleSaveBar}
+      />
+    </PageShell>
   );
 };
 

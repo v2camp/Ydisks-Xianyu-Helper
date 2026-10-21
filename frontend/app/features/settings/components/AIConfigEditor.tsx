@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { FileJson, Sparkles } from 'lucide-react';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import type { SystemSettings } from '../api';
 import { KnowledgeConfigForm, PolicyConfigForm, ScopeConfigForm } from './AIConfigForms';
 
@@ -18,12 +19,12 @@ export interface AIConfigEditorProps {
 export const AIConfigEditor: React.FC<AIConfigEditorProps> = ({ settings, onChange }) => {
   return (
     <section className="space-y-4">
-      <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-        <div className="p-1.5 rounded-lg bg-violet-500 text-white">
-          <FileJson className="w-4 h-4" />
-        </div>
-        AI 客服配置（可配置接管范围）
-      </h3>
+      <SectionHeader
+        icon={FileJson}
+        title="AI 客服接管范围"
+        description="策略 / 语料 / 边界三层配置，随本页保存一起生效；留空项回落内置行为。"
+        tone="violet"
+      />
       <div className="ios-card rounded-xl p-6 bg-white space-y-6">
         <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
           <h4 className="font-bold text-violet-900 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" />组合词语法</h4>

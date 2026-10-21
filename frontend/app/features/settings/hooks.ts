@@ -7,6 +7,20 @@ import { buildPersistableSettings,createCredentials,createCredentialsMessage,isC
 import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 
+/** 保存系统配置的可选行为开关。 */
+export interface SettingsSaveOptions {
+  /** silentSuccess 为真时跳过成功弹窗，由调用方用内联提示自反馈（如 AI 设置页的保存条）；缺省保持弹窗反馈。 */
+  silentSuccess?: boolean;
+}
+
+/** 系统配置保存函数：返回值表示是否保存成功，便于调用方用内联提示替代弹窗。 */
+export interface SettingsSaveFunction {
+  /** 不传参数时保持既有行为：成功后弹窗提示，供系统设置页直接绑定到按钮。 */
+  (): Promise<boolean>;
+  /** 传入 silentSuccess 时由调用方自管成功反馈。 */
+  (options: SettingsSaveOptions): Promise<boolean>;
+}
+
 /** Settings feature 的 Hook 返回值。 */
 export type UseSettingsResult = SettingsFeatureState & {
   /** 模型选择器 DOM 引用。 */
@@ -17,8 +31,8 @@ export type UseSettingsResult = SettingsFeatureState & {
   loadAIModels: (source?: SystemSettings | null, openAfterLoad?: boolean) => void;
   /** 测试 AI 连接。 */
   testConnection: () => void;
-  /** 保存系统配置。 */
-  handleSave: () => Promise<void>;
+  /** 保存系统配置；返回是否保存成功，供调用方选择弹窗之外的反馈方式。 */
+  handleSave: SettingsSaveFunction;
   /** 保存登录凭据。 */
   handleCredentialsSave: (event: React.FormEvent) => Promise<void>;
   /** 更新配置草稿。 */
@@ -264,10 +278,10 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
     return /* 当前回调处理用户交互或异步状态变化。 */ () => document.removeEventListener('mousedown', handlePointerDown);
   }, []);
 
-  // handleSave 处理当前用户操作（Save）。
-  const handleSave = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async () => {
-    // handleSave 提交当前配置草稿并保护过期响应。
-    if (!settings || saving) return;
+  // handleSave 提交当前配置草稿并返回保存结果；silentSuccess 让调用方用内联提示替代成功弹窗。
+  const handleSave = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (options?: SettingsSaveOptions): Promise<boolean> => {
+    // handleSave 提交当前配置草稿并保护过期响应；草稿缺失或正在保存时视为未成功。
+    if (!settings || saving) return false;
     // testSequence 使保存前基于旧草稿发出的连接测试不再影响新的已保存配置。
     testRequestSequence.current += 1;
     testRequestController.current?.abort();
@@ -286,12 +300,14 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
     try {
       // payload 只包含当前 scope 白名单内的字段，保证系统页与 AI 页保存互不覆盖。
       await updateSystemSettings(buildPersistableSettings(settings, scope), { signal: controller.signal });
-      if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return;
-      // 保存成功后按当前范围给出对应的中文成功提示。
-      await appDialog.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存', { variant: 'success' });
+      if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return false;
+      // 保存成功后按当前范围给出对应的中文成功提示；页面自管提示时跳过弹窗以免两次反馈。
+      if (!options?.silentSuccess) await appDialog.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存', { variant: 'success' });
+      return true;
     } catch (/* error 保存系统设置提交请求的失败原因；过期响应不会覆盖当前表单。 */ error) {
-      if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return;
+      if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return false;
       setSaveError(settingsErrorMessage(error, '保存配置失败'));
+      return false;
     } finally {
       if (isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) setSaving(false);
     }

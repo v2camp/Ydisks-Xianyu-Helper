@@ -1,43 +1,69 @@
-import { Bot,Loader2,Radio,RefreshCw,Save,Terminal } from 'lucide-react';
-import React from 'react';
+import { Bot,PlugZap,Radio,RefreshCw } from 'lucide-react';
+import React,{ useCallback } from 'react';
+import { AsyncSection } from '../../../../shared/ui/AsyncSection';
+import { DependencyRow } from '../../../../shared/ui/DependencyRow';
+import type { DependencyState } from '../../../../shared/ui/DependencyRow';
+import { PageHeader } from '../../../../shared/ui/PageHeader';
+import { PageShell } from '../../../../shared/ui/PageShell';
+import { SaveBar } from '../../../../shared/ui/SaveBar';
+import type { SaveBarState } from '../../../../shared/ui/SaveBar';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import { useAgentCenter } from '../agentCenterHooks';
+import { MCPServiceCard } from '../components/MCPServiceCard';
+
+/** AgentCenterProps 描述 Agent 中心页可选的跨页跳转能力。 */
+export interface AgentCenterProps {
+  /** onNavigate 由外层提供时，依赖行渲染可点击的跳转入口；未提供时只展示依赖状态，页面自身不依赖路由。 */
+  onNavigate?: (tab: string) => void;
+}
+
+/** dependencyState 把尚未到达的依赖态统一显示为「读取中」，绝不先闪出「未配置」。 */
+const dependencyState = (state: DependencyState | undefined): DependencyState => state ?? 'loading';
 
 /** AgentCenter 按「谁决定调用能力」归拢三类 Agent 的入口，并直接配置租户级客服 Agent 的默认开关与档位。 */
-const AgentCenter: React.FC = () => {
-  // center 是本页的配置草稿、保存状态与外部 Harness 接入现状。
+const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
+  // center 是本页的配置草稿、保存状态、依赖状态与外部 Harness 接入现状。
   const {
     settings, loading, loadError, saving, saveMessage,
     harnessEnabled, harnessEndpoint, harnessLoading,
-    load, updateDraft, submit,
+    dependencies, dependenciesLoading, dependenciesError,
+    load, reloadDependencies, updateDraft, submit, resetSaveMessage,
   } = useAgentCenter();
 
+  // saveBarState 是区块级保存条的四态：保存中优先，其次沿用最近一次提交的成功或失败结果，其余为空闲待提交。
+  const saveBarState: SaveBarState = saving
+    ? 'saving'
+    : saveMessage?.type === 'error'
+      ? 'error'
+      : saveMessage?.type === 'success'
+        ? 'success'
+        : 'idle';
+
+  // settleSaveBar 在成功提示停留结束后清空结果，让保存条回到待提交态而不是长期停留在绿色条。
+  const settleSaveBar = useCallback(/* 当前回调把保存条从成功态复位为空闲。 */ () => resetSaveMessage(), [resetSaveMessage]);
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-24">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center">
-            <Bot className="w-6 h-6 text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-extrabold text-gray-900">Agent 中心</h2>
-            <p className="text-gray-500 mt-1 text-sm font-medium">三类 Agent 各自的入口与当前生效状态</p>
-          </div>
-        </div>
-        <button type="button" onClick={load} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors">
-          <RefreshCw className="w-4 h-4" />
-          刷新
-        </button>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={Bot}
+        title="Agent 中心"
+        subtitle="三类 Agent 的入口与前置依赖；能力本体在 AI 设置"
+        actions={(
+          <button type="button" onClick={load} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors">
+            <RefreshCw className="w-4 h-4" />
+            刷新
+          </button>
+        )}
+      />
 
       {/* 管理端 Agent：外部 Harness 由人在场操作，凭管理员身份直接调用工具，权限与工具范围都不设档位。 */}
       <section className="space-y-4">
-        <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-slate-700 text-white">
-            <Terminal className="w-4 h-4" />
-          </div>
-          管理端 Agent
-        </h3>
+        <SectionHeader
+          icon={PlugZap}
+          tone="indigo"
+          title="对外 MCP 服务（入站）"
+          description="把本服务能力以 MCP 协议开放给外部 Harness；与 AI 设置页的外部 MCP 工具（出站）方向相反。"
+        />
         <div className="ios-card rounded-xl p-6 bg-white space-y-4">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-bold text-gray-800">外部 Harness 接入（MCP）</h4>
@@ -47,22 +73,24 @@ const AgentCenter: React.FC = () => {
           </div>
           <p className="text-xs leading-5 text-gray-600">
             外部 Harness 由人在场操作，通过 MCP 协议以管理员身份调用本服务工具，能力上限就是平台自身的操作范围，
-            因此这里没有档位可配。它的启用开关、接入令牌与调用审计在「系统设置」页的 MCP 服务卡片中管理。
+            因此这里没有档位可配。启用开关、接入令牌与调用审计就在下方卡片中直接管理。
           </p>
           {harnessEndpoint && (
             <p className="text-xs text-gray-500 font-mono break-all">接入地址：{harnessEndpoint}</p>
           )}
         </div>
+        {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存，不随本页草稿提交。 */}
+        <MCPServiceCard />
       </section>
 
       {/* 客服端 Agent：无人监督、作用域锁定单个账号，因此能力由档位统一约束，不逐个工具放行。 */}
       <section className="space-y-4">
-        <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-sky-500 text-white">
-            <Bot className="w-4 h-4" />
-          </div>
-          客服端 Agent
-        </h3>
+        <SectionHeader
+          icon={Bot}
+          tone="brand"
+          title="客服端 Agent"
+          description="无人监督、作用域锁定单个账号；能力由档位统一约束"
+        />
         <div className="ios-card rounded-xl p-6 bg-white space-y-5">
           {!settings ? (
             <div className="p-6 text-center text-gray-400 space-y-3">
@@ -117,15 +145,53 @@ const AgentCenter: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-4 border-t border-gray-100 pt-5">
-                <span className={`text-xs ${saveMessage?.type === 'error' ? 'text-red-600' : 'text-gray-500'}`}>
-                  {saveMessage?.text || '账号未单独覆盖时，按这里的默认值生效'}
-                </span>
-                <button type="button" onClick={/* 提交租户默认开关与档位。 */ () => void submit()} disabled={saving} className="ios-btn-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-70">
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {saving ? '保存中...' : '保存'}
-                </button>
+              {/* 依赖区：客服 Agent 依赖的三项能力只读展示，配置动作统一跳转到 AI 设置页，避免本页出现重复编辑入口。 */}
+              <div className="space-y-2">
+                <div className="text-sm font-bold text-gray-800">前置依赖</div>
+                <AsyncSection
+                  loading={dependenciesLoading}
+                  error={dependenciesError}
+                  onRetry={reloadDependencies}
+                  retryLabel="重新读取"
+                  className="space-y-2"
+                >
+                  <DependencyRow
+                    testId="dependency-ai-model"
+                    label="AI 模型"
+                    state={dependencyState(dependencies?.aiModel)}
+                    detail="模型名称与 API 密钥都在 AI 设置页维护"
+                    linkLabel="前往 AI 设置"
+                    onNavigate={/* 跳转到 AI 设置页补全模型或密钥。 */ () => onNavigate?.('ai-settings')}
+                  />
+                  <DependencyRow
+                    testId="dependency-ai-scope"
+                    label="AI 接管范围"
+                    state={dependencyState(dependencies?.aiScope)}
+                    detail="留空时沿用内置接管边界"
+                    linkLabel="前往 AI 设置"
+                    onNavigate={/* 跳转到 AI 设置页调整接管范围。 */ () => onNavigate?.('ai-settings')}
+                  />
+                  <DependencyRow
+                    testId="dependency-ai-tools"
+                    label="外部 MCP 工具"
+                    state={dependencyState(dependencies?.aiTools)}
+                    detail="外部 MCP 工具服务（出站）在 AI 设置页添加"
+                    linkLabel="前往 AI 设置"
+                    onNavigate={/* 跳转到 AI 设置页添加外部 MCP 工具服务。 */ () => onNavigate?.('ai-settings')}
+                  />
+                </AsyncSection>
               </div>
+
+              <SaveBar
+                state={saveBarState}
+                onSave={/* 提交租户默认开关与档位。 */ () => void submit()}
+                label="保存"
+                scopeLabel="保存客服 Agent 配置"
+                successMessage={saveMessage?.type === 'success' ? saveMessage.text : '客服 Agent 配置已保存'}
+                errorMessage={saveMessage?.type === 'error' ? saveMessage.text : '保存客服 Agent 配置失败'}
+                sticky={false}
+                onSettled={settleSaveBar}
+              />
             </>
           )}
         </div>
@@ -133,12 +199,12 @@ const AgentCenter: React.FC = () => {
 
       {/* 运营 Agent：启用前提是 QQ 机器人凭据已配置，配置项就地留在「连接器」页的 QQ 机器人卡片，本页只作指引。 */}
       <section className="space-y-4">
-        <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-violet-500 text-white">
-            <Radio className="w-4 h-4" />
-          </div>
-          运营 Agent
-        </h3>
+        <SectionHeader
+          icon={Radio}
+          tone="violet"
+          title="运营 Agent"
+          description="走 QQ 通道，由管理员在 QQ 里下发指令"
+        />
         <div className="ios-card rounded-xl p-6 bg-white space-y-3">
           <p className="text-sm leading-6 text-gray-700">
             运营 Agent 走 QQ 通道，由管理员在 QQ 里直接下发指令，它的启用前提是 QQ 机器人凭据已经配置好。
@@ -148,9 +214,17 @@ const AgentCenter: React.FC = () => {
             放在一起会出现「在 Agent 中心打开了、却因为 QQ 没配好而毫无反应」的困惑。
             本页不对该 Agent 提供配置项。
           </p>
+          <DependencyRow
+            testId="dependency-qq-connector"
+            label="QQ 机器人连接器"
+            state={dependencyState(dependencies?.qqConnector)}
+            detail="AppID 与 AppSecret 在连接器页维护"
+            linkLabel="前往连接器页"
+            onNavigate={/* 跳转到连接器页补全 QQ 机器人凭据。 */ () => onNavigate?.('connectors')}
+          />
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 };
 

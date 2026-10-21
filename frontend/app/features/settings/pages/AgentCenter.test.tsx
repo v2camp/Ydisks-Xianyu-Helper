@@ -2,13 +2,18 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AgentCenter from './AgentCenter';
-import { getAgentSupportSettings,getMCPServiceStatus,updateAgentSupportSettings } from '../api';
-import type { MCPServiceStatus } from '../models';
+import { getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,updateAgentSupportSettings } from '../api';
+import type { MCPAuditPage,MCPServiceStatus,SystemSettings } from '../models';
 
-vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网。 */ () => ({
+vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网；MCP 卡片、客服 Agent 与依赖读取共用同一适配层。 */ () => ({
   getAgentSupportSettings: vi.fn(),
   updateAgentSupportSettings: vi.fn(),
   getMCPServiceStatus: vi.fn(),
+  getMCPAudit: vi.fn(),
+  getSystemSettings: vi.fn(),
+  updateMCPServiceSettings: vi.fn(),
+  generateMCPToken: vi.fn(),
+  revokeMCPToken: vi.fn(),
 }));
 
 // agentSupportSettingsMock 是租户级客服 Agent 配置读取的替身。
@@ -17,6 +22,20 @@ const agentSupportSettingsMock = vi.mocked(getAgentSupportSettings);
 const agentSupportSettingsUpdateMock = vi.mocked(updateAgentSupportSettings);
 // mcpServiceStatusMock 是 MCP 服务现状读取的替身。
 const mcpServiceStatusMock = vi.mocked(getMCPServiceStatus);
+// mcpAuditMock 是 MCP 调用审计分页读取的替身，MCP 卡片挂载时会立即拉取首页。
+const mcpAuditMock = vi.mocked(getMCPAudit);
+// systemSettingsMock 是依赖状态读取的替身，页面据此推导三类 Agent 的前置依赖。
+const systemSettingsMock = vi.mocked(getSystemSettings);
+
+// READY_SETTINGS 是四条依赖全部就绪的系统设置快照：密钥已配置、模型非空、接管范围非空、至少一个 MCP 服务、QQ 凭据齐全。
+const READY_SETTINGS: SystemSettings = {
+  ai_api_key_configured: true,
+  ai_model: 'gpt-4o-mini',
+  ai_scope_config: '{"intents":["price"]}',
+  'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]',
+  'qqbot.app_id': '102012345',
+  'qqbot.app_secret_configured': true,
+};
 
 // DISABLED_MCP_STATUS 是未启用 MCP 服务时页面读取到的最小状态。
 const DISABLED_MCP_STATUS: MCPServiceStatus = {
@@ -29,6 +48,9 @@ const DISABLED_MCP_STATUS: MCPServiceStatus = {
   previousTokenExpiresAt: 0,
   endpoint: '',
 };
+
+// EMPTY_MCP_AUDIT 是尚无调用记录时的审计首页，用于让 MCP 卡片渲染空态。
+const EMPTY_MCP_AUDIT: MCPAuditPage = { records: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
 
 afterEach(/* 当前回调隔离每个用例创建的 DOM。 */ () => cleanup());
 
@@ -44,6 +66,8 @@ beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响
   });
   agentSupportSettingsUpdateMock.mockResolvedValue();
   mcpServiceStatusMock.mockResolvedValue(DISABLED_MCP_STATUS);
+  mcpAuditMock.mockResolvedValue(EMPTY_MCP_AUDIT);
+  systemSettingsMock.mockResolvedValue(READY_SETTINGS);
 });
 
 describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与租户级客服 Agent 授权往返。 */ () => {
@@ -100,7 +124,8 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     mcpServiceStatusMock.mockResolvedValue({ ...DISABLED_MCP_STATUS, enabled: true, endpoint: 'http://127.0.0.1:59190/mcp' });
     render(<AgentCenter />);
     expect(await screen.findByText('已启用')).toBeTruthy();
-    expect(screen.getByText(/http:\/\/127\.0\.0\.1:59190\/mcp/)).toBeTruthy();
+    // 接入地址同时出现在状态摘要与 MCP 卡片的 Harness 配置示例中，这里只要求至少渲染一处。
+    expect(screen.getAllByText(/http:\/\/127\.0\.0\.1:59190\/mcp/).length).toBeGreaterThan(0);
     expect(screen.getByText(/没有档位可配/)).toBeTruthy();
   });
 
@@ -109,5 +134,34 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     await screen.findByLabelText('启用客服 Agent');
     expect(screen.getByText(/QQ 机器人连接器卡片/)).toBeTruthy();
     expect(screen.getByText(/本页不对该 Agent 提供配置项/)).toBeTruthy();
+  });
+
+  test('四类前置依赖就绪时逐行显示已配置', /* 当前测试验证依赖状态来自系统设置快照而不是前端猜测。 */ async () => {
+    render(<AgentCenter />);
+    // 三个依赖行的可见文案都由同一次系统设置读取推导，逐行断言避免「一处就绪就当全部就绪」。
+    for (const /* testId 是当前待断言的依赖行测试标识。 */ testId of ['dependency-ai-model', 'dependency-ai-scope', 'dependency-ai-tools', 'dependency-qq-connector']) {
+      // row 是当前待断言的依赖行。
+      const row = await screen.findByTestId(testId);
+      expect(row.textContent).toContain('已配置');
+    }
+  });
+
+  test('接管范围留空时显示回落内置而不是未配置', /* 当前测试验证留空是合法默认值，不会误报为缺配置。 */ async () => {
+    systemSettingsMock.mockResolvedValue({ ...READY_SETTINGS, ai_scope_config: '   ' });
+    render(<AgentCenter />);
+    // scopeRow 是接管范围依赖行，空白配置应呈现回落态。
+    const scopeRow = await screen.findByTestId('dependency-ai-scope');
+    expect(scopeRow.textContent).toContain('未配置 · 回落内置');
+  });
+
+  test('依赖读取失败时显示错误并可重试', /* 当前测试验证失败信息落在页面上且可恢复，不只写进控制台。 */ async () => {
+    systemSettingsMock.mockRejectedValueOnce(new Error('读取系统设置失败'));
+    render(<AgentCenter />);
+    expect(await screen.findByText('读取系统设置失败')).toBeTruthy();
+    // retryButton 是依赖区的重试入口，点击后应重新发起读取并渲染依赖行。
+    const retryButton = screen.getByRole('button', { name: '重新读取' });
+    systemSettingsMock.mockResolvedValue(READY_SETTINGS);
+    fireEvent.click(retryButton);
+    expect((await screen.findByTestId('dependency-ai-model')).textContent).toContain('已配置');
   });
 });

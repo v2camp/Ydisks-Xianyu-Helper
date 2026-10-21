@@ -85,6 +85,8 @@ export interface AppContentProps {
   onConfigureDelivery: (target: DeliveryRuleTarget) => void;
   // onDeliveryTargetHandled 负责确认规则页已经消费跳转目标。
   onDeliveryTargetHandled: () => void;
+  // onNavigate 是可选的跨页跳转入口，由壳层注入；页面据此渲染指向其他配置页的依赖跳转，缺省时页面只展示依赖状态。
+  onNavigate?: (tab: string) => void;
 }
 
 // AppContent 按当前导航标识选择业务页面，并隔离页面代码的动态加载边界。
@@ -94,6 +96,7 @@ export const AppContent: React.FC<AppContentProps> = ({
   deliveryRuleTarget,
   onConfigureDelivery,
   onDeliveryTargetHandled,
+  onNavigate,
 }) => {
   // handleConfigureDelivery 将商品页面对象转换成路由壳使用的最小联动载荷。
   const handleConfigureDelivery = (item /* item 表示用户选择的商品。 */: Item) => {
@@ -120,8 +123,8 @@ export const AppContent: React.FC<AppContentProps> = ({
       case 'delivery-templates': return <DeliveryTemplates />;
       case 'connectors': return <Connectors isAdmin={isAdmin} />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
-      case 'ai-settings': return isAdmin ? <AISettings /> : <Dashboard />;
-      case 'agent-center': return isAdmin ? <AgentCenter /> : <Dashboard />;
+      case 'ai-settings': return isAdmin ? <AISettings onNavigate={onNavigate} /> : <Dashboard />;
+      case 'agent-center': return isAdmin ? <AgentCenter onNavigate={onNavigate} /> : <Dashboard />;
       default: return <Dashboard />;
     }
   };
@@ -188,6 +191,7 @@ const AuthenticatedShell: React.FC<AuthenticatedShellProps> = ({
           deliveryRuleTarget={deliveryRuleTarget}
           onConfigureDelivery={onConfigureDelivery}
           onDeliveryTargetHandled={onDeliveryTargetHandled}
+          onNavigate={onNavigate}
         />
       </div>
     </main>

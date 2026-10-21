@@ -2,6 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe,expect,test } from 'vitest';
 
+// lazyPageNames 是产生独立分片的页面名唯一来源，懒加载断言与分片预算共用同一份清单。
+import { lazyPageNames } from './app/router/pageEntries';
+
+// lazyPagePattern 由页面清单派生，避免手写正则漏掉页面。
+const lazyPagePattern = new RegExp(`const (?:${lazyPageNames.join('|')}) = lazy\\(`, 'g');
+
 const repoRoot = resolve(__dirname); /* repoRoot 表示repoRoot。 */
 
 const readFrontendFile = (relativePath: string) =>
@@ -35,9 +41,9 @@ describe('frontend navigation routing', () => {
 
   test('route pages are lazy-loaded behind a shared Suspense boundary', () => {
     const app = readFrontendFile('app/shell/AuthenticatedShell.tsx'); /* app 表示认证后页面组合器源码。 */
-    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|AgentCenter|Settings|Rules|Connectors|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
+    const lazyPageCount = (app.match(lazyPagePattern) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量，期望值与页面清单长度一致。 */
 
-    expect(lazyPageCount).toBe(11);
+    expect(lazyPageCount).toBe(12);
     expect(app).toContain('const PageLoading: React.FC');
     expect(app).toContain('<Suspense fallback={<PageLoading />}>');
     expect(app).not.toContain("import Dashboard from '../../components/Dashboard'");
@@ -105,8 +111,8 @@ describe('frontend navigation routing', () => {
     expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
     expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AISettings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AgentCenter /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <AISettings onNavigate={onNavigate} /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <AgentCenter onNavigate={onNavigate} /> : <Dashboard />');
     expect(sidebar).toContain('isAdmin = false');
     expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
     expect(sidebar).toContain("{ id: 'ai-settings', icon: Sparkles, label: 'AI 设置' }");
@@ -124,6 +130,17 @@ describe('frontend navigation routing', () => {
     expect(routes).toContain("'/app/settings': 'settings'");
     expect(routes).toContain("'/app/agent-center': 'agent-center'");
   } /* 测试回调断言系统设置、AI 设置与 Agent 中心各自拥有独立路由映射。 */);
+
+  test('inbound MCP service card is mounted on the agent center page instead of system settings', () => {
+    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示系统设置页源码，用于确认入站 MCP 卡片已迁出。 */
+    const agentCenter = readFrontendFile('app/features/settings/pages/AgentCenter.tsx'); /* agentCenter 表示 Agent 中心页源码，用于确认入站 MCP 卡片已就地挂载。 */
+
+    expect(settings).not.toContain('MCPServiceCard');
+    expect(agentCenter).toContain("import { MCPServiceCard } from '../components/MCPServiceCard'");
+    expect(agentCenter).toContain('<MCPServiceCard />');
+    expect(agentCenter).toContain('对外 MCP 服务（入站）');
+    expect(agentCenter).toContain('方向相反');
+  } /* 测试回调断言入站 MCP 服务卡挂在 Agent 中心页、不再出现在系统设置页，并与出站客户端配置区分方向。 */);
 
   test('captcha remote settings expose the reference privacy and fallback semantics', () => {
     const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示settings。 */

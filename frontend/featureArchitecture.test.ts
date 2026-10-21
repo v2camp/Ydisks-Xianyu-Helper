@@ -2,6 +2,9 @@ import { existsSync,readdirSync,readFileSync } from 'node:fs';
 import { dirname,relative,resolve } from 'node:path';
 import { describe,expect,test } from 'vitest';
 
+// pageEntryFiles 是页面入口的唯一来源，与路由壳、分片预算共用同一份清单。
+import { pageEntryFiles } from './app/router/pageEntries';
+
 // sourceRoot 是前端源码根目录，所有架构规则都基于生产源码扫描。
 const sourceRoot = resolve(__dirname);
 
@@ -58,23 +61,6 @@ const featureNameFromPath = (relativePath: string): string | null => {
   const featureMatch = relativePath.match(/^app\/features\/([^/]+)\//);
   return featureMatch?.[1] || null;
 };
-
-// canonicalPageEntrypoints 是当前应用由路由壳按需加载的业务页和认证页清单。
-const canonicalPageEntrypoints = [
-  'app/features/accounts/pages/AccountList.tsx',
-  'app/features/cards/pages/CardList.tsx',
-  'app/features/chat/pages/Chat.tsx',
-  'app/features/dashboard/pages/Dashboard.tsx',
-  'app/features/delivery-templates/pages/DeliveryTemplates.tsx',
-  'app/features/items/pages/ItemList.tsx',
-  'app/features/connectors/pages/Connectors.tsx',
-  'app/features/orders/pages/OrderList.tsx',
-  'app/features/rules/pages/Rules.tsx',
-  'app/features/session/pages/SessionGate.tsx',
-  'app/features/settings/pages/AgentCenter.tsx',
-  'app/features/settings/pages/AISettings.tsx',
-  'app/features/settings/pages/Settings.tsx',
-];
 
 describe('React feature dependency boundaries', () => {
   test('legacy centralized API entrypoint has been removed', () => {
@@ -220,6 +206,6 @@ describe('React feature dependency boundaries', () => {
       .map(/* pagePathMapper 提取页面入口相对路径。 */ file => file.relativePath)
       .sort();
 
-    expect(actualPageEntrypoints).toEqual([...canonicalPageEntrypoints].sort());
+    expect(actualPageEntrypoints).toEqual([...pageEntryFiles].sort());
   } /* 测试回调断言页面入口归属各自 feature 的 pages 目录。 */);
 } /* 测试套件回调汇总前端依赖方向与目录边界门禁。 */);
