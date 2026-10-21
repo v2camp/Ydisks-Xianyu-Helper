@@ -105,3 +105,30 @@ test('连接器保存载荷收窄到注册表键并保留未改动的敏感值',
       .toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' });
     expect(buildConnectorSettings([qqBotConnector], {})).toEqual({});
   });
+
+// qq 渠道的 app_id/app_secret 只在既无连接器凭据又无已保存凭据时才必填。
+test('qq 渠道凭据按连接器就绪与已保存凭据豁免必填',
+  // 凭据校验测试验证四种来源组合下的必填豁免边界。
+  () => {
+    // qqForm 是只填写了单聊目标 openid 的 qq 渠道表单。
+    const qqForm = createForm({ type: 'qq', config: { user_openid: 'user-openid' } });
+    expect(validateNotificationForm(qqForm)).toBe('请填写 机器人 AppID');
+    expect(validateNotificationForm(qqForm, { connectorReady: true })).toBe('');
+    expect(validateNotificationForm(qqForm, { hasChannelCredentials: true })).toBe('');
+    expect(validateNotificationForm(qqForm, { connectorReady: false, hasChannelCredentials: false })).toBe('请填写 机器人 AppID');
+    // 豁免只作用于 qq 渠道，其他渠道的必填字段不受连接器状态影响。
+    expect(validateNotificationForm(createForm({ config: {} }), { connectorReady: true })).toContain('Bark 服务器');
+  });
+
+// qq 渠道的「保留」与「清除」在载荷上是「不带 app 键」与「显式空串」的差别。
+test('qq 渠道载荷用缺省键保留独立凭据，用空串触发服务端删除',
+  // 保留语义测试验证合并提交约定的两种表达。
+  () => {
+    // keepForm 表示继续沿用渠道已保存的独立凭据。
+    const keepForm = createForm({ type: 'qq', config: { user_openid: 'user-openid', group_openid: '' } });
+    expect(buildNotificationPayload(keepForm).config).toEqual({ user_openid: 'user-openid', group_openid: '' });
+    expect(Object.keys(buildNotificationPayload(keepForm).config ?? {})).not.toContain('app_id');
+    // clearForm 表示改用连接器凭据，显式空串会被服务端解释为删除该键。
+    const clearForm = createForm({ type: 'qq', config: { user_openid: 'user-openid', app_id: '', app_secret: '' } });
+    expect(buildNotificationPayload(clearForm).config).toEqual({ user_openid: 'user-openid', app_id: '', app_secret: '' });
+  });

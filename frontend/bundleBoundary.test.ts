@@ -27,7 +27,7 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Rules: 73 * 1024,
   // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12855 字节，预算随之上调。
   DeliveryTemplates: 14 * 1024,
-  // Connectors 页面承载平台连接器注册表卡、通知渠道编辑器、SMTP 配置与页面分区骨架，实测 49825 字节。
+  // Connectors 页面承载平台连接器注册表卡、通知渠道编辑器、SMTP 配置、页面分区骨架与 QQ 凭据继承提示，实测 51411 字节。
   Connectors: 52 * 1024,
   Chat: 50 * 1024,
 };

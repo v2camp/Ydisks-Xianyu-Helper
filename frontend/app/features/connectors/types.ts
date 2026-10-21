@@ -112,6 +112,10 @@ export interface ConnectorsState {
   connectorSettings: SystemSettings;
   // connectorSaving 表示连接器配置是否正在保存。
   connectorSaving: boolean;
+  // qqConnectorReady 表示系统级 QQ 机器人连接器凭据是否已就绪，qq 渠道可据此继承系统凭据。
+  qqConnectorReady: boolean;
+  // hasChannelCredentials 表示当前编辑的 qq 渠道仍保存着一套独立 app_id/app_secret。
+  hasChannelCredentials: boolean;
   // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取。
   settingsLoading: boolean;
   // settingsError 是系统设置读取失败的用户可见文案，非空时对应区块展示错误态与重试入口。

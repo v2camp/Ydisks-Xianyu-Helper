@@ -1,5 +1,6 @@
 import React from 'react';
-import { StatusBadge, type StatusBadgeTone } from './StatusBadge';
+import { StatusBadge } from './StatusBadge';
+import type { StatusBadgeTone } from './tokens';
 
 // DependencyState 是只读依赖的四态：读取中、已配置、未配置但回落内置、彻底未配置。
 export type DependencyState = 'loading' | 'ready' | 'fallback' | 'missing';

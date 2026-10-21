@@ -1,7 +1,8 @@
 import React from 'react';
+import { SECTION_TONE_STYLES, type SectionTone } from './tokens';
 
-// SectionTone 是区块标题的语义色板：颜色对应业务含义，避免各页面随手取色。
-export type SectionTone = 'brand' | 'violet' | 'emerald' | 'indigo' | 'slate' | 'amber';
+// SectionTone 仍从本文件导出，保证既有调用方的导入路径不变；真实定义在 tokens.ts。
+export type { SectionTone };
 
 // SectionHeaderProps 描述区块标题的图标、文案与右侧动作槽。
 export interface SectionHeaderProps {
@@ -17,24 +18,15 @@ export interface SectionHeaderProps {
   actions?: React.ReactNode;
 }
 
-// SECTION_TONE_CLASSES 把语义色映射到图标槽底色，取值与设计文档 §4.3 的色板一一对应。
-const SECTION_TONE_CLASSES: Record<SectionTone, string> = {
-  brand: 'bg-brand',
-  violet: 'bg-violet-500',
-  emerald: 'bg-emerald-500',
-  indigo: 'bg-indigo-500',
-  slate: 'bg-slate-700',
-  amber: 'bg-amber-500',
-};
-
 // SectionHeader 渲染区块标题：语义色图标块 + 标题 + 可选说明与右侧动作槽。
+// 图标块底色由 tokens.ts 的 SECTION_TONE_STYLES 提供，组件内不再持有色值映射。
 export const SectionHeader: React.FC<SectionHeaderProps> = ({
   icon: Icon, title, description, tone = 'brand', actions,
 }) => (
   <div className="space-y-1">
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        <div className={`p-1.5 rounded-lg text-white ${SECTION_TONE_CLASSES[tone]}`}>
+        <div className={`p-1.5 rounded-lg text-white ${SECTION_TONE_STYLES[tone]}`}>
           <Icon className="w-4 h-4" />
         </div>
         <h3 className="text-lg font-extrabold text-ink">{title}</h3>
