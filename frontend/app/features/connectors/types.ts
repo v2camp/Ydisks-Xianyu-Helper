@@ -1,4 +1,5 @@
 import type { Dispatch,ElementType,SetStateAction } from 'react';
+import type { SaveBarState } from '../../../shared/ui/SaveBar';
 import type { NotificationChannel,NotificationChannelType,NotificationEventType,SystemSettings } from './api';
 
 // NotificationField 描述通知渠道表单中的一个配置字段。
@@ -111,6 +112,18 @@ export interface ConnectorsState {
   connectorSettings: SystemSettings;
   // connectorSaving 表示连接器配置是否正在保存。
   connectorSaving: boolean;
+  // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取。
+  settingsLoading: boolean;
+  // settingsError 是系统设置读取失败的用户可见文案，非空时对应区块展示错误态与重试入口。
+  settingsError: string;
+  // connectorSaveState 是连接器区块保存条的四态，由保存请求的进展与结果驱动。
+  connectorSaveState: SaveBarState;
+  // connectorSaveError 是连接器区块保存失败的具体原因，供保存条失败态展示。
+  connectorSaveError: string;
+  // smtpSaveState 是 SMTP 区块保存条的四态，与连接器保存互不影响。
+  smtpSaveState: SaveBarState;
+  // smtpSaveError 是 SMTP 区块保存失败的具体原因，供保存条失败态展示。
+  smtpSaveError: string;
   // smtpSaving 表示系统 SMTP 是否正在保存。
   smtpSaving: boolean;
   // showSmtpPassword 控制系统 SMTP 密码明文展示。
@@ -131,6 +144,10 @@ export interface ConnectorsState {
   setShowChannelSmtpPassword: Dispatch<SetStateAction<boolean>>;
   // loadChannels 刷新通知渠道列表。
   loadChannels: () => Promise<void>;
+  // loadSmtp 重新读取管理员可见的系统设置（连接器草稿与 SMTP）。
+  loadSmtp: () => Promise<void>;
+  // refresh 是页头「刷新」的语义：管理员同时重载渠道与系统设置，普通用户只刷新渠道。
+  refresh: () => Promise<void>;
   // openCreate 打开新建渠道弹窗。
   openCreate: () => void;
   // openEdit 打开已有渠道编辑弹窗。
@@ -151,4 +168,8 @@ export interface ConnectorsState {
   handleSaveSmtp: () => Promise<void>;
   // handleSaveConnector 保存连接器凭据与能力开关。
   handleSaveConnector: () => Promise<void>;
+  // resetConnectorSaveState 把连接器保存条复位为空闲待提交。
+  resetConnectorSaveState: () => void;
+  // resetSmtpSaveState 把 SMTP 保存条复位为空闲待提交。
+  resetSmtpSaveState: () => void;
 }

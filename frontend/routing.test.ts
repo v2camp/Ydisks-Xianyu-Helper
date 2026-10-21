@@ -167,7 +167,10 @@ describe('frontend navigation routing', () => {
     expect(registry).toContain('机器人 AppID');
     expect(registry).toContain('机器人 AppSecret');
     expect(registry).toContain("'qqbot.app_secret'");
-    expect(registry).toContain("'qqbot.app_id'");
+    // QQ 连接器的 AppID 与「AppSecret 已配置」键名统一引用跨 feature 共享契约，注册表不再写字面量，避免同一设置键多处漂移。
+    expect(registry).toContain('QQ_CONNECTOR_READY_KEYS.appId');
+    expect(registry).toContain('QQ_CONNECTOR_READY_KEYS.appSecretConfigured');
+    expect(registry).toContain("from '../../../shared/api-contract/settings'");
     expect(card).toContain('connector.fields.map');
   } /* 测试回调断言连接器页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
 
@@ -192,7 +195,17 @@ describe('frontend navigation routing', () => {
     const notificationModal = readFrontendFile('app/features/connectors/components/NotificationChannelModal.tsx'); /* notificationModal 表示渠道编辑弹窗源码。 */
 
     expect(notifications).toContain('interface ConnectorsProps');
-    expect(notifications).toContain('{isAdmin && <NotificationSmtpSettings');
+    // smtpIndex 是 SMTP 面板在页面源码中的位置。
+    const smtpIndex = notifications.indexOf('<NotificationSmtpSettings');
+    // gateIndex 是 SMTP 面板之前最近的管理员条件位置，用于确认整块仍受权限控制。
+    const gateIndex = notifications.lastIndexOf('{isAdmin && (');
+    expect(smtpIndex).toBeGreaterThan(-1);
+    // 管理员条件只应包裹两个系统级区块：平台连接器与 SMTP；多一处或漏一处都说明权限边界被改动。
+    expect(notifications.match(/\{isAdmin && \(/g)).toHaveLength(2);
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(smtpIndex).toBeGreaterThan(gateIndex);
+    // 包裹 SMTP 面板的异步容器也在管理员条件之后，说明加载与错误态同样不会暴露给普通用户。
+    expect(notifications.lastIndexOf('<AsyncSection', smtpIndex)).toBeGreaterThan(gateIndex);
     expect(notificationState).toContain("key: 'to_email'");
     expect(notificationModal).toContain('完整继承系统 SMTP');
     expect(notificationModal).toContain('use_custom_smtp');

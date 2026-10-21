@@ -12,15 +12,17 @@ afterEach(/* 当前回调隔离每个用例创建的 DOM。 */ () => cleanup());
 interface ConnectorHarnessProps {
   /** initial 是渲染前的系统配置草稿初值。 */
   initial: SystemSettings;
+  /** loading 表示系统设置是否仍在读取，用于验证读取中态。 */
+  loading?: boolean;
 }
 
 // ConnectorHarness 是连接器卡的受控测试容器，保存草稿并展示最新补丁。
-function ConnectorHarness({ initial }: ConnectorHarnessProps) {
+function ConnectorHarness({ initial, loading }: ConnectorHarnessProps) {
   // settings 是受控的系统配置草稿状态。
   const [settings, setSettings] = useState<SystemSettings>(initial);
   return (
     <div>
-      <ConnectorCard connector={qqBotConnector} settings={settings} onChange={/* patch 合并进测试草稿状态。 */ patch => setSettings(/* prev 是合并补丁前的草稿，返回合并后的新草稿。 */ prev => ({ ...prev, ...patch }))} />
+      <ConnectorCard connector={qqBotConnector} settings={settings} loading={loading} onChange={/* patch 合并进测试草稿状态。 */ patch => setSettings(/* prev 是合并补丁前的草稿，返回合并后的新草稿。 */ prev => ({ ...prev, ...patch }))} />
       <pre data-testid="draft">{JSON.stringify({ app_id: settings['qqbot.app_id'] ?? null, app_secret: settings['qqbot.app_secret'] ?? null })}</pre>
       <pre data-testid="settings">{JSON.stringify({
         'qqbot.commands_enabled': settings['qqbot.commands_enabled'] ?? null,
@@ -122,5 +124,34 @@ describe('ConnectorCard', /* 当前测试组验证注册表驱动的凭据输入
     render(<ConnectorHarness initial={{}} />);
     expect(screen.getByText(/凭据与开关在下次服务重启后生效/)).toBeTruthy();
     expect(screen.getByText(/按指数退避自动重连/)).toBeTruthy();
+  });
+
+  test('系统设置读取中时状态徽章显示读取中而不是未配置', /* 当前测试验证空草稿在读取期间不会被误判为未配置。 */ () => {
+    render(<ConnectorHarness initial={{}} loading />);
+    expect(screen.getByTestId('connector-status-qqbot').textContent).toBe('读取中');
+    expect(screen.queryByText('未配置')).toBeNull();
+  });
+
+  test('凭据已就绪时配置步骤默认折叠且可展开收起', /* 当前测试验证就绪后引导不再占用卡片高度。 */ () => {
+    render(<ConnectorHarness initial={{ 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true }} />);
+    // toggle 是引导折叠时暴露的展开入口。
+    const toggle = screen.getByRole('button', { name: /查看配置步骤/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText(/用手机 QQ 扫码登录/)).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByText(/用手机 QQ 扫码登录/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /收起/ }).getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /收起/ }));
+    expect(screen.queryByText(/用手机 QQ 扫码登录/)).toBeNull();
+  });
+
+  test('凭据未就绪时配置步骤默认展开并可收起', /* 当前测试验证首次配置者仍能直接看到引导。 */ () => {
+    render(<ConnectorHarness initial={{}} />);
+    expect(screen.getByText(/用手机 QQ 扫码登录/)).toBeTruthy();
+    // collapseToggle 是未就绪时收起引导的入口。
+    const collapseToggle = screen.getByRole('button', { name: /收起/ });
+    expect(collapseToggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(collapseToggle);
+    expect(screen.queryByText(/用手机 QQ 扫码登录/)).toBeNull();
   });
 });

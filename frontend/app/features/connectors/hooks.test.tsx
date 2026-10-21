@@ -248,6 +248,74 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     consoleError.mockRestore();
   });
 
+  test('系统设置首次读取期间保持读取态并在失败后暴露可见错误', /* 当前测试验证读取中态与静默失败修复。 */ async () => {
+    // failSettings 由测试控制首次系统设置读取的失败时机，用于观察读取中的中间态。
+    let failSettings!: (reason: Error) => void;
+    getSmtpMock.mockImplementationOnce(/* pendingSettingsResponse 暂存读取失败的控制函数。 */ () => new Promise(/* pendingSettingsExecutor 等待测试结束首次读取。 */ (_resolve, reject) => { failSettings = reject; }));
+    // consoleError 是读取失败日志的可控替身。
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(/* errorLogger 忽略测试日志输出。 */ () => undefined);
+    // hook 是系统设置读取场景下的管理员通知 Hook 渲染结果。
+    const hook = renderHook(/* settingsHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
+    expect(hook.result.current.settingsLoading).toBe(true);
+    expect(hook.result.current.settingsError).toBe('');
+
+    await act(/* failSettingsAction 让首次读取失败。 */ async () => {
+      failSettings(new Error('系统设置读取失败'));
+      await Promise.resolve();
+    });
+    await waitFor(/* settingsErrorAssertion 等待读取失败落到错误态。 */ () => expect(hook.result.current.settingsError).toBe('系统设置读取失败'));
+    expect(hook.result.current.settingsLoading).toBe(false);
+
+    await act(/* retrySettingsAction 重新读取成功后清空错误。 */ async () => hook.result.current.loadSmtp());
+    expect(hook.result.current.settingsError).toBe('');
+    expect(hook.result.current.connectorSettings).toEqual(smtpFixture);
+    hook.unmount();
+    consoleError.mockRestore();
+  });
+
+  test('刷新对管理员同时重载渠道与系统设置，对普通用户只刷新渠道', /* 当前测试验证页头刷新的权限语义。 */ async () => {
+    // adminHook 是管理员刷新场景的 Hook 渲染结果。
+    const adminHook = renderHook(/* adminRefreshHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
+    await waitFor(/* adminLoadedAssertion 等待管理员首次加载完成。 */ () => expect(adminHook.result.current.settingsLoading).toBe(false));
+    getChannelsMock.mockClear();
+    getSmtpMock.mockClear();
+    await act(/* adminRefreshAction 触发管理员刷新。 */ async () => adminHook.result.current.refresh());
+    expect(getChannelsMock).toHaveBeenCalledTimes(1);
+    expect(getSmtpMock).toHaveBeenCalledTimes(1);
+    adminHook.unmount();
+
+    // userHook 是普通用户刷新场景的 Hook 渲染结果。
+    const userHook = renderHook(/* userRefreshHookFactory 创建普通用户通知 Hook。 */ () => useConnectors(false));
+    await waitFor(/* userLoadedAssertion 等待普通用户首次加载完成。 */ () => expect(userHook.result.current.loading).toBe(false));
+    getChannelsMock.mockClear();
+    getSmtpMock.mockClear();
+    await act(/* userRefreshAction 触发普通用户刷新。 */ async () => userHook.result.current.refresh());
+    expect(getChannelsMock).toHaveBeenCalledTimes(1);
+    expect(getSmtpMock).not.toHaveBeenCalled();
+    userHook.unmount();
+  });
+
+  test('连接器与 SMTP 保存分别驱动各自的区块保存条状态', /* 当前测试验证两条保存条互不串态。 */ async () => {
+    // hook 是保存条状态场景的管理员通知 Hook 渲染结果。
+    const hook = renderHook(/* saveBarHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
+    await waitFor(/* saveBarLoadedAssertion 等待管理员首次加载完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
+
+    await act(/* connectorSaveAction 保存连接器配置。 */ async () => hook.result.current.handleSaveConnector());
+    expect(hook.result.current.connectorSaveState).toBe('success');
+    expect(hook.result.current.smtpSaveState).toBe('idle');
+    act(/* connectorSettleAction 复位连接器保存条。 */ () => hook.result.current.resetConnectorSaveState());
+    expect(hook.result.current.connectorSaveState).toBe('idle');
+
+    updateSmtpMock.mockRejectedValueOnce(new Error('SMTP 保存失败'));
+    await act(/* smtpSaveAction 触发 SMTP 保存失败。 */ async () => hook.result.current.handleSaveSmtp());
+    expect(hook.result.current.smtpSaveState).toBe('error');
+    expect(hook.result.current.smtpSaveError).toBe('SMTP 保存失败');
+    expect(hook.result.current.connectorSaveState).toBe('idle');
+    act(/* smtpSettleAction 复位 SMTP 保存条。 */ () => hook.result.current.resetSmtpSaveState());
+    expect(hook.result.current.smtpSaveState).toBe('idle');
+    hook.unmount();
+  });
+
   test('提示自动消失、弹窗关闭和删除拒绝均清理状态', /* 当前回调验证通知 Hook 的定时器与守卫分支。 */ async () => {
     vi.useFakeTimers();
     try {

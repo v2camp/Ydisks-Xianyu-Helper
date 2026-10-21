@@ -1,5 +1,6 @@
-import { ExternalLink, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import React, { useState } from 'react';
+import { StatusBadge } from '../../../../shared/ui/StatusBadge';
 import type { SystemSettings } from '../api';
 import { connectorReady } from '../state';
 import type { ConnectorField, ConnectorMeta } from '../registry';
@@ -10,6 +11,8 @@ interface ConnectorCardProps {
   connector: ConnectorMeta;
   // settings 是连接器配置草稿，读取各系统设置键的当前值。
   settings: SystemSettings;
+  // loading 表示系统设置仍在读取；为真时状态徽章展示「读取中」，绝不展示「未配置」。
+  loading?: boolean;
   // onChange 在任一控件变化后写回系统配置草稿补丁。
   onChange: (patch: Partial<SystemSettings>) => void;
 }
@@ -67,13 +70,21 @@ const ConnectorFieldInput: React.FC<{
 };
 
 // ConnectorCard 渲染连接器区的单个配置卡：凭据输入、平台引导、能力开关与平台限制提示。
-export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, settings, onChange }) => {
+export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, settings, loading = false, onChange }) => {
   // Icon 是连接器定义中声明的图标组件。
   const Icon = connector.icon;
   // ready 表示当前草稿是否已具备该连接器的完整必需凭据。
   const ready = connectorReady(connector, settings);
   // title 是卡片的展示名称。
   const title = `${connector.label}连接器`;
+  // guideOpenOverride 保存用户手动切换后的引导展开状态；null 表示用户尚未切换，继续跟随凭据就绪度。
+  const [guideOpenOverride, setGuideOpenOverride] = useState<boolean | null>(null);
+  // guideOpen 是引导区块的实际展开状态：凭据已就绪时默认折叠，未就绪时默认展开，手动切换后以手动状态为准。
+  const guideOpen = guideOpenOverride ?? !ready;
+  // statusTone 是状态徽章的语义色：读取中优先，其次是就绪与未配置。
+  const statusTone = loading ? 'loading' : ready ? 'ready' : 'missing';
+  // statusText 是状态徽章文案，读取期间不得显示「未配置」以免误判为没有配置。
+  const statusText = loading ? '读取中' : ready ? '凭据已就绪' : '未配置';
 
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5">
@@ -84,12 +95,7 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-bold text-gray-800">{title}</h4>
-            <span
-              data-testid={`connector-status-${connector.id}`}
-              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${ready ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-            >
-              {ready ? '凭据已就绪' : '未配置'}
-            </span>
+            <StatusBadge tone={statusTone} testId={`connector-status-${connector.id}`}>{statusText}</StatusBadge>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{connector.summary}</p>
         </div>
@@ -97,22 +103,37 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
 
       {connector.guide && (
         <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-2">
-          <p className="text-xs font-bold text-sky-900">{connector.guide.title}</p>
-          <ol className="text-xs leading-5 text-sky-900 list-decimal pl-4 space-y-1">
-            {connector.guide.steps.map(/* step 是当前引导步骤文案，index 用于生成稳定 key。 */ (step, index) => (
-              <li key={index}>{step}</li>
-            ))}
-          </ol>
-          {connector.guide.url && (
-            <a
-              href={connector.guide.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 underline"
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold text-sky-900">{connector.guide.title}</p>
+            <button
+              type="button"
+              aria-expanded={guideOpen}
+              onClick={/* 手动切换引导展开状态，之后不再跟随凭据就绪度变化。 */ () => setGuideOpenOverride(!guideOpen)}
+              className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 shrink-0"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              {connector.guide.urlLabel || '前往平台'}
-            </a>
+              {guideOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {guideOpen ? '收起' : '查看配置步骤'}
+            </button>
+          </div>
+          {guideOpen && (
+            <>
+              <ol className="text-xs leading-5 text-sky-900 list-decimal pl-4 space-y-1">
+                {connector.guide.steps.map(/* step 是当前引导步骤文案，index 用于生成稳定 key。 */ (step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ol>
+              {connector.guide.url && (
+                <a
+                  href={connector.guide.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {connector.guide.urlLabel || '前往平台'}
+                </a>
+              )}
+            </>
           )}
         </div>
       )}
