@@ -125,8 +125,9 @@ const (
 	// 渠道词（百度/夸克/度盘/迅雷）与口语疑问句式（X 吗 / 什么盘）必须收录：
 	// 真实买家以「有夸克吗」「百度吗」为主，只写「什么网盘」会大面积漏配。
 	builtinOrderExpr = "发货|还没发|直接拍|拍下|提取码|网盘|什么盘|哪种盘|百度|度盘|夸克|迅雷|资源码|下载链接|链接|怎么下载|怎么发|什么时候发|多久发|发货方式|什么网盘|发网盘"
-	// builtinInquiryExpr 是询价与物流政策意图。
-	builtinInquiryExpr = "多少钱|什么价格|怎么卖|包邮|怎么购买|怎么下单"
+	// builtinInquiryExpr 是询价意图。「包邮」已迁到 builtinShippingExpr：
+	// 它问的是运费归属，留在这里会与 shipping 同时命中，把单一意图打成 ambiguous。
+	builtinInquiryExpr = "多少钱|什么价格|怎么卖|怎么购买|怎么下单"
 	// builtinConsultExpr 是商品内容咨询意图。刻意不收「是什么」「啥」这类通用疑问词，
 	// 否则「发货方式是什么」会同时命中 order 与 consult，把单一意图打成 ambiguous。
 	builtinConsultExpr = "内容|适合|有效|真实|怎么用|讲什么|讲的什么"
@@ -144,6 +145,11 @@ const (
 	builtinSpecExpr = "几本|全册|第几册|上册|下册|套装|版本|新版|规格|大班|中班|小班|教材|尺寸|颜色|绿皮|黄皮"
 	// builtinUsageExpr 是使用与时效咨询意图，覆盖兼容性与有效期类问法。
 	builtinUsageExpr = "可以用吗|能用吗|支持吗|可以用|有效期|时间限制|到期|没到期|会员|试看|试一下|点读笔"
+	// builtinShippingExpr 是运费与邮寄咨询意图，覆盖「运费多少、能不能寄、包不包邮」三类真实问法。
+	// 与 builtinOrderExpr 分工：order 管「发没发、发什么渠道」，本意图只管运费归属与能否邮寄。
+	// 不收单独的「快递」二字：它会误伤「快递上门取件」这类议价协商，用带动词的组合词限定。
+	// 「自提」必须在内：仅自提商品的运费问法答案与包邮/不包邮完全不同。
+	builtinShippingExpr = "运费|邮费|物流费|快递费|快递多少钱|快递多钱|走快递|发快递|寄到|运到|邮寄|能寄|可以寄|寄吗|包邮|自提"
 )
 
 // defaultScope 是 ai_scope_config 未配置时的内置边界：仅砍价允许 AI 接管，
@@ -156,6 +162,9 @@ var defaultScope = &aiScope{
 		// 退款与完整性咨询命中即有 FAQ 或商品信息可依据，允许接管。
 		{id: IntentRefund, allowAI: true, match: compileSafe(builtinRefundExpr)},
 		{id: IntentStock, allowAI: true, match: compileSafe(builtinStockExpr)},
+		// 运费咨询允许接管：平台运费标注（包邮/不包邮/仅自提）是确定事实，
+		// 未标注时也有明确的「需另议、不得承诺包邮」口径，不会退化成编造。
+		{id: IntentShipping, allowAI: true, match: compileSafe(builtinShippingExpr)},
 		{id: IntentOrder, allowAI: false, match: compileSafe(builtinOrderExpr)},
 		{id: IntentInquiry, allowAI: false, match: compileSafe(builtinInquiryExpr)},
 		{id: IntentConsult, allowAI: false, match: compileSafe(builtinConsultExpr)},
@@ -326,6 +335,10 @@ func (k *aiKnowledgeConfig) buildKnowledgeContext(text string, live liveKnowledg
 	// 商品规格事实与发货推断同级：都是该商品的确定事实，必须早于知识库通用话术。
 	if len(live.ItemFacts) > 0 {
 		parts = append(parts, liveItemFactInstruction+"：\n- "+strings.Join(live.ItemFacts, "\n- "))
+	}
+	// 运费事实独立成段：它带「不得承诺包邮」的硬约束，与规格事实的回答口径不同，不能混排。
+	if live.ShippingFact != "" {
+		parts = append(parts, shippingFactInstruction+"：\n- "+live.ShippingFact)
 	}
 	// 订单履约事实仅在该会话确实有订单且状态可判定时注入。
 	if live.OrderFact != "" {

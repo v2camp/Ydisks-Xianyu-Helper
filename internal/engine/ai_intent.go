@@ -44,6 +44,10 @@ const (
 	IntentSpec = "spec"
 	// IntentUsage 是使用与时效咨询意图（能不能用/有效期/是否会员类）。
 	IntentUsage = "usage"
+	// IntentShipping 是运费与邮寄咨询意图（运费多少/能邮寄吗/包邮吗类）。
+	// 与 order、delivery 的分工：那两个管「发没发、发什么渠道」，本意图只回答
+	// 「运费谁承担、能不能寄」，因为两者的确定事实源不同（平台运费标注 vs 发货渠道）。
+	IntentShipping = "shipping"
 	// IntentChitchat 是闲聊兜底桶：边界层未命中任何意图时写入此类（即旧值 "chat" 的更名）。
 	IntentChitchat = "chitchat"
 	// IntentAmbiguous 是多意图同时命中时的归并标签：边界层无法确定单一意图，便于后续人工或分流策略复核。
