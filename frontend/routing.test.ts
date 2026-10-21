@@ -111,8 +111,8 @@ describe('frontend navigation routing', () => {
     expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
     expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AISettings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AgentCenter /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <AISettings onNavigate={onNavigate} /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <AgentCenter onNavigate={onNavigate} /> : <Dashboard />');
     expect(sidebar).toContain('isAdmin = false');
     expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
     expect(sidebar).toContain("{ id: 'ai-settings', icon: Sparkles, label: 'AI 设置' }");
