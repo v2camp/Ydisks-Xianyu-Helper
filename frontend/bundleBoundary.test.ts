@@ -17,12 +17,12 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   OrderList: 40 * 1024,
   CardList: 45 * 1024,
   ItemList: 65 * 1024,
-  // Settings 页面承载基础设置、安全阀门与 MCP 服务卡；连接器移出后实测 28154 字节，预算随之下调。
-  Settings: 30 * 1024,
-  // AISettings 页面承载模型供应商、推理参数与提示词编辑，实测 25099 字节。
-  AISettings: 28 * 1024,
-  // AgentCenter 页面承载三类 Agent 的入口与租户级客服 Agent 授权，实测 7834 字节。
-  AgentCenter: 10 * 1024,
+  // Settings 页面承载基础设置与安全阀门；MCP 服务卡与连接器迁出后实测 16203 字节，预算随之下调。
+  Settings: 18 * 1024,
+  // AISettings 页面承载模型凭据、接管范围编辑与外部 MCP 工具；改用共享骨架后实测 24489 字节。
+  AISettings: 27 * 1024,
+  // AgentCenter 页面承接 MCP 服务卡、三类 Agent 入口与前置依赖状态，实测 22914 字节，预算随之上调。
+  AgentCenter: 26 * 1024,
   // Rules 页面包含模板发货模式入口、模板变量编辑器与全局居中对话框调用点。
   Rules: 73 * 1024,
   // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12618 字节，预算随之上调。
