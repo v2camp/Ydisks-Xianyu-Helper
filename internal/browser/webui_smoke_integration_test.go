@@ -223,6 +223,32 @@ func waitE2EForSelector(t *testing.T, page playwright.Page, selector string, tim
 	return locator
 }
 
+// waitE2EForText 等待页面上出现给定可见文案，返回首个匹配的文本定位器；超时即截图并失败。
+func waitE2EForText(t *testing.T, page playwright.Page, text string, timeout time.Duration) playwright.Locator {
+	t.Helper()
+	// locator 是按正文文案匹配的文本定位器，不依赖标签属性与层级结构，适合分区标题与按钮文案断言。
+	locator := page.GetByText(text, playwright.PageGetByTextOptions{Exact: playwright.Bool(false)}).First()
+	// waitErr 保存文案可见性等待结果，超时说明页面骨架或该分区未按预期渲染。
+	waitErr := locator.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(float64(timeout.Milliseconds()))})
+	if waitErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("等待文案 %q 超时: %v", text, waitErr))
+	}
+	return locator
+}
+
+// assertE2ENoElement 以计数方式断言当前页面不存在指定元素，避免用阻塞等待把「应当缺失」误判为超时。
+func assertE2ENoElement(t *testing.T, page playwright.Page, pageName, selector string) {
+	t.Helper()
+	// count 是当前页面匹配该选择器的元素数量；只有 0 才能证明该区块确实已从本页迁走。
+	count, countErr := page.Locator(selector).Count()
+	if countErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("统计 %s 上的元素 %q 数量失败: %v", pageName, selector, countErr))
+	}
+	if count > 0 {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("%s 不应渲染元素 %q，实际出现 %d 处", pageName, selector, count))
+	}
+}
+
 // waitE2EForURLBriefly 等待页面地址包含预期路径片段并返回实际地址。
 func waitE2EForURLBriefly(t *testing.T, page playwright.Page, pathPart string) {
 	t.Helper()
@@ -396,14 +422,52 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 	assertE2EPageRendered(t, page, errors, "/app/orders")
 	// 设置页仅管理员可进入，进入成功即证明管理员会话与路由权限均正常。
 	assertE2EPageRendered(t, page, errors, "/app/settings")
-	// MCP 服务卡在设置页内联渲染，走一次「启用 + 生成令牌」动线并断言无控制台错误。
+	// MCP 服务卡已迁到 Agent 中心，设置页若仍渲染该卡片说明两处入口并存，同一份配置会随两侧刷新失步。
+	assertE2ENoElement(t, page, "设置页", "[data-testid=mcp-service-card]")
+	// 本次改动涉及的三页逐个校验渲染与关键分区，缺失任一入口都会让「能力在哪配置」的认知断链。
+	assertAISettingsPage(t, page, errors)
+	assertAgentCenterPage(t, page, errors)
+	assertConnectorsPage(t, page, errors)
+}
+
+// assertAISettingsPage 校验 AI 设置页可渲染，且页级保存条按钮文案在位。
+func assertAISettingsPage(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	assertE2EPageRendered(t, page, errors, "/app/ai-settings")
+	// 「保存 AI 配置」是 AI 设置的唯一提交入口，按钮缺失说明页级保存条未挂载或骨架渲染中断。
+	waitE2EForText(t, page, "保存 AI 配置", e2eNavigateTimeout)
+}
+
+// assertAgentCenterPage 校验 Agent 中心页的入站 MCP 区块与客服端依赖区，并跑通 MCP 服务卡动线。
+func assertAgentCenterPage(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	assertE2EPageRendered(t, page, errors, "/app/agent-center")
+	// 入站 MCP 区块标题承载「服务端能力对外暴露」的入口，标题缺失说明区块被误删或改名。
+	waitE2EForText(t, page, "对外 MCP 服务（入站）", e2eNavigateTimeout)
+	// 客服端 Agent 区块与其依赖区必须同时在场，否则用户看不到档位前置条件是否就绪。
+	waitE2EForText(t, page, "客服端 Agent", e2eNavigateTimeout)
+	// 页头副标题同样含「前置依赖」字样，因此再用依赖行标识确认依赖区本身已渲染出具体条目。
+	waitE2EForText(t, page, "前置依赖", e2eNavigateTimeout)
+	waitE2EForSelector(t, page, "[data-testid=dependency-ai-model]", e2eNavigateTimeout)
+	// MCP 服务卡随本页渲染，动线在区块可见后再执行，避免卡片尚未挂载就被定位。
 	assertMCPServiceCardFlow(t, page, errors)
 }
 
-// assertMCPServiceCardFlow 断言 MCP 服务卡已挂载，并完成一次启用与令牌生成动线。
+// assertConnectorsPage 校验连接器页的用户级通知渠道分区与管理员级系统配置分区同时可用。
+func assertConnectorsPage(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	assertE2EPageRendered(t, page, errors, "/app/connectors")
+	// 「通知渠道」是所有用户可见的用户级分区，「系统级配置」仅管理员可见，两者同页证明权限分区未被打破。
+	waitE2EForText(t, page, "通知渠道", e2eNavigateTimeout)
+	waitE2EForText(t, page, "系统级配置", e2eNavigateTimeout)
+	// 保存条在系统设置读取完成后才挂载，这里按超时等待，避免把「加载中」误判为配置区缺失。
+	waitE2EForText(t, page, "保存连接器配置", e2eNavigateTimeout)
+}
+
+// assertMCPServiceCardFlow 断言 Agent 中心的 MCP 服务卡已挂载，并完成一次启用与令牌生成动线。
 func assertMCPServiceCardFlow(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
 	t.Helper()
-	// card 是 MCP 服务卡根节点；等待可见即证明前端卡片随设置页成功挂载。
+	// card 是 MCP 服务卡根节点；等待可见即证明前端卡片随 Agent 中心页成功挂载。
 	card := waitE2EForSelector(t, page, "[data-testid=mcp-service-card]", e2eNavigateTimeout)
 	// enabledToggle 是启用 MCP 服务的开关控件。
 	enabledToggle := card.Locator("#mcp-service-enabled")
