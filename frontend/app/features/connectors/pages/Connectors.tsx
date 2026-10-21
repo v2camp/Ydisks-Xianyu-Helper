@@ -1,5 +1,10 @@
-import { Bell,Check,Loader2,PlugZap,Plus,RefreshCw,Save,X } from 'lucide-react';
+import { Bell,Check,Loader2,Mail,PlugZap,Plus,RefreshCw,X } from 'lucide-react';
 import React from 'react';
+import { AsyncSection } from '../../../../shared/ui/AsyncSection';
+import { PageHeader } from '../../../../shared/ui/PageHeader';
+import { PageShell } from '../../../../shared/ui/PageShell';
+import { SaveBar } from '../../../../shared/ui/SaveBar';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import { ConnectorCard } from '../components/ConnectorCard';
 import { NotificationChannelList } from '../components/NotificationChannelList';
 import { NotificationChannelModal } from '../components/NotificationChannelModal';
@@ -13,67 +18,144 @@ interface ConnectorsProps {
   isAdmin?: boolean;
 }
 
-// Connectors 渲染平台连接器、通知渠道列表、SMTP 配置和渠道编辑边界。
+// Connectors 渲染用户级「通知渠道」分区与管理员级「系统级配置」分区，以及渠道编辑边界。
 const Connectors: React.FC<ConnectorsProps> = ({ isAdmin = false }) => {
   // connectorState 统一提供连接器页面的数据、表单和异步动作。
   const connectorState = useConnectors(isAdmin);
+  // refreshing 表示页头「刷新」涉及的任一数据源仍在读取；此时按钮禁用并旋转，避免重复触发。
+  const refreshing = connectorState.loading || connectorState.settingsLoading;
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-        <div><h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">连接器</h2><p className="text-gray-500 mt-2 font-medium">配置第三方平台连接器与通知渠道，账号异常时主动推送告警</p></div>
-        <div className="flex items-center gap-3">
-          <button onClick={connectorState.loadChannels} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors"><RefreshCw className="w-4 h-4" />刷新</button>
-          <button onClick={connectorState.openCreate} className="ios-btn-primary px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"><Plus className="w-4 h-4" />新建渠道</button>
+    <PageShell>
+      <PageHeader
+        icon={PlugZap}
+        title="连接器"
+        subtitle="配置第三方平台连接器与通知渠道，账号异常时主动推送告警"
+        actions={(
+          <>
+            {/* 刷新对管理员是「渠道 + 系统设置」的整体重载，普通用户只刷新自己的渠道列表。 */}
+            <button
+              type="button"
+              onClick={/* 点击后按权限重载对应数据源。 */ () => void connectorState.refresh()}
+              disabled={refreshing}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4${refreshing ? ' animate-spin' : ''}`} />
+              刷新
+            </button>
+            <button onClick={connectorState.openCreate} className="ios-btn-primary px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"><Plus className="w-4 h-4" />新建渠道</button>
+          </>
+        )}
+      />
+
+      {/* 分区顺序的理由：所有用户先看到自己可操作的渠道列表，管理员再向下配置上游凭据与发件服务；平台连接器与 SMTP 同属系统级能力，因此归入同一「系统级配置」分区。 */}
+      <section className="space-y-4">
+        {/* 通知渠道是唯一的用户级内容，普通用户无需滚动越过系统级表单即可看到自己绑定的渠道。 */}
+        <SectionHeader
+          icon={Bell}
+          tone="brand"
+          title="通知渠道"
+          description="在「账号管理 → 编辑」里绑定到账号后，下列事件会推送到该渠道。"
+        />
+
+        <div className="ios-card rounded-xl p-5 bg-blue-50/50 border border-blue-100">
+          <div className="flex items-start gap-3"><Bell className="w-5 h-5 text-brand mt-0.5 flex-shrink-0" /><div className="text-sm text-gray-700 leading-6">配置通知渠道并在「账号管理 → 编辑」里绑定后，以下事件会主动推送到该账号绑定的渠道；自动化任务通知已拆分为四类，可按需单独关闭：<ul className="mt-2 space-y-1 text-gray-600"><li>• <strong>拍下改价、付款发货、评价赠品、求评价</strong>：分别控制对应自动化任务结果</li><li>• <strong>账号 session 失效 / 自动恢复失败</strong>：账号状态告警</li><li>• <strong>触发风控验证</strong>：可能需要扫码完成验证</li></ul></div></div>
         </div>
-      </div>
+
+        {connectorState.loading ? <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-brand animate-spin" /></div> : <NotificationChannelList channels={connectorState.channels} testingId={connectorState.testingId} onEdit={connectorState.openEdit} onDelete={connectorState.handleDelete} onToggleEnabled={connectorState.handleToggleEnabled} onTest={connectorState.handleTest} />}
+      </section>
 
       {isAdmin && (
+        /* 系统级配置分区：平台连接器与 SMTP 都在同一道管理员门禁之下，普通用户既不渲染标题也不渲染其中任何表单。 */
         <section className="space-y-4">
-          <div>
-            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-sky-500 text-white">
-                <PlugZap className="w-4 h-4" />
-              </div>
-              平台连接器
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">系统级平台凭据，保存后由通知渠道继承复用；只需配置一次，无需逐条重复填写。</p>
-          </div>
+          <SectionHeader
+            icon={PlugZap}
+            tone="slate"
+            title="系统级配置"
+            description="仅管理员可见，对所有账号生效；通知渠道会继承这里的平台凭据与发件配置。"
+          />
 
-          <div className="space-y-6">
-            {connectorTypes.map(/* connector 是当前待渲染的连接器定义。 */ connector => (
-              <ConnectorCard
-                key={connector.id}
-                connector={connector}
-                settings={connectorState.connectorSettings}
-                onChange={/* patch 合并进连接器配置草稿，由下方保存按钮统一提交。 */ patch => connectorState.setConnectorSettings(/* previous 是合并补丁前的连接器草稿。 */ previous => ({ ...previous, ...patch }))}
+          {/* 子区块一：平台连接器凭据，保存后由各通知渠道继承复用。 */}
+          <section className="space-y-4">
+            <SectionHeader
+              icon={PlugZap}
+              title="平台连接器"
+              description="系统级平台凭据，保存后由通知渠道继承复用；只需配置一次，无需逐条重复填写。"
+              tone="indigo"
+            />
+
+            {/* 区块级异步容器：系统设置读取失败时必须在界面可见，并给出重新读取入口，不能让卡片停在空草稿上。 */}
+            <AsyncSection
+              loading={connectorState.settingsLoading}
+              error={connectorState.settingsError}
+              onRetry={/* 点击重试重新读取系统设置。 */ () => void connectorState.loadSmtp()}
+              retryLabel="重新读取"
+            >
+              <>
+                <div className="space-y-6">
+                  {connectorTypes.map(/* connector 是当前待渲染的连接器定义。 */ connector => (
+                    <ConnectorCard
+                      key={connector.id}
+                      connector={connector}
+                      settings={connectorState.connectorSettings}
+                      loading={connectorState.settingsLoading}
+                      onChange={/* patch 合并进连接器配置草稿，由下方保存条统一提交。 */ patch => connectorState.setConnectorSettings(/* previous 是合并补丁前的连接器草稿。 */ previous => ({ ...previous, ...patch }))}
+                    />
+                  ))}
+                </div>
+
+                {/* 区块级保存条：连接器凭据与能力开关共用一份草稿，提交与反馈都贴着本区块。 */}
+                <SaveBar
+                  className="mt-4"
+                  state={connectorState.connectorSaveState}
+                  onSave={/* 点击主按钮或失败态重试都重新提交同一份连接器草稿。 */ () => void connectorState.handleSaveConnector()}
+                  label="保存连接器配置"
+                  scopeLabel="修改平台凭据或能力开关后需保存"
+                  errorMessage={connectorState.connectorSaveError || undefined}
+                  successMessage="连接器配置已保存"
+                  sticky={false}
+                  onSettled={connectorState.resetConnectorSaveState}
+                />
+              </>
+            </AsyncSection>
+          </section>
+
+          {/* 子区块二：系统邮件（SMTP）是渠道继承的上游发件服务，与平台凭据同属系统级，因此紧随连接器之后。 */}
+          <section className="space-y-4">
+            <SectionHeader
+              icon={Mail}
+              tone="slate"
+              title="系统邮件（SMTP）"
+              description="邮件渠道默认继承这里的发件配置；仅当渠道单独开启独立 SMTP 时才需要覆盖。"
+            />
+
+            {/* SMTP 与连接器共用同一次系统设置读取，失败同样走可见的错误态而不是静默留空。 */}
+            <AsyncSection
+              loading={connectorState.settingsLoading}
+              error={connectorState.settingsError}
+              onRetry={/* 点击重试重新读取系统设置。 */ () => void connectorState.loadSmtp()}
+              retryLabel="重新读取"
+            >
+              <NotificationSmtpSettings
+                smtp={connectorState.smtp}
+                setSmtp={connectorState.setSmtp}
+                smtpSaving={connectorState.smtpSaving}
+                showPassword={connectorState.showSmtpPassword}
+                setShowPassword={connectorState.setShowSmtpPassword}
+                saveState={connectorState.smtpSaveState}
+                errorMessage={connectorState.smtpSaveError}
+                onSettled={connectorState.resetSmtpSaveState}
+                onSave={connectorState.handleSaveSmtp}
               />
-            ))}
-          </div>
-
-          <button
-            onClick={connectorState.handleSaveConnector}
-            disabled={connectorState.connectorSaving}
-            className="ios-btn-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50"
-          >
-            {connectorState.connectorSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {connectorState.connectorSaving ? '保存中...' : '保存连接器配置'}
-          </button>
+            </AsyncSection>
+          </section>
         </section>
       )}
-
-      <div className="ios-card rounded-xl p-5 bg-blue-50/50 border border-blue-100">
-        <div className="flex items-start gap-3"><Bell className="w-5 h-5 text-brand mt-0.5 flex-shrink-0" /><div className="text-sm text-gray-700 leading-6">配置通知渠道并在「账号管理 → 编辑」里绑定后，以下事件会主动推送到该账号绑定的渠道；自动化任务通知已拆分为四类，可按需单独关闭：<ul className="mt-2 space-y-1 text-gray-600"><li>• <strong>拍下改价、付款发货、评价赠品、求评价</strong>：分别控制对应自动化任务结果</li><li>• <strong>账号 session 失效 / 自动恢复失败</strong>：账号状态告警</li><li>• <strong>触发风控验证</strong>：可能需要扫码完成验证</li></ul></div></div>
-      </div>
-
-      {connectorState.loading ? <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-brand animate-spin" /></div> : <NotificationChannelList channels={connectorState.channels} testingId={connectorState.testingId} onEdit={connectorState.openEdit} onDelete={connectorState.handleDelete} onToggleEnabled={connectorState.handleToggleEnabled} onTest={connectorState.handleTest} />}
-
-      {isAdmin && <NotificationSmtpSettings smtp={connectorState.smtp} setSmtp={connectorState.setSmtp} smtpSaving={connectorState.smtpSaving} showPassword={connectorState.showSmtpPassword} setShowPassword={connectorState.setShowSmtpPassword} onSave={connectorState.handleSaveSmtp} />}
 
       <NotificationChannelModal showModal={connectorState.showModal} editing={connectorState.editing} form={connectorState.form} setForm={connectorState.setForm} smtp={connectorState.smtp} showChannelSmtpPassword={connectorState.showChannelSmtpPassword} setShowChannelSmtpPassword={connectorState.setShowChannelSmtpPassword} saving={connectorState.saving} onClose={connectorState.closeModal} onSave={connectorState.handleSave} />
 
       {connectorState.toast && <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[10000] px-5 py-3 rounded-xl shadow-lg font-bold text-sm flex items-center gap-2 animate-fade-in text-white ${connectorState.toast.type === 'success' ? 'bg-success-500' : 'bg-danger-500'}`}>{connectorState.toast.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}{connectorState.toast.text}</div>}
-    </div>
+    </PageShell>
   );
 };
 

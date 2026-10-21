@@ -1,5 +1,7 @@
-import { Eye,EyeOff,Loader2,Mail,Save } from 'lucide-react';
+import { Eye,EyeOff,Mail } from 'lucide-react';
 import React from 'react';
+import { SaveBar } from '../../../../shared/ui/SaveBar';
+import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import type { SystemSettings } from '../api';
 
 // NotificationSmtpSettingsProps 描述系统 SMTP 配置面板所需的状态和事件。
@@ -14,12 +16,20 @@ export interface NotificationSmtpSettingsProps {
   showPassword: boolean;
   // setShowPassword 切换 SMTP 密码明文显示。
   setShowPassword: React.Dispatch<React.SetStateAction<boolean>>;
+  // saveState 是区块保存条的四态；缺省时按 smtpSaving 推导为保存中或空闲。
+  saveState?: SaveBarState;
+  // errorMessage 是保存失败的具体原因，供保存条失败态展示。
+  errorMessage?: string;
+  // onSettled 是成功提示展示满后的复位回调。
+  onSettled?: () => void;
   // onSave 保存 SMTP 配置。
   onSave: () => void | Promise<void>;
 }
 
 // NotificationSmtpSettings 渲染管理员可见的系统级 SMTP 设置。
-export const NotificationSmtpSettings: React.FC<NotificationSmtpSettingsProps> = ({ smtp, setSmtp, smtpSaving, showPassword, setShowPassword, onSave }) => {
+export const NotificationSmtpSettings: React.FC<NotificationSmtpSettingsProps> = ({ smtp, setSmtp, smtpSaving, showPassword, setShowPassword, saveState, errorMessage, onSettled, onSave }) => {
+  // resolvedSaveState 是保存条实际状态：优先使用页面传入的四态，未传入时退化为由 smtpSaving 推导的保存中/空闲。
+  const resolvedSaveState: SaveBarState = saveState ?? (smtpSaving ? 'saving' : 'idle');
   // handleTextChange 更新 SMTP 文本字段。
   const handleTextChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     // key 是文本输入框数据属性中的 SMTP 字段名。
@@ -91,7 +101,16 @@ export const NotificationSmtpSettings: React.FC<NotificationSmtpSettingsProps> =
         <label className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-sm font-semibold text-gray-700"><input type="checkbox" checked={smtp.smtp_use_tls !== false} onChange={handleTlsChange} />STARTTLS（常用于 587 端口）</label>
         <label className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-sm font-semibold text-gray-700"><input type="checkbox" checked={smtp.smtp_use_ssl === true} onChange={handleSslChange} />SSL/TLS 直连（常用于 465 端口）</label>
       </div>
-      <button onClick={onSave} disabled={smtpSaving} className="ios-btn-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">{smtpSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{smtpSaving ? '保存中...' : '保存 SMTP 配置'}</button>
+      {/* 区块级保存条：SMTP 配置自成一份草稿，提交与成功/失败反馈都贴着本区块，不再让按钮孤立在表单末尾。 */}
+      <SaveBar
+        state={resolvedSaveState}
+        onSave={/* 点击主按钮或失败态重试都重新提交同一份 SMTP 草稿。 */ () => void onSave()}
+        label="保存 SMTP 配置"
+        scopeLabel="修改发件服务参数后需保存"
+        errorMessage={/* 使用 Hook 捕获的具体失败原因，未取到时回落到保存条默认文案。 */ errorMessage || undefined}
+        successMessage="SMTP 配置已保存"
+        onSettled={onSettled}
+      />
     </section>
   );
 };

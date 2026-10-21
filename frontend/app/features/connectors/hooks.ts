@@ -5,6 +5,7 @@ import { connectorTypes } from './registry';
 import { buildConnectorSettings,buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
 import type { ConnectorsState,NotificationForm } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
+import type { SaveBarState } from '../../../shared/ui/SaveBar';
 
 // useConnectors 统一管理连接器凭据、通知渠道、事件订阅和系统 SMTP 的异步状态。
 export const useConnectors = (isAdmin: boolean): ConnectorsState => {
@@ -30,6 +31,18 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const [connectorSaving, setConnectorSaving] = useState(false);
   // smtpSaving 表示系统 SMTP 保存是否正在执行。
   const [smtpSaving, setSmtpSaving] = useState(false);
+  // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取；管理员首帧即进入读取态，避免先闪出「未配置」。
+  const [settingsLoading, setSettingsLoading] = useState(isAdmin);
+  // settingsError 是系统设置读取失败的用户可见文案，非空时平台连接器与 SMTP 区块展示错误态。
+  const [settingsError, setSettingsError] = useState('');
+  // connectorSaveState 是连接器区块保存条的四态，由保存请求的进展与结果驱动。
+  const [connectorSaveState, setConnectorSaveState] = useState<SaveBarState>('idle');
+  // connectorSaveError 保存连接器保存失败的具体原因，供保存条失败态展示。
+  const [connectorSaveError, setConnectorSaveError] = useState('');
+  // smtpSaveState 是 SMTP 区块保存条的四态，与连接器保存条互不影响。
+  const [smtpSaveState, setSmtpSaveState] = useState<SaveBarState>('idle');
+  // smtpSaveError 保存 SMTP 保存失败的具体原因，供保存条失败态展示。
+  const [smtpSaveError, setSmtpSaveError] = useState('');
   // showSmtpPassword 控制系统 SMTP 密码是否明文显示。
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   // showChannelSmtpPassword 控制独立 SMTP 密码是否明文显示。
@@ -114,6 +127,8 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     // controller 允许管理员状态变化时取消 SMTP 查询。
     const controller = new AbortController();
     smtpAbort.current = controller;
+    setSettingsLoading(true);
+    setSettingsError('');
     try {
       // settings 是系统 SMTP 与连接器共用的系统设置快照。
       const settings = await getSystemSettings({ signal: controller.signal });
@@ -124,10 +139,28 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     } catch (error: unknown /* SMTP 加载异常 */) {
       if (isCurrentNotificationRequest(generation, smtpGeneration.current) && !controller.signal.aborted) {
         console.error('加载 SMTP 配置失败', error);
+        // 读取失败必须落到界面可见的错误态，不能让连接器区块停在空草稿上假装「未配置」。
+        setSettingsError(notificationErrorMessage(error, '读取系统配置失败'));
       }
+    } finally {
+      // 无论成功或失败都复位读取态，避免区块长期停在「加载中」。
+      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) setSettingsLoading(false);
     }
     },
     [],
+  );
+
+  // refresh 是页头「刷新」的语义：管理员同时重载渠道列表与系统设置草稿，普通用户只刷新自己的渠道。
+  const refresh = useCallback(
+    // 刷新回调按权限决定是否连带重载系统设置。
+    async () => {
+    if (isAdmin) {
+      await Promise.all([loadChannels(), loadSmtp()]);
+      return;
+    }
+    await loadChannels();
+    },
+    [isAdmin, loadChannels, loadSmtp],
   );
 
   useEffect(
@@ -143,6 +176,9 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
         connectorAbort.current?.abort();
         setSmtp({});
         setConnectorSettings({});
+        // 普通用户不读取系统设置，读取态与错误态一并清空，避免区块误报加载中或读取失败。
+        setSettingsLoading(false);
+        setSettingsError('');
       }
       return (
         // 通知数据清理回调取消渠道和 SMTP 请求。
@@ -372,6 +408,9 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     const controller = new AbortController();
     smtpAbort.current = controller;
     setSmtpSaving(true);
+    // 区块保存条进入「保存中」，同时清掉上一次的失败文案。
+    setSmtpSaveState('saving');
+    setSmtpSaveError('');
     try {
       const payload: SystemSettings = {
         smtp_server: smtp.smtp_server || '', smtp_port: smtp.smtp_port || 587, smtp_user: smtp.smtp_user || '',
@@ -384,10 +423,17 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
         payload.smtp_password = smtp.smtp_password;
       }
       await updateSystemSettings(payload, { signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) showToast('success', 'SMTP 配置已保存');
+      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) {
+        showToast('success', 'SMTP 配置已保存');
+        setSmtpSaveState('success');
+      }
     } catch (error: unknown /* SMTP 保存异常 */) {
       if (isCurrentNotificationRequest(generation, smtpGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '保存失败'));
+        // message 是本次保存失败的用户可读原因，同时用于底部提示与保存条失败态。
+        const message = notificationErrorMessage(error, '保存失败');
+        showToast('error', message);
+        setSmtpSaveError(message);
+        setSmtpSaveState('error');
       }
     } finally {
       if (isCurrentNotificationRequest(generation, smtpGeneration.current)) setSmtpSaving(false);
@@ -407,14 +453,24 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     const controller = new AbortController();
     connectorAbort.current = controller;
     setConnectorSaving(true);
+    // 区块保存条进入「保存中」，同时清掉上一次的失败文案。
+    setConnectorSaveState('saving');
+    setConnectorSaveError('');
     try {
       // payload 是按连接器注册表收窄后的系统设置提交字段。
       const payload = buildConnectorSettings(connectorTypes, connectorSettings);
       await updateSystemSettings(payload, { signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) showToast('success', '连接器配置已保存');
+      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) {
+        showToast('success', '连接器配置已保存');
+        setConnectorSaveState('success');
+      }
     } catch (error: unknown /* 连接器保存异常 */) {
       if (isCurrentNotificationRequest(generation, connectorGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '保存失败'));
+        // message 是本次保存失败的用户可读原因，同时用于底部提示与保存条失败态。
+        const message = notificationErrorMessage(error, '保存失败');
+        showToast('error', message);
+        setConnectorSaveError(message);
+        setConnectorSaveState('error');
       }
     } finally {
       if (isCurrentNotificationRequest(generation, connectorGeneration.current)) setConnectorSaving(false);
@@ -423,11 +479,19 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     [connectorSettings, showToast],
   );
 
+  // resetConnectorSaveState 在成功提示展示完毕后把连接器保存条复位为空闲待提交。
+  const resetConnectorSaveState = useCallback(/* 复位回调只改保存条状态，不动草稿。 */ () => setConnectorSaveState('idle'), []);
+  // resetSmtpSaveState 在成功提示展示完毕后把 SMTP 保存条复位为空闲待提交。
+  const resetSmtpSaveState = useCallback(/* 复位回调只改保存条状态，不动 SMTP 草稿。 */ () => setSmtpSaveState('idle'), []);
+
   return {
     channels, loading, showModal, editing, saving, testingId, toast, smtp, smtpSaving,
     connectorSettings, connectorSaving,
+    settingsLoading, settingsError,
+    connectorSaveState, connectorSaveError, smtpSaveState, smtpSaveError,
     showSmtpPassword, showChannelSmtpPassword, form, setForm, setSmtp, setConnectorSettings, setShowSmtpPassword,
-    setShowChannelSmtpPassword, loadChannels, openCreate, openEdit, closeModal, showToast,
+    setShowChannelSmtpPassword, loadChannels, loadSmtp, refresh, openCreate, openEdit, closeModal, showToast,
     handleSave, handleDelete, handleToggleEnabled, handleTest, handleSaveSmtp, handleSaveConnector,
+    resetConnectorSaveState, resetSmtpSaveState,
   };
 };

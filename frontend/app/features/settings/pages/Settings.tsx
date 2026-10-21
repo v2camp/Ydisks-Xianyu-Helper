@@ -4,12 +4,13 @@ import {
   Hourglass,
   LockKeyhole,
   RefreshCw,
-  Save,
   Settings as SettingsIcon,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
-import React from 'react';
+import React, { useCallback,useState } from 'react';
+import { SaveBar } from '../../../../shared/ui/SaveBar';
+import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import { BACKUP_INTERVAL_OPTIONS, LOG_LEVELS } from '../constants';
 import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
 import { useSettings } from '../hooks';
@@ -18,12 +19,26 @@ import { useSettings } from '../hooks';
 const Settings: React.FC = () => {
   // featureState 是 Settings Hook 提供的状态与动作集合，scope=system 只保存系统白名单字段。
   const {
-    settings, loading, loadError, saving, saveError,
+    settings, loading, loadError, saveError,
     showCaptchaSecret, showCurrentPassword, showNewPassword, credentialsSaving, credentialsMessage,
     credentials, loadSettings, handleSave, handleCredentialsSave,
     setSettings, setShowCaptchaSecret, setShowCurrentPassword,
     setShowNewPassword, setCredentials,
   } = useSettings('system');
+
+  // saveBarState 是页级保存条的四态，由一次保存的结果驱动，成功提示展示完毕后回落为空闲。
+  const [saveBarState, setSaveBarState] = useState<SaveBarState>('idle');
+
+  // handlePageSave 提交系统配置草稿，用保存条替代成功弹窗，并把返回值映射为成功或失败态。
+  const handlePageSave = useCallback(/* 当前回调把保存请求的进展映射为保存条状态。 */ async () => {
+    setSaveBarState('saving');
+    // saved 是本次保存是否成功；失败时保存条常驻并提供重试入口。
+    const saved = await handleSave({ silentSuccess: true });
+    setSaveBarState(saved ? 'success' : 'error');
+  }, [handleSave]);
+
+  // settleSaveBar 在成功提示展示满 2 秒后把保存条复位为空闲待提交。
+  const settleSaveBar = useCallback(/* 当前回调在成功提示超时后把保存条复位为空闲。 */ () => setSaveBarState('idle'), []);
 
   if (!settings) {
     return (
@@ -59,13 +74,6 @@ const Settings: React.FC = () => {
           刷新
         </button>
       </div>
-
-      {saveError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <span>{saveError}</span>
-          <button type="button" className="font-bold underline" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleSave()}>重试保存</button>
-        </div>
-      )}
 
       {/* 两栏瀑布流：每栏内部卡片独立堆叠不互相拉伸，lg 以下退化为单列。 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
@@ -347,17 +355,16 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* Save Button */}
-      <div className="fixed bottom-10 right-10 z-30">
-        <button
-            onClick={handleSave}
-            disabled={saving}
-            className="ios-btn-primary px-10 py-5 rounded-xl text-lg shadow-2xl shadow-blue-200 flex items-center gap-3 transform hover:scale-105 active:scale-95 transition-all disabled:opacity-70"
-        >
-            <Save className="w-6 h-6" />
-            {saving ? '保存中...' : '保存系统配置'}
-        </button>
-      </div>
+      {/* 页级保存条：系统配置只有一份草稿，提交动作与成功/失败反馈都在这里，不再用悬浮按钮或模态弹窗。 */}
+      <SaveBar
+        state={saveBarState}
+        onSave={/* 点击主按钮或失败态重试都重新提交同一份系统配置草稿。 */ () => void handlePageSave()}
+        label="保存系统配置"
+        errorMessage={/* 使用 Hook 捕获的具体失败原因，未取到时回落到保存条默认文案。 */ saveError || undefined}
+        successMessage="系统配置已保存"
+        sticky
+        onSettled={settleSaveBar}
+      />
     </div>
   );
 };

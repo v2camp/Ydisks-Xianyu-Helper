@@ -22,13 +22,21 @@ const dependencyState = (state: DependencyState | undefined): DependencyState =>
 
 /** AgentCenter 按「谁决定调用能力」归拢三类 Agent 的入口，并直接配置租户级客服 Agent 的默认开关与档位。 */
 const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
-  // center 是本页的配置草稿、保存状态、依赖状态与外部 Harness 接入现状。
+  // center 是本页的配置草稿、保存状态与依赖状态。
   const {
     settings, loading, loadError, saving, saveMessage,
-    harnessEnabled, harnessEndpoint, harnessLoading,
     dependencies, dependenciesLoading, dependenciesError,
     load, reloadDependencies, updateDraft, submit, resetSaveMessage,
   } = useAgentCenter();
+
+  // refreshing 表示页头刷新是否进行中：租户配置与依赖状态任一在读取时都禁用按钮，避免重复点击叠加并发请求。
+  const refreshing = loading || dependenciesLoading;
+
+  // refreshAll 同时刷新本页两块独立数据：租户配置与前置依赖；只刷配置会让依赖行（AI 模型/接管范围/外部工具/QQ 连接器）停在旧状态。
+  const refreshAll = useCallback(/* 当前回调把页头「刷新」收敛为一次配置读取加一次依赖读取。 */ () => {
+    load();
+    reloadDependencies();
+  }, [load, reloadDependencies]);
 
   // saveBarState 是区块级保存条的四态：保存中优先，其次沿用最近一次提交的成功或失败结果，其余为空闲待提交。
   const saveBarState: SaveBarState = saving
@@ -49,8 +57,13 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
         title="Agent 中心"
         subtitle="三类 Agent 的入口与前置依赖；能力本体在 AI 设置"
         actions={(
-          <button type="button" onClick={load} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors">
-            <RefreshCw className="w-4 h-4" />
+          <button
+            type="button"
+            onClick={refreshAll}
+            disabled={refreshing}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             刷新
           </button>
         )}
@@ -64,22 +77,8 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
           title="对外 MCP 服务（入站）"
           description="把本服务能力以 MCP 协议开放给外部 Harness；与 AI 设置页的外部 MCP 工具（出站）方向相反。"
         />
-        <div className="ios-card rounded-xl p-6 bg-white space-y-4">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-bold text-gray-800">外部 Harness 接入（MCP）</h4>
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${harnessEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-              {harnessLoading ? '读取中' : harnessEnabled ? '已启用' : '未启用'}
-            </span>
-          </div>
-          <p className="text-xs leading-5 text-gray-600">
-            外部 Harness 由人在场操作，通过 MCP 协议以管理员身份调用本服务工具，能力上限就是平台自身的操作范围，
-            因此这里没有档位可配。启用开关、接入令牌与调用审计就在下方卡片中直接管理。
-          </p>
-          {harnessEndpoint && (
-            <p className="text-xs text-gray-500 font-mono break-all">接入地址：{harnessEndpoint}</p>
-          )}
-        </div>
-        {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存，不随本页草稿提交。 */}
+        {/* MCP 服务卡：启停、接入地址、Harness 配置示例、令牌生命周期与调用审计，操作即时保存，不随本页草稿提交。
+            启用状态与接入地址只在这里展示一份，页面上不再另设摘要卡，避免同一事实两处渲染后失步。 */}
         <MCPServiceCard />
       </section>
 

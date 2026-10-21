@@ -1,6 +1,12 @@
 /** AI 服务默认兼容 API 地址。 */
 export const DEFAULT_AI_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
+/** 常见 AI 服务示例：只作填写 API 地址时的参考，页面默认折叠以免长期占据表单版面。 */
+export const COMMON_AI_SERVICES = [
+  { name: '阿里云通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { name: 'OpenAI', url: 'https://api.openai.com/v1' },
+];
+
 /** 日志等级选择项。 */
 export const LOG_LEVELS = [
   { value: 'debug', label: 'Debug' },

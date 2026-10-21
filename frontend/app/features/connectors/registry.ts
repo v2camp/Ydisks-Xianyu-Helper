@@ -1,5 +1,6 @@
 import { Bot } from 'lucide-react';
 import type { ElementType } from 'react';
+import { QQ_CONNECTOR_READY_KEYS } from '../../../shared/api-contract/settings';
 import type { NotificationChannelType } from './models';
 
 /** QQ_OPEN_PLATFORM_URL 是管理员创建机器人并获取 AppID 与 AppSecret 的 QQ 开放平台入口。 */
@@ -99,10 +100,11 @@ export const qqBotConnector: ConnectorMeta = {
   icon: Bot,
   summary: '在系统级配置一次 AppID / AppSecret，通知渠道里新建「QQ 机器人」即可直接复用，无需逐条重复填写。',
   fields: [
-    { key: 'qqbot.app_id', label: '机器人 AppID', placeholder: '例如：1020xxxxx', required: true },
+    // AppID 与 AppSecret 的键名统一引用跨 feature 共享的就绪判定契约，避免同一设置键在多处写字面量而漂移。
+    { key: QQ_CONNECTOR_READY_KEYS.appId, label: '机器人 AppID', placeholder: '例如：1020xxxxx', required: true },
     {
       key: 'qqbot.app_secret', label: '机器人 AppSecret', type: 'password', sensitive: true,
-      configuredKey: 'qqbot.app_secret_configured', required: true,
+      configuredKey: QQ_CONNECTOR_READY_KEYS.appSecretConfigured, required: true,
       configuredHelp: '服务端已保存 AppSecret 且仅本地加密存储，页面不会回显明文；留空保存表示保持原值。',
     },
   ],

@@ -12,22 +12,22 @@ const indexHtml = readFileSync(resolve(staticRoot, 'index.html'), 'utf8');
 // PAGE_CHUNK_BUDGETS 定义每个业务页面动态分片允许的原始字节上限。
 const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Dashboard: 30 * 1024,
-  // AccountList 页面承载账号编辑弹窗、全局居中对话框服务与账号级客服 Agent 授权控件，实测 75242 字节，预算随之上调。
+  // AccountList 页面承载账号编辑弹窗、全局居中对话框服务与账号级客服 Agent 授权控件，实测 75243 字节，预算随之上调。
   AccountList: 76 * 1024,
   OrderList: 40 * 1024,
   CardList: 45 * 1024,
   ItemList: 65 * 1024,
-  // Settings 页面承载基础设置与安全阀门；MCP 服务卡与连接器迁出后实测 16203 字节，预算随之下调。
+  // Settings 页面承载基础设置与安全阀门；MCP 服务卡与连接器迁出后实测 15886 字节，预算随之下调。
   Settings: 18 * 1024,
-  // AISettings 页面承载模型凭据、接管范围编辑与外部 MCP 工具；改用共享骨架后实测 24489 字节。
+  // AISettings 页面承载模型凭据、接管范围编辑与外部 MCP 工具；改用共享骨架后实测 24486 字节。
   AISettings: 27 * 1024,
-  // AgentCenter 页面承接 MCP 服务卡、三类 Agent 入口与前置依赖状态，实测 22914 字节，预算随之上调。
+  // AgentCenter 页面承接 MCP 服务卡、三类 Agent 入口与前置依赖状态，实测 20912 字节，预算随之上调。
   AgentCenter: 26 * 1024,
   // Rules 页面包含模板发货模式入口、模板变量编辑器与全局居中对话框调用点。
   Rules: 73 * 1024,
-  // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12618 字节，预算随之上调。
+  // DeliveryTemplates 页面承载模板 CRUD 编辑器；新增重复文案提醒与预览弹窗后实测 12855 字节，预算随之上调。
   DeliveryTemplates: 14 * 1024,
-  // Connectors 页面承载平台连接器注册表卡、通知渠道编辑器与 SMTP 配置，实测 47941 字节，预算随之上调。
+  // Connectors 页面承载平台连接器注册表卡、通知渠道编辑器、SMTP 配置与页面分区骨架，实测 49825 字节。
   Connectors: 52 * 1024,
   Chat: 50 * 1024,
 };

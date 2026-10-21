@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AgentCenter from './AgentCenter';
 import { getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,updateAgentSupportSettings } from '../api';
-import type { MCPAuditPage,MCPServiceStatus,SystemSettings } from '../models';
+import type { AgentSupportSettings,MCPAuditPage,MCPServiceStatus,SystemSettings } from '../models';
 
 vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网；MCP 卡片、客服 Agent 与依赖读取共用同一适配层。 */ () => ({
   getAgentSupportSettings: vi.fn(),
@@ -120,13 +120,49 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
   });
 
-  test('管理端展示 Harness 启用状态与接入地址', /* 当前测试验证外部 Harness 的现状是只读展示而非本页配置项。 */ async () => {
+  test('管理端只由 MCP 服务卡展示启用状态与接入地址', /* 当前测试验证摘要卡已并入 MCP 服务卡，同一事实不会在两处渲染。 */ async () => {
     mcpServiceStatusMock.mockResolvedValue({ ...DISABLED_MCP_STATUS, enabled: true, endpoint: 'http://127.0.0.1:59190/mcp' });
     render(<AgentCenter />);
-    expect(await screen.findByText('已启用')).toBeTruthy();
-    // 接入地址同时出现在状态摘要与 MCP 卡片的 Harness 配置示例中，这里只要求至少渲染一处。
-    expect(screen.getAllByText(/http:\/\/127\.0\.0\.1:59190\/mcp/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/没有档位可配/)).toBeTruthy();
+    // card 是唯一的 MCP 服务卡，启用状态、接入地址与 Harness 配置示例都在其中。
+    const card = await screen.findByTestId('mcp-service-card');
+    expect(card.textContent).toContain('启用 MCP 服务');
+    // 接入地址以只读输入框的值呈现，启用时展示真实地址。
+    expect(await screen.findByDisplayValue('http://127.0.0.1:59190/mcp')).toBeTruthy();
+    // 重复摘要卡已删除：它的标题与说明文案都不应再出现在页面上。
+    expect(screen.queryByText('外部 Harness 接入（MCP）')).toBeNull();
+    expect(screen.queryByText(/没有档位可配/)).toBeNull();
+    // 区块标题与说明保留，入口语义不变。
+    expect(screen.getByText('对外 MCP 服务（入站）')).toBeTruthy();
+  });
+
+  test('页头刷新同时重读租户配置与前置依赖', /* 当前测试验证刷新不会只刷配置而让依赖状态停在旧值。 */ async () => {
+    systemSettingsMock.mockResolvedValueOnce({ ...READY_SETTINGS, ai_api_key_configured: false });
+    render(<AgentCenter />);
+    expect((await screen.findByTestId('dependency-ai-model')).textContent).toContain('未配置');
+    // settingsCalls 记录挂载后租户配置的请求次数，用于确认刷新确实重发了一次。
+    const settingsCalls = agentSupportSettingsMock.mock.calls.length;
+    // dependencyCalls 记录挂载后依赖状态的请求次数，用于确认刷新没有漏掉依赖读取。
+    const dependencyCalls = systemSettingsMock.mock.calls.length;
+    systemSettingsMock.mockResolvedValue(READY_SETTINGS);
+    // 页头刷新是页面第一个「刷新」按钮，MCP 卡片内的审计刷新在它之后渲染。
+    fireEvent.click(screen.getAllByRole('button', { name: '刷新' })[0]);
+    expect((await screen.findByTestId('dependency-ai-model')).textContent).toContain('已配置');
+    expect(agentSupportSettingsMock.mock.calls.length).toBeGreaterThan(settingsCalls);
+    expect(systemSettingsMock.mock.calls.length).toBeGreaterThan(dependencyCalls);
+  });
+
+  test('刷新请求未完成时页头按钮保持禁用', /* 当前测试验证任一读取进行中都不允许叠加下一次刷新。 */ async () => {
+    // resolveSettings 由测试控制租户配置请求何时返回，用于观察请求进行中的按钮状态。
+    let resolveSettings: (value: AgentSupportSettings) => void = () => undefined;
+    render(<AgentCenter />);
+    await screen.findByTestId('dependency-ai-model');
+    agentSupportSettingsMock.mockReturnValueOnce(new Promise<AgentSupportSettings>(/* 挂起的租户配置请求。 */ resolve => { resolveSettings = resolve; }));
+    // refreshButton 是页头的整体刷新入口。
+    const refreshButton = screen.getAllByRole('button', { name: '刷新' })[0] as HTMLButtonElement;
+    fireEvent.click(refreshButton);
+    await waitFor(/* 当前回调等待按钮进入禁用态。 */ () => expect(refreshButton.disabled).toBe(true));
+    resolveSettings({ enabled: false, preset: 'readonly', presets: [] });
+    await waitFor(/* 当前回调等待请求结束、按钮恢复可用。 */ () => expect(refreshButton.disabled).toBe(false));
   });
 
   test('运营 Agent 只给只读指引并指明配置位置', /* 当前测试验证配置项留在 QQ 连接器卡片这一归属约定。 */ async () => {
