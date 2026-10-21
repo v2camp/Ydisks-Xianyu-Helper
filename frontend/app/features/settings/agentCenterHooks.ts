@@ -1,7 +1,7 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import { isQQConnectorReady } from '../../../shared/api-contract/settings';
 import type { DependencyState } from '../../../shared/ui/DependencyRow';
-import { getAgentSupportSettings,getMCPServiceStatus,getSystemSettings,updateAgentSupportSettings } from './api';
+import { getAgentSupportSettings,getSystemSettings,updateAgentSupportSettings } from './api';
 import { createMCPServiceMessage,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage } from './state';
 import type { AgentSupportSettings,AgentSupportSettingsUpdate,MCPServiceMessage } from './models';
 
@@ -58,12 +58,6 @@ export interface UseAgentCenterResult {
   saving: boolean;
   /** saveMessage 保存最近一次提交的结果提示；null 表示本次进入页面尚未提交过。 */
   saveMessage: MCPServiceMessage | null;
-  /** harnessEnabled 表示外部 Harness 依赖的 MCP 服务是否已启用。 */
-  harnessEnabled: boolean;
-  /** harnessEndpoint 是外部 Harness 的接入地址；未启用或读取失败时为空串。 */
-  harnessEndpoint: string;
-  /** harnessLoading 表示 Harness 接入状态是否正在加载。 */
-  harnessLoading: boolean;
   /** dependencies 保存三类 Agent 的前置依赖状态；读取成功前为 null，页面据此展示「读取中」。 */
   dependencies: AgentDependencies | null;
   /** dependenciesLoading 表示依赖状态是否正在读取。 */
@@ -82,7 +76,7 @@ export interface UseAgentCenterResult {
   resetSaveMessage: () => void;
 }
 
-/** 管理 Agent 中心的租户配置草稿、保存状态与外部 Harness 接入现状。 */
+/** 管理 Agent 中心的租户配置草稿、保存状态与前置依赖状态。 */
 export const useAgentCenter = (): UseAgentCenterResult => {
   // settings 保存租户级客服 Agent 编辑草稿；未加载成功时为 null。
   const [settings, setSettings] = useState<AgentSupportSettings | null>(null);
@@ -94,12 +88,6 @@ export const useAgentCenter = (): UseAgentCenterResult => {
   const [saving, setSaving] = useState(false);
   // saveMessage 保存最近一次提交的结果提示。
   const [saveMessage, setSaveMessage] = useState<MCPServiceMessage | null>(null);
-  // harnessEnabled 表示 MCP 服务是否已启用。
-  const [harnessEnabled, setHarnessEnabled] = useState(false);
-  // harnessEndpoint 保存外部 Harness 的接入地址。
-  const [harnessEndpoint, setHarnessEndpoint] = useState('');
-  // harnessLoading 表示 Harness 接入状态是否正在加载。
-  const [harnessLoading, setHarnessLoading] = useState(false);
   // dependencies 保存三类 Agent 的前置依赖状态；读取成功前保持 null 以免闪现「未配置」。
   const [dependencies, setDependencies] = useState<AgentDependencies | null>(null);
   // dependenciesLoading 表示依赖状态是否正在读取。
@@ -174,24 +162,6 @@ export const useAgentCenter = (): UseAgentCenterResult => {
     return /* cleanup 在页面卸载时取消尚未完成的依赖读取请求。 */ () => dependenciesController.current?.abort();
   }, [reloadDependencies]);
 
-  // harnessEffect 只读取一次 Harness 接入现状，失败时保持「未启用」的保守展示。
-  useEffect(/* effect 在页面挂载时读取 MCP 服务现状，并在卸载时取消请求。 */ () => {
-    // controller 取消页面卸载后不再需要的 MCP 状态请求。
-    const controller = new AbortController();
-    setHarnessLoading(true);
-    void getMCPServiceStatus({ signal: controller.signal })
-      .then(/* response 是 MCP 服务的非敏感状态。 */ response => {
-        if (controller.signal.aborted) return;
-        setHarnessEnabled(response.enabled);
-        setHarnessEndpoint(response.endpoint);
-      })
-      .catch(/* 当前回调吞掉状态读取失败，本栏是只读展示，失败不阻断页面其余部分。 */ () => undefined)
-      .finally(/* 当前回调在 MCP 状态读取结束后收敛加载标记。 */ () => {
-        if (!controller.signal.aborted) setHarnessLoading(false);
-      });
-    return /* cleanup 在页面卸载时释放 MCP 状态请求。 */ () => controller.abort();
-  }, []);
-
   /** updateDraft 合并单个字段变化；档位名单始终保留服务端下发的那一份。 */
   const updateDraft = useCallback(/* 当前回调把单字段变化合并进当前草稿。 */ (patch: Partial<AgentSupportSettingsUpdate>) => {
     setSettings(/* updater 基于当前草稿合并补丁，草稿缺失时不重建。 */ current => current ? { ...current, ...patch } : current);
@@ -217,7 +187,6 @@ export const useAgentCenter = (): UseAgentCenterResult => {
 
   return {
     settings, loading, loadError, saving, saveMessage,
-    harnessEnabled, harnessEndpoint, harnessLoading,
     dependencies, dependenciesLoading, dependenciesError,
     load, reloadDependencies, updateDraft, submit, resetSaveMessage,
   };

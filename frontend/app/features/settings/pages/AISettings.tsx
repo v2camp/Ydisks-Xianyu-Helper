@@ -13,7 +13,7 @@ import { PageShell } from '../../../../shared/ui/PageShell';
 import { SaveBar } from '../../../../shared/ui/SaveBar';
 import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import { SectionHeader } from '../../../../shared/ui/SectionHeader';
-import { DEFAULT_AI_API_URL } from '../constants';
+import { COMMON_AI_SERVICES,DEFAULT_AI_API_URL } from '../constants';
 import { useSettings } from '../hooks';
 import { AIConfigEditor } from '../components/AIConfigEditor';
 import { MCPServerList } from '../components/MCPServerList';
@@ -220,13 +220,15 @@ const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
               )}
             </div>
 
-            <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-              <strong>常见 AI 服务:</strong>
-              <ul className="list-disc list-inside mt-1 space-y-0.5">
-                <li>阿里云通义千问: https://dashscope.aliyuncs.com/compatible-mode/v1</li>
-                <li>OpenAI: https://api.openai.com/v1</li>
+            {/* 常见 AI 服务提示：默认折叠，展开后才列出兼容地址；两条示例来自常量，避免散落在 JSX 里。 */}
+            <details className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
+              <summary className="cursor-pointer font-bold select-none">常见 AI 服务</summary>
+              <ul className="list-disc list-inside mt-2 space-y-0.5">
+                {COMMON_AI_SERVICES.map(/* service 是一条参考服务及其兼容 API 地址。 */ service => (
+                  <li key={service.url}>{service.name}: {service.url}</li>
+                ))}
               </ul>
-            </div>
+            </details>
           </div>
         </section>
 
