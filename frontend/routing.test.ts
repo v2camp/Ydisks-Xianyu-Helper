@@ -197,12 +197,14 @@ describe('frontend navigation routing', () => {
     expect(notifications).toContain('interface ConnectorsProps');
     // smtpIndex 是 SMTP 面板在页面源码中的位置。
     const smtpIndex = notifications.indexOf('<NotificationSmtpSettings');
-    // gateIndex 是 SMTP 面板之前最近的管理员条件位置，用于确认整块仍受权限控制。
-    const gateIndex = notifications.lastIndexOf('{isAdmin && (');
+    // gateIndex 是系统级分区唯一的管理员条件位置，平台连接器与 SMTP 共用这一道门禁。
+    const gateIndex = notifications.indexOf('{isAdmin && (');
     expect(smtpIndex).toBeGreaterThan(-1);
-    // 管理员条件只应包裹两个系统级区块：平台连接器与 SMTP；多一处或漏一处都说明权限边界被改动。
-    expect(notifications.match(/\{isAdmin && \(/g)).toHaveLength(2);
+    // 系统级配置只应有一处管理员条件：拆成两处说明分区被重新打散，缺失说明普通用户会看到系统配置。
+    expect(notifications.match(/\{isAdmin && \(/g)).toHaveLength(1);
     expect(gateIndex).toBeGreaterThan(-1);
+    // 平台连接器与 SMTP 面板都落在同一道门禁之后，说明两者同属系统级分区。
+    expect(notifications.indexOf('<ConnectorCard')).toBeGreaterThan(gateIndex);
     expect(smtpIndex).toBeGreaterThan(gateIndex);
     // 包裹 SMTP 面板的异步容器也在管理员条件之后，说明加载与错误态同样不会暴露给普通用户。
     expect(notifications.lastIndexOf('<AsyncSection', smtpIndex)).toBeGreaterThan(gateIndex);

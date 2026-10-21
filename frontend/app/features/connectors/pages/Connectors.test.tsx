@@ -48,6 +48,9 @@ describe('Connectors 页面', /* 当前测试组验证连接器页面的外壳�
     expect(useConnectorsMock).toHaveBeenCalledWith(true);
     expect(screen.getByRole('heading', { name: '连接器' })).toBeTruthy();
     expect(screen.getByText('配置第三方平台连接器与通知渠道，账号异常时主动推送告警')).toBeTruthy();
+    // 管理员在同一分区内既看到「系统级配置」总标题，也看到归入其中的平台连接器与系统邮件子标题。
+    expect(screen.getByText('系统级配置')).toBeTruthy();
+    expect(screen.getByText('系统邮件（SMTP）')).toBeTruthy();
     expect(screen.getByText('平台连接器')).toBeTruthy();
     expect(screen.getByText('保存连接器配置')).toBeTruthy();
     expect(screen.getByText('修改平台凭据或能力开关后需保存')).toBeTruthy();
@@ -87,6 +90,10 @@ describe('Connectors 页面', /* 当前测试组验证连接器页面的外壳�
     useConnectorsMock.mockReturnValue(createState());
     render(<Connectors />);
     expect(useConnectorsMock).toHaveBeenCalledWith(false);
+    // 普通用户只看到自己可操作的通知渠道分区，系统级分区的标题也不能出现。
+    expect(screen.getByText('通知渠道')).toBeTruthy();
+    expect(screen.queryByText('系统级配置')).toBeNull();
+    expect(screen.queryByText('系统邮件（SMTP）')).toBeNull();
     expect(screen.queryByText('平台连接器')).toBeNull();
     expect(screen.queryByText('保存连接器配置')).toBeNull();
     expect(screen.queryByText('保存 SMTP 配置')).toBeNull();
