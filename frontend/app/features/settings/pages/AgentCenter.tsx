@@ -1,6 +1,8 @@
-import { Bot,Loader2,Radio,RefreshCw,Save,Terminal } from 'lucide-react';
+import { Bot,Loader2,PlugZap,Radio,RefreshCw,Save } from 'lucide-react';
 import React from 'react';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import { useAgentCenter } from '../agentCenterHooks';
+import { MCPServiceCard } from '../components/MCPServiceCard';
 
 /** AgentCenter 按「谁决定调用能力」归拢三类 Agent 的入口，并直接配置租户级客服 Agent 的默认开关与档位。 */
 const AgentCenter: React.FC = () => {
@@ -32,12 +34,12 @@ const AgentCenter: React.FC = () => {
 
       {/* 管理端 Agent：外部 Harness 由人在场操作，凭管理员身份直接调用工具，权限与工具范围都不设档位。 */}
       <section className="space-y-4">
-        <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-slate-700 text-white">
-            <Terminal className="w-4 h-4" />
-          </div>
-          管理端 Agent
-        </h3>
+        <SectionHeader
+          icon={PlugZap}
+          tone="indigo"
+          title="对外 MCP 服务（入站）"
+          description="把本服务能力以 MCP 协议开放给外部 Harness；与 AI 设置页的外部 MCP 工具（出站）方向相反。"
+        />
         <div className="ios-card rounded-xl p-6 bg-white space-y-4">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-bold text-gray-800">外部 Harness 接入（MCP）</h4>
@@ -47,12 +49,14 @@ const AgentCenter: React.FC = () => {
           </div>
           <p className="text-xs leading-5 text-gray-600">
             外部 Harness 由人在场操作，通过 MCP 协议以管理员身份调用本服务工具，能力上限就是平台自身的操作范围，
-            因此这里没有档位可配。它的启用开关、接入令牌与调用审计在「系统设置」页的 MCP 服务卡片中管理。
+            因此这里没有档位可配。启用开关、接入令牌与调用审计就在下方卡片中直接管理。
           </p>
           {harnessEndpoint && (
             <p className="text-xs text-gray-500 font-mono break-all">接入地址：{harnessEndpoint}</p>
           )}
         </div>
+        {/* MCP 服务卡：启停、网络策略、令牌生命周期与调用审计，操作即时保存，不随本页草稿提交。 */}
+        <MCPServiceCard />
       </section>
 
       {/* 客服端 Agent：无人监督、作用域锁定单个账号，因此能力由档位统一约束，不逐个工具放行。 */}

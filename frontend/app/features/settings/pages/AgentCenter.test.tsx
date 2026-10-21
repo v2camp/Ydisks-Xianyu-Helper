@@ -2,13 +2,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AgentCenter from './AgentCenter';
-import { getAgentSupportSettings,getMCPServiceStatus,updateAgentSupportSettings } from '../api';
-import type { MCPServiceStatus } from '../models';
+import { getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,updateAgentSupportSettings } from '../api';
+import type { MCPAuditPage,MCPServiceStatus } from '../models';
 
-vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网。 */ () => ({
+vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网；MCP 卡片与客服 Agent 共用同一适配层。 */ () => ({
   getAgentSupportSettings: vi.fn(),
   updateAgentSupportSettings: vi.fn(),
   getMCPServiceStatus: vi.fn(),
+  getMCPAudit: vi.fn(),
+  updateMCPServiceSettings: vi.fn(),
+  generateMCPToken: vi.fn(),
+  revokeMCPToken: vi.fn(),
 }));
 
 // agentSupportSettingsMock 是租户级客服 Agent 配置读取的替身。
@@ -17,6 +21,8 @@ const agentSupportSettingsMock = vi.mocked(getAgentSupportSettings);
 const agentSupportSettingsUpdateMock = vi.mocked(updateAgentSupportSettings);
 // mcpServiceStatusMock 是 MCP 服务现状读取的替身。
 const mcpServiceStatusMock = vi.mocked(getMCPServiceStatus);
+// mcpAuditMock 是 MCP 调用审计分页读取的替身，MCP 卡片挂载时会立即拉取首页。
+const mcpAuditMock = vi.mocked(getMCPAudit);
 
 // DISABLED_MCP_STATUS 是未启用 MCP 服务时页面读取到的最小状态。
 const DISABLED_MCP_STATUS: MCPServiceStatus = {
@@ -29,6 +35,9 @@ const DISABLED_MCP_STATUS: MCPServiceStatus = {
   previousTokenExpiresAt: 0,
   endpoint: '',
 };
+
+// EMPTY_MCP_AUDIT 是尚无调用记录时的审计首页，用于让 MCP 卡片渲染空态。
+const EMPTY_MCP_AUDIT: MCPAuditPage = { records: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
 
 afterEach(/* 当前回调隔离每个用例创建的 DOM。 */ () => cleanup());
 
@@ -44,6 +53,7 @@ beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响
   });
   agentSupportSettingsUpdateMock.mockResolvedValue();
   mcpServiceStatusMock.mockResolvedValue(DISABLED_MCP_STATUS);
+  mcpAuditMock.mockResolvedValue(EMPTY_MCP_AUDIT);
 });
 
 describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与租户级客服 Agent 授权往返。 */ () => {
@@ -100,7 +110,8 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     mcpServiceStatusMock.mockResolvedValue({ ...DISABLED_MCP_STATUS, enabled: true, endpoint: 'http://127.0.0.1:59190/mcp' });
     render(<AgentCenter />);
     expect(await screen.findByText('已启用')).toBeTruthy();
-    expect(screen.getByText(/http:\/\/127\.0\.0\.1:59190\/mcp/)).toBeTruthy();
+    // 接入地址同时出现在状态摘要与 MCP 卡片的 Harness 配置示例中，这里只要求至少渲染一处。
+    expect(screen.getAllByText(/http:\/\/127\.0\.0\.1:59190\/mcp/).length).toBeGreaterThan(0);
     expect(screen.getByText(/没有档位可配/)).toBeTruthy();
   });
 

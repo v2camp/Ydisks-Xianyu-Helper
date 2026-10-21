@@ -131,6 +131,17 @@ describe('frontend navigation routing', () => {
     expect(routes).toContain("'/app/agent-center': 'agent-center'");
   } /* 测试回调断言系统设置、AI 设置与 Agent 中心各自拥有独立路由映射。 */);
 
+  test('inbound MCP service card is mounted on the agent center page instead of system settings', () => {
+    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示系统设置页源码，用于确认入站 MCP 卡片已迁出。 */
+    const agentCenter = readFrontendFile('app/features/settings/pages/AgentCenter.tsx'); /* agentCenter 表示 Agent 中心页源码，用于确认入站 MCP 卡片已就地挂载。 */
+
+    expect(settings).not.toContain('MCPServiceCard');
+    expect(agentCenter).toContain("import { MCPServiceCard } from '../components/MCPServiceCard'");
+    expect(agentCenter).toContain('<MCPServiceCard />');
+    expect(agentCenter).toContain('对外 MCP 服务（入站）');
+    expect(agentCenter).toContain('方向相反');
+  } /* 测试回调断言入站 MCP 服务卡挂在 Agent 中心页、不再出现在系统设置页，并与出站客户端配置区分方向。 */);
+
   test('captcha remote settings expose the reference privacy and fallback semantics', () => {
     const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示settings。 */
 
