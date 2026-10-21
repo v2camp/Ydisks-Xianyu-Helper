@@ -79,6 +79,39 @@ func TestGetChannelEditorReturnsEmailRecipient(t *testing.T) {
 	}
 }
 
+// TestGetChannelEditorReturnsQQTargetsAndCredentialPresence 验证编辑接口回读 qq 目标 openid 与凭据存在性，且不回传 AppSecret。
+func TestGetChannelEditorReturnsQQTargetsAndCredentialPresence(t *testing.T) {
+	// srv、store、cleanup 保存当前测试 HTTP 服务、数据库和资源清理函数。
+	srv, store, cleanup := newTestServer(t)
+	defer cleanup()
+	// handler 是当前测试使用的完整 HTTP 路由。
+	handler := srv.Router()
+	// sessionCookie 是当前测试用户的认证 Cookie。
+	sessionCookie := loginHelper(t, handler)
+	// insertErr 保存写入含渠道级凭据的测试 qq 渠道结果。
+	_, insertErr := store.DB.ExecContext(context.Background(), `INSERT INTO notification_channels (name,type,config,enabled,user_id) VALUES (?,?,?,?,?)`, "QQ", "qq", `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"fixture-user","group_openid":"fixture-group"}`, 1, 1)
+	if insertErr != nil {
+		t.Fatalf("写入 qq 渠道失败: %v", insertErr)
+	}
+	// request 是读取 qq 渠道脱敏编辑配置的请求。
+	request := httptest.NewRequest(http.MethodGet, "/notification-channels/1", nil)
+	request.AddCookie(sessionCookie)
+	// recorder 捕获编辑接口响应。
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("编辑 qq 渠道 status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	// body 保存编辑接口返回的 JSON 文本，用于断言字段存在且不含秘密。
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"user_openid":"fixture-user"`) || !strings.Contains(body, `"group_openid":"fixture-group"`) || !strings.Contains(body, `"has_channel_credentials":true`) {
+		t.Fatalf("qq 编辑响应缺少契约字段: %s", body)
+	}
+	if strings.Contains(body, "app_secret") || strings.Contains(body, "fixture-secret") {
+		t.Fatalf("qq 编辑响应泄露渠道级凭据: %s", body)
+	}
+}
+
 // TestCreateChannelMissingName 缺 name/type 400。
 func TestCreateChannelMissingName(t *testing.T) {
 	// srv、cleanup 用于本次流程后续判断的srv、cleanup
