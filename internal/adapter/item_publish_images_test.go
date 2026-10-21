@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +62,54 @@ func TestLoadBatchPublishImagesRejectsInvalidInput(t *testing.T) {
 			_, loadErr := LoadBatchPublishImages(context.Background(), "/tmp/upload", testCase.imagesJSON, testCase.readLocal, remote)
 			if (loadErr != nil) != testCase.wantErr {
 				t.Fatalf("错误断言不符: %v", loadErr)
+			}
+		})
+	}
+}
+
+// TestPublishImageFilenameShortensLongURLBase 验证超长图床文件名被压到平台上限并保留扩展名。
+func TestPublishImageFilenameShortensLongURLBase(t *testing.T) {
+	// longURL 是被平台以 FILE_NAME_LENGTH_IS_OVER_RANGE 拒绝过的真实形态：文件名 62 字符。
+	longURL := "http://img.alicdn.com/bao/uploaded/i4/11873716/O1CN01xa3LJHa8mSK2XrKe_!!4611686018427383220-0-xy_item.jpg"
+	// name 是短期化后的上传文件名。
+	name := PublishImageFilename(longURL)
+	// length 是截断后文件名的字符数，必须落在平台上限内。
+	length := len([]rune(name))
+	if length > maxPublishImageFilenameRunes {
+		t.Fatalf("文件名仍超上限: %d 字符 %q", length, name)
+	}
+	if !strings.HasSuffix(name, ".jpg") {
+		t.Fatalf("扩展名必须保留: %q", name)
+	}
+	// other 是同前缀不同后缀的另一张图片，截断后必须仍然可区分。
+	other := PublishImageFilename("http://img.alicdn.com/bao/uploaded/i4/11873716/O1CN01xa3LJHa8mSK2XrKe_!!4611686018427383220-0-xy_item2.jpg")
+	if other == name {
+		t.Fatalf("不同图片截断后不得同名: %q", name)
+	}
+	// shortURL 是短期化后仍短于上限的地址，必须原样保留。
+	if got := PublishImageFilename("https://cdn.test/a.png?x=1"); got != "a.png" {
+		t.Fatalf("短文件名不应改写: %q", got)
+	}
+}
+
+// TestShortenPublishImageFilenameEdgeCases 验证空主干、无扩展名与超长扩展名的截断行为。
+func TestShortenPublishImageFilenameEdgeCases(t *testing.T) {
+	// cases 保存不同边界文件名与其断言。
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{name: "no extension", in: strings.Repeat("x", 80)},
+		{name: "long extension", in: "a." + strings.Repeat("y", 20)},
+		{name: "dots only stem", in: strings.Repeat(".", 40) + "png"},
+	}
+	// testCase 是当前边界场景。
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// got 是截断结果，必须非空且不超上限。
+			got := shortenPublishImageFilename(testCase.in)
+			if got == "" || len([]rune(got)) > maxPublishImageFilenameRunes {
+				t.Fatalf("截断结果非法: %q", got)
 			}
 		})
 	}

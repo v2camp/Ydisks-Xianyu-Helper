@@ -5,6 +5,8 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	itemapp "xianyu-go/internal/application/items"
@@ -40,6 +42,11 @@ func (e *Endpoint) makePublishHandler(items capability.ItemPorts,
 		}
 		// imageURLs 是公网图片 URL 列表；图片为可选项，缺省按无图发布。
 		imageURLs := args.OptionalStringArray("image_urls")
+		// location 是可选发货地；平台缺少发货地时无法定位行政区并拒绝发布。
+		location, locationErr := publishLocationArg(args)
+		if locationErr != nil {
+			return nil, locationErr
+		}
 		// postageMode 是邮费模式，默认包邮。
 		postageMode := args.OptionalString("postage_mode", "free")
 		if postageMode != "free" && postageMode != "fixed" {
@@ -58,6 +65,7 @@ func (e *Endpoint) makePublishHandler(items capability.ItemPorts,
 			PostageCents:       int64(args.OptionalInt("postage_cents", 0)),
 			ImageURLs:          imageURLs,
 			CatID:              args.OptionalString("category_cat_id", ""),
+			Location:           location,
 		}
 		if input.Quantity <= 0 {
 			return nil, InvalidArgument("quantity 必须大于 0")
@@ -136,11 +144,22 @@ func (e *Endpoint) makeBatchCreateHandler(items capability.ItemPorts) HandlerFun
 		}
 		// filename 是批次来源标记。
 		filename := args.OptionalString("filename", "mcp.json")
+		// location 是整批统一发货地；缺失时发布阶段会被平台拒绝，因此在创建期先校验格式。
+		location, locationErr := publishLocationArg(args)
+		if locationErr != nil {
+			return nil, locationErr
+		}
+		// batchLocation 是持久化时使用的发货地值类型，缺省为零值（发布阶段会被平台拒绝）。
+		var batchLocation itemapp.Location
+		if location != nil {
+			batchLocation = *location
+		}
 		// persisted、persistErr 是持久化结果。
 		persisted, persistErr := items.PersistBatch(ctx, itemapp.BatchPreviewPersistenceBatch{
 			ID: batchID, UserID: identity.UserID,
 			DefaultCookieID:        args.OptionalString("default_account_id", ""),
 			Filename:               filename,
+			Location:               batchLocation,
 			PublishIntervalSeconds: args.OptionalInt("publish_interval_seconds", 0),
 		}, previewRows)
 		if persistErr != nil {
@@ -260,4 +279,110 @@ func previewResultFromApp(rows []itemapp.BatchPreviewRow) batchPreviewResult {
 		})
 	}
 	return batchPreviewResult{Total: len(rows), Valid: validCount, Invalid: len(rows) - validCount, Rows: dtos}
+}
+
+// publishLocationArg 解析可选发货地对象入参，返回应用层发货地模型。
+// 缺省返回 nil 表示不指定发货地；显式传入时要求省、市、行政区编码与非零经纬度齐备，
+// 与平台侧 validPublishLocation 的判定保持一致，避免把不完整地址带进真实发布。
+func publishLocationArg(args Arguments) (*itemapp.Location, error) {
+	// raw、ok 是 location 原始入参及其存在性。
+	raw, ok := args["location"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	// fields 是 location 对象字段映射；非对象类型直接拒绝。
+	fields, isObject := raw.(map[string]any)
+	if !isObject {
+		return nil, InvalidArgument("location 必须是对象")
+	}
+	// location 保存归一化后的发货地字段。
+	location := &itemapp.Location{
+		Area:       locationText(fields, "area"),
+		City:       locationText(fields, "city"),
+		DivisionID: locationText(fields, "division_id"),
+		POIID:      locationText(fields, "poi_id"),
+		POIName:    locationText(fields, "poi_name"),
+		Province:   locationText(fields, "province"),
+	}
+	// longitude、longitudeErr 是经度数值及解析错误。
+	longitude, longitudeErr := locationNumber(fields, "longitude")
+	if longitudeErr != nil {
+		return nil, longitudeErr
+	}
+	// latitude、latitudeErr 是纬度数值及解析错误。
+	latitude, latitudeErr := locationNumber(fields, "latitude")
+	if latitudeErr != nil {
+		return nil, latitudeErr
+	}
+	location.Longitude, location.Latitude = longitude, latitude
+	if location.Province == "" || location.City == "" || location.DivisionID == "" {
+		return nil, InvalidArgument("location 缺少 province、city 或 division_id")
+	}
+	if location.Longitude == 0 && location.Latitude == 0 {
+		return nil, InvalidArgument("location 需要非 0 的 longitude 与 latitude")
+	}
+	if location.Longitude < -180 || location.Longitude > 180 || location.Latitude < -90 || location.Latitude > 90 {
+		return nil, InvalidArgument("location 经纬度超出合法范围")
+	}
+	return location, nil
+}
+
+// locationText 读取发货地对象中的字符串字段，非字符串值按缺省处理。
+func locationText(fields map[string]any, key string) string {
+	// value 是字段原始值；只有字符串类型被采纳。
+	value, ok := fields[key]
+	if !ok {
+		return ""
+	}
+	// text 是裁剪后的字符串值。
+	text, isString := value.(string)
+	if !isString {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+// locationNumber 读取发货地对象中的数值字段，兼容数字与数字字符串两种写法。
+func locationNumber(fields map[string]any, key string) (float64, error) {
+	// value、ok 是字段原始值及其存在性；缺省按 0 处理，由调用方统一校验。
+	value, ok := fields[key]
+	if !ok || value == nil {
+		return 0, nil
+	}
+	// text、isString 是字符串输入的文本及其类型判断。
+	if text, isString := value.(string); isString {
+		// number、err 是数字文本的解析结果与错误。
+		number, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+		if err != nil {
+			return 0, InvalidArgument("location." + key + " 必须是数字")
+		}
+		return number, nil
+	}
+	// number、isNumber 是数值输入的直接转换结果与成功标记。
+	if number, isNumber := locationFloatValue(value); isNumber {
+		return number, nil
+	}
+	return 0, InvalidArgument("location." + key + " 必须是数字")
+}
+
+// locationFloatValue 把已解码的 JSON 数值转换为浮点，非数值类型返回 false。
+func locationFloatValue(value any) (float64, bool) {
+	// typed 是字段值在当前分支下的具体类型视图。
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		// number 是 json.Number 的解析结果；失败时按非法输入处理。
+		number, err := typed.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return number, true
+	default:
+		return 0, false
+	}
 }

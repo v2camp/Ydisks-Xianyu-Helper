@@ -148,6 +148,8 @@ type SinglePublishInput struct {
 	PostageMode string
 	// PostageCents 是固定邮费（分）。
 	PostageCents int64
+	// Location 是可选发货地；为空时平台无法定位行政区并拒绝发布。
+	Location *itemapp.Location
 	// ImageURLs 是商品图片公网 URL。
 	ImageURLs []string
 	// CatID 是可选指定闲鱼类目；为空走自动推荐。

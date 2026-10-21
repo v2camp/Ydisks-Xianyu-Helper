@@ -2,6 +2,8 @@ package adapter
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,7 +48,7 @@ func LoadBatchPublishImages(ctx context.Context, uploadDir, imagesJSON string, r
 		var err error
 		if isPublishImageHTTPURL(ref) {
 			data, contentType, err = downloadRemote(ctx, ref)
-			filename = publishImagePathBase(ref)
+			filename = PublishImageFilename(ref)
 		} else {
 			data, contentType, filename, err = readLocal(uploadDir, ref)
 		}
@@ -72,4 +74,43 @@ func publishImagePathBase(rawURL string) string {
 		return "image.jpg"
 	}
 	return base
+}
+
+// maxPublishImageFilenameRunes 是平台接受的上传文件名长度上限。
+// 平台按字符计数：实测 62 字符的图床文件名会被拒绝并返回 FILE_NAME_LENGTH_IS_OVER_RANGE。
+const maxPublishImageFilenameRunes = 32
+
+// PublishImageFilename 把图片引用转换为满足平台长度限制的上传文件名。
+// 远程引用按 URL 路径取基名；超长时保留扩展名并附加短哈希，避免不同图片截断后同名。
+func PublishImageFilename(rawURL string) string {
+	return shortenPublishImageFilename(publishImagePathBase(rawURL))
+}
+
+// shortenPublishImageFilename 把超长文件名压缩到平台上限内。
+func shortenPublishImageFilename(name string) string {
+	// runes 保存按字符切分的文件名，平台限制按字符而非字节。
+	runes := []rune(name)
+	if len(runes) <= maxPublishImageFilenameRunes {
+		return name
+	}
+	// ext 是保留的扩展名（含点）；异常长的扩展名会让位给文件名主干。
+	ext := filepath.Ext(name)
+	if len([]rune(ext)) > 8 {
+		ext = ""
+	}
+	// sum 是文件名的短哈希，保证截断后仍能区分不同图片。
+	sum := sha256.Sum256([]byte(name))
+	// suffix 是追加在主干后的短哈希文本。
+	suffix := "-" + hex.EncodeToString(sum[:4])
+	// keep 是主干允许保留的字符数；至少保留一个字符。
+	keep := maxPublishImageFilenameRunes - len([]rune(ext)) - len([]rune(suffix))
+	if keep < 1 {
+		keep = 1
+	}
+	// stem 是截断后的文件名主干，去掉尾部点以免与扩展名拼接出畸形名称。
+	stem := strings.TrimRight(string(runes[:keep]), ".")
+	if stem == "" {
+		stem = "image"
+	}
+	return stem + suffix + ext
 }
