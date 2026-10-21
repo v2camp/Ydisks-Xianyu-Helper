@@ -2,6 +2,9 @@ import { readdirSync,readFileSync,statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe,expect,test } from 'vitest';
 
+// lazyPageNames 是产生独立分片的页面名唯一来源，分片识别与预算登记都以它为准。
+import { lazyPageNames } from './app/router/pageEntries';
+
 // staticRoot 是 Go 服务嵌入的前端生产资源目录。
 const staticRoot = resolve(__dirname, '../internal/webui/static');
 // indexHtml 是生产构建生成的入口 HTML。
@@ -16,6 +19,8 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   ItemList: 65 * 1024,
   // Settings 页面承载基础设置、安全阀门与 MCP 服务卡；连接器移出后实测 28154 字节，预算随之下调。
   Settings: 30 * 1024,
+  // AISettings 页面承载模型供应商、推理参数与提示词编辑，实测 25099 字节。
+  AISettings: 28 * 1024,
   // AgentCenter 页面承载三类 Agent 的入口与租户级客服 Agent 授权，实测 7834 字节。
   AgentCenter: 10 * 1024,
   // Rules 页面包含模板发货模式入口、模板变量编辑器与全局居中对话框调用点。
@@ -26,6 +31,9 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   Connectors: 52 * 1024,
   Chat: 50 * 1024,
 };
+
+// pageChunkPattern 由懒加载页面名派生，页面清单增删时分片识别自动跟随，不需要手工维护正则。
+const pageChunkPattern = new RegExp(`^(?:${lazyPageNames.join('|')})-.+\\.js$`);
 
 describe('frontend production bundle boundary', /* 当前回调验证生产入口包体和页面分片。 */ () => {
   test('入口脚本保持轻量且业务页面不被预加载', /* 当前回调验证首屏入口不同步载入所有页面。 */ () => {
@@ -41,10 +49,16 @@ describe('frontend production bundle boundary', /* 当前回调验证生产入�
     expect(preloadedAssets.some(/* 当前回调判断图表依赖是否被首屏预加载。 */ asset => asset.startsWith('charts-vendor-'))).toBe(false);
   });
 
-  test('十一个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
+  test('十二个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
     // pageChunkNames 保存 Vite 输出的业务页面 chunk 文件名。
-    const pageChunkNames = readdirSync(resolve(staticRoot, 'assets')).filter(/* 当前回调筛选业务页面分片文件。 */ fileName => /^(Dashboard|AccountList|OrderList|CardList|ItemList|Settings|Rules|Connectors|Chat|DeliveryTemplates|AgentCenter)-.+\.js$/.test(fileName));
-    expect(pageChunkNames).toHaveLength(11);
+    const pageChunkNames = readdirSync(resolve(staticRoot, 'assets')).filter(/* 当前回调筛选业务页面分片文件。 */ fileName => pageChunkPattern.test(fileName));
+    expect(pageChunkNames).toHaveLength(12);
+  });
+
+  test('每个产生独立分片的页面都在分片预算表登记', /* 当前回调验证页面清单与预算表不会互相缺漏。 */ () => {
+    // missingBudgets 保存出现在懒加载清单却没有预算条目的页面名。
+    const missingBudgets = lazyPageNames.filter(/* 当前回调筛选未在预算表登记的页面。 */ pageName => PAGE_CHUNK_BUDGETS[pageName] === undefined);
+    expect(missingBudgets).toEqual([]);
   });
 
   test('每个业务页面 chunk 都保持在独立预算内', /* 当前回调验证单个页面不会重新膨胀首屏后的按需下载。 */ () => {

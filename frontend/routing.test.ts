@@ -2,6 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe,expect,test } from 'vitest';
 
+// lazyPageNames 是产生独立分片的页面名唯一来源，懒加载断言与分片预算共用同一份清单。
+import { lazyPageNames } from './app/router/pageEntries';
+
+// lazyPagePattern 由页面清单派生，避免手写正则漏掉页面。
+const lazyPagePattern = new RegExp(`const (?:${lazyPageNames.join('|')}) = lazy\\(`, 'g');
+
 const repoRoot = resolve(__dirname); /* repoRoot 表示repoRoot。 */
 
 const readFrontendFile = (relativePath: string) =>
@@ -35,9 +41,9 @@ describe('frontend navigation routing', () => {
 
   test('route pages are lazy-loaded behind a shared Suspense boundary', () => {
     const app = readFrontendFile('app/shell/AuthenticatedShell.tsx'); /* app 表示认证后页面组合器源码。 */
-    const lazyPageCount = (app.match(/const (Dashboard|AccountList|OrderList|CardList|ItemList|AISettings|AgentCenter|Settings|Rules|Connectors|Chat) = lazy\(/g) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量。 */
+    const lazyPageCount = (app.match(lazyPagePattern) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量，期望值与页面清单长度一致。 */
 
-    expect(lazyPageCount).toBe(11);
+    expect(lazyPageCount).toBe(12);
     expect(app).toContain('const PageLoading: React.FC');
     expect(app).toContain('<Suspense fallback={<PageLoading />}>');
     expect(app).not.toContain("import Dashboard from '../../components/Dashboard'");
