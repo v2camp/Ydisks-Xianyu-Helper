@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { Server } from 'lucide-react';
+import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import type { SystemSettings } from '../api';
 import { EditableList } from './EditableList';
 
@@ -100,12 +101,12 @@ export const MCPServerList: React.FC<MCPServerListProps> = ({ settings, onChange
 
   return (
     <section className="space-y-4">
-      <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-        <div className="p-1.5 rounded-lg bg-emerald-500 text-white">
-          <Server className="w-4 h-4" />
-        </div>
-        MCP 服务器列表
-      </h3>
+      <SectionHeader
+        icon={Server}
+        title="外部 MCP 工具（出站）"
+        description="本服务作为 MCP 客户端调用外部工具（如 find_stuff 找书/找短剧）；与 Agent 中心里对外提供的 MCP 服务方向相反。"
+        tone="emerald"
+      />
       <div className="ios-card rounded-xl p-6 bg-white space-y-4">
         <p className="text-xs text-gray-500">
           引擎目前消费 name 为 find_stuff 的条目；未配置时回落环境变量 FIND_STUFF_MCP_URL。
