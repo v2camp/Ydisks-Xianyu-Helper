@@ -1,8 +1,9 @@
 import { Check, Loader2, Save } from 'lucide-react';
 import React, { useEffect } from 'react';
+import { SAVE_BAR_STYLES, type SaveBarState } from './tokens';
 
-// SaveBarState 是保存条的四态：空闲待提交、保存中、保存失败、保存成功。
-export type SaveBarState = 'idle' | 'saving' | 'error' | 'success';
+// SaveBarState 仍从本文件导出，保证既有调用方的导入路径不变；真实定义在 tokens.ts。
+export type { SaveBarState };
 
 // SaveBarProps 描述保存条的受控状态、提交回调与两种作用域下的展示文案。
 export interface SaveBarProps {
@@ -48,12 +49,9 @@ export const SaveBar: React.FC<SaveBarProps> = ({
     return /* 清理未触发的回落定时器，避免成功条消失后仍触发一次状态复位。 */ () => window.clearTimeout(settleTimer);
   }, [state, onSettled]);
 
-  // barToneClass 是保存条底色：成功与失败用语义色强调结果，空闲与保存中保持深色底承托主按钮。
-  const barToneClass = state === 'error'
-    ? 'bg-danger-500'
-    : state === 'success'
-      ? 'bg-success-500'
-      : 'bg-slate-800';
+  // barToneClass 是保存条底色：成功与失败用语义色强调结果，空闲与保存中保持深色底承托主按钮；
+  // 具体类串由 tokens.ts 的 SAVE_BAR_STYLES 统一提供。
+  const barToneClass = SAVE_BAR_STYLES[state];
   // stickyClass 是页级粘性定位类名；区块级保存条不加粘性，跟随区块内容滚动。
   const stickyClass = sticky ? 'sticky bottom-4 z-20' : '';
 
