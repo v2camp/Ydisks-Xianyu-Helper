@@ -52,6 +52,9 @@
 # Local agent working data (session notes and memory, never part of the deliverable)
 /.workbuddy/
 
+# Brainstorming visual companion scratch (mockup fragments only render inside its server)
+/.superpowers/
+
 # Local build scratch files (tmp Dockerfile) and TRAE working documents
 /.docker/
 /.trae/
