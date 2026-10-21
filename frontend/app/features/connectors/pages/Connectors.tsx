@@ -152,7 +152,7 @@ const Connectors: React.FC<ConnectorsProps> = ({ isAdmin = false }) => {
         </section>
       )}
 
-      <NotificationChannelModal showModal={connectorState.showModal} editing={connectorState.editing} form={connectorState.form} setForm={connectorState.setForm} smtp={connectorState.smtp} showChannelSmtpPassword={connectorState.showChannelSmtpPassword} setShowChannelSmtpPassword={connectorState.setShowChannelSmtpPassword} saving={connectorState.saving} onClose={connectorState.closeModal} onSave={connectorState.handleSave} />
+      <NotificationChannelModal showModal={connectorState.showModal} editing={connectorState.editing} form={connectorState.form} setForm={connectorState.setForm} smtp={connectorState.smtp} showChannelSmtpPassword={connectorState.showChannelSmtpPassword} setShowChannelSmtpPassword={connectorState.setShowChannelSmtpPassword} saving={connectorState.saving} connectorReady={connectorState.qqConnectorReady} hasChannelCredentials={connectorState.hasChannelCredentials} onClose={connectorState.closeModal} onSave={connectorState.handleSave} />
 
       {connectorState.toast && <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[10000] px-5 py-3 rounded-xl shadow-lg font-bold text-sm flex items-center gap-2 animate-fade-in text-white ${connectorState.toast.type === 'success' ? 'bg-success-500' : 'bg-danger-500'}`}>{connectorState.toast.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}{connectorState.toast.text}</div>}
     </PageShell>

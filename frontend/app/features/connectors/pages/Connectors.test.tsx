@@ -23,6 +23,7 @@ const resolveNothing = async (): Promise<void> => undefined;
 const createState = (overrides: Partial<ConnectorsState> = {}): ConnectorsState => ({
   channels: [], loading: false, showModal: false, editing: null, saving: false, testingId: '', toast: null,
   smtp: {}, connectorSettings: {}, connectorSaving: false, smtpSaving: false,
+  qqConnectorReady: false, hasChannelCredentials: false,
   settingsLoading: false, settingsError: '',
   connectorSaveState: 'idle', connectorSaveError: '', smtpSaveState: 'idle', smtpSaveError: '',
   showSmtpPassword: false, showChannelSmtpPassword: false, form: emptyForm,

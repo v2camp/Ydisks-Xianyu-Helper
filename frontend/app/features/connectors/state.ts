@@ -109,14 +109,31 @@ export const normalizeNotificationForm = (channel: NotificationChannel, smtp: Sy
   return { name: channel.name, type: channel.type, enabled: channel.enabled, config, event_types: normalizeNotificationEventTypes(channel.event_types || []) };
 };
 
+// QQ_CHANNEL_CREDENTIAL_KEYS 是 qq 渠道可从系统连接器继承的两个渠道级凭据键。
+export const QQ_CHANNEL_CREDENTIAL_KEYS: readonly string[] = ['app_id', 'app_secret'];
+
+// ChannelCredentialOptions 描述 qq 渠道凭据的来源状态，用于决定 app_id/app_secret 是否仍需填写。
+export interface ChannelCredentialOptions {
+  // connectorReady 表示系统级 QQ 机器人连接器凭据已就绪，渠道可以不再自填凭据。
+  connectorReady?: boolean;
+  // hasChannelCredentials 表示当前渠道仍保存着一套独立凭据，留空保存会沿用它们。
+  hasChannelCredentials?: boolean;
+}
+
+// qqChannelCredentialsOptional 判断 qq 渠道的渠道级凭据字段是否可以留空：连接器已就绪或渠道已有独立凭据时无需重填。
+export const qqChannelCredentialsOptional = (type: NotificationChannelType, options: ChannelCredentialOptions = {}): boolean =>
+  type === 'qq' && (options.connectorReady === true || options.hasChannelCredentials === true);
+
 // validateNotificationForm 校验渠道名称、渠道字段和独立 SMTP 必填项。
-export const validateNotificationForm = (form: NotificationForm): string => {
+export const validateNotificationForm = (form: NotificationForm, options: ChannelCredentialOptions = {}): string => {
   // meta 是当前渠道类型的静态校验配置。
   const meta = notificationChannelTypes[form.type];
+  // credentialsOptional 表示本次 qq 渠道的 app_id/app_secret 由连接器或已有凭据兜底，不参与必填校验。
+  const credentialsOptional = qqChannelCredentialsOptional(form.type, options);
   // missingField 是第一个未填写的渠道必填字段。
   const missingField = meta.fields.find(
     // field 是当前渠道字段定义。
-    field => field.required && !String(form.config[field.key] || '').trim(),
+    field => field.required && !(credentialsOptional && QQ_CHANNEL_CREDENTIAL_KEYS.includes(field.key)) && !String(form.config[field.key] || '').trim(),
   );
   if (missingField) return `请填写 ${missingField.label}`;
   if (!form.name.trim()) return '请填写渠道名称';
