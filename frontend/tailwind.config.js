@@ -23,7 +23,10 @@ export default {
         current: 'currentColor',
         black: color('black'),
         white: color('white'),
+        // brand 同时提供语义主色（bg-brand）与 50–950 色阶（bg-brand-100），色阶必须显式展开，
+        // 否则 --color-brand-* 令牌无法生成对应 utility，语义色彩会退回任意取值。
         brand: {
+          ...palette('brand'),
           DEFAULT: color('brand'),
           highlight: color('brand-highlight'),
           light: color('brand-light'),
@@ -39,6 +42,8 @@ export default {
         warning: palette('warning'),
         danger: palette('danger'),
         info: palette('info'),
+        // accent 是紫调强调色板的语义入口，AI 相关标签使用 accent-* 而非具体的 purple/pink 色名。
+        accent: palette('accent'),
         // 保留现有 Tailwind 语义类，但统一指向同一套设计令牌。
         gray: palette('neutral'),
         slate: palette('slate'),
