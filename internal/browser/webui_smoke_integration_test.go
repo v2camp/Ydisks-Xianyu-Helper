@@ -5,6 +5,7 @@ package browser
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,10 +17,24 @@ import (
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
+
+	"xianyu-go/internal/db"
 )
 
 // e2eAdminPassword 是 e2e 冒烟流程初始化管理员时设置的密码。
 const e2eAdminPassword = "e2e-admin-pw"
+
+// e2eMemberUsername 是非管理员账号的用户名，用于验证普通用户动线与管理员门禁。
+const e2eMemberUsername = "member"
+
+// e2eMemberEmail 是非管理员账号的邮箱；用户表要求邮箱唯一且非空。
+const e2eMemberEmail = "member@example.com"
+
+// e2eMemberPassword 是非管理员账号的登录密码，写入数据库前由仓储层做 bcrypt 哈希。
+const e2eMemberPassword = "e2e-member-pw"
+
+// e2eDashboardPath 是仪表盘路由，既作为普通用户的落地页，也是管理员门禁改写后的目标地址。
+const e2eDashboardPath = "/app/dashboard"
 
 // e2eBaseURL 是 e2e 常驻 server 的进程内访问地址，测试浏览器与健康探测共用。
 const e2eBaseURL = "http://127.0.0.1:59188"
@@ -43,6 +58,48 @@ func runE2EServerOnce(t *testing.T, serverBin, dbPath string) {
 	initErr := initCmd.Run()
 	if initErr != nil {
 		t.Fatalf("初始化管理员失败: %v\n输出:\n%s", initErr, initOutput.String())
+	}
+}
+
+// seedE2EMemberUser 直接向 e2e 独立数据库写入一个普通用户，补齐产品没有注册/建用户接口的空缺。
+// 调用时机必须是 -init-admin 完成建表之后、常驻 server 启动之前，此时库里只有管理员账号。
+func seedE2EMemberUser(t *testing.T, dbPath string) {
+	t.Helper()
+	// ctx 限定本次建账号的数据库操作时长；目标库是 t.TempDir() 下的本地 SQLite，无需长超时。
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// conn、dialect、openErr 是连接池、方言与打开失败原因；db.Open 内部自带幂等迁移。
+	conn, dialect, openErr := db.Open(ctx, "sqlite://"+dbPath)
+	if openErr != nil {
+		t.Fatalf("打开 e2e 数据库失败: %v", openErr)
+	}
+	defer func() { _ = conn.Close() }()
+	// store 是仓储聚合，这里只用 Users，避免在测试里重复拼 SQL 与密码哈希。
+	store := db.NewStore(conn, dialect)
+	// createErr 是创建用户的最终失败原因，成功时为 nil。
+	var createErr error
+	// created 表示用户行是否真正写入；false 说明用户名或邮箱已被占用。
+	var created bool
+	// maxAttempts 是遇到 SQLite 写锁时的尝试次数上限（含首次），避免无限重试掩盖真实故障。
+	const maxAttempts = 3
+	// attempt 是当前第几次写入尝试，命中写锁后递增并按短间隔退避重来。
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		created, createErr = store.Users.Create(ctx, e2eMemberUsername, e2eMemberEmail, e2eMemberPassword)
+		if createErr == nil {
+			break
+		}
+		// 常驻 server 与本进程共用同一个 SQLite（WAL + busy_timeout），偶发写锁退避后重试即可继续。
+		if !strings.Contains(strings.ToLower(createErr.Error()), "database is locked") {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if createErr != nil {
+		t.Fatalf("创建非管理员账号失败: %v", createErr)
+	}
+	// 未写入行说明用户名或邮箱唯一约束冲突，member 账号缺失会让后续会员动线整体失去意义。
+	if !created {
+		t.Fatalf("非管理员账号 %q 未写入数据库（用户名或邮箱可能已存在）", e2eMemberUsername)
 	}
 }
 
@@ -278,15 +335,16 @@ func e2EReactMounted(t *testing.T, page playwright.Page) bool {
 	return mountedFromDOM != nil && mountedFromDOM.(bool)
 }
 
-// executeE2ELogin 在登录表单填写管理员凭证并提交，等待会话进入默认仪表盘。
-func executeE2ELogin(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+// executeE2ELogin 在登录表单填写给定账号密码并提交，等待会话进入默认仪表盘。
+// username、password 由调用方提供，管理员与会员动线共用同一套登录操作。
+func executeE2ELogin(t *testing.T, page playwright.Page, errors *e2eConsoleErrors, username, password string) {
 	t.Helper()
 	// formLocator 定位认证表单，作为账号与密码输入的唯一作用域。
 	formLocator := waitE2EForSelector(t, page, "form", e2eNavigateTimeout)
 	// inputs 是表单内的全部输入框，顺序与界面渲染顺序一致（账号、密码）。
 	inputs := formLocator.Locator("input")
-	inputs.Nth(0).Fill("admin")
-	inputs.Nth(1).Fill(e2eAdminPassword)
+	inputs.Nth(0).Fill(username)
+	inputs.Nth(1).Fill(password)
 	// submit 是表单的提交按钮，点击后触发 SPA 登录请求。
 	submit := formLocator.Locator("button[type=submit]")
 	// fillErr 保存登录按钮点击错误；点击失败说明认证表单结构不符合预期。
@@ -370,6 +428,8 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 	// dbPath 是本测试独立的 SQLite 数据库文件，避免污染现有数据。
 	dbPath := filepath.Join(t.TempDir(), "e2e.db")
 	runE2EServerOnce(t, serverBin, dbPath)
+	// 会员账号必须在迁移完成后、常驻 server 启动前写入，避免与常驻进程争抢同一个 SQLite 写锁。
+	seedE2EMemberUser(t, dbPath)
 	// 启动函数内部已注册测试清理，测试退出时自动回收常驻 server 进程。
 	startE2EServer(t, serverBin, dbPath)
 	waitE2EHealth(t)
@@ -411,7 +471,7 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 		t.Fatalf("访问首页失败: %v", gotoErr)
 	}
 	waitE2EForSelector(t, page, "input[type=password]", e2eNavigateTimeout)
-	executeE2ELogin(t, page, errors)
+	executeE2ELogin(t, page, errors, "admin", e2eAdminPassword)
 
 	// 关键页面逐页冒烟；每个页面断言 React 挂载、路由停留与无控制台错误。
 	assertE2EPageRendered(t, page, errors, "/app/dashboard")
@@ -428,6 +488,84 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 	assertAISettingsPage(t, page, errors)
 	assertAgentCenterPage(t, page, errors)
 	assertConnectorsPage(t, page, errors)
+	// 管理员动线跑完后换独立上下文验证会员动线，确认权限门禁只对管理员放行配置类页面。
+	assertMemberFlow(t, chromium, errors)
+}
+
+// assertMemberFlow 用独立浏览器上下文登录非管理员账号，验证普通用户动线与管理员门禁。
+// 独立上下文让会员会话与管理员的 Cookie 互不覆盖，两条动线可共用同一常驻 server。
+func assertMemberFlow(t *testing.T, chromium playwright.Browser, errors *e2eConsoleErrors) {
+	t.Helper()
+	// memberContext 是会员专用的隔离上下文，与管理员上下文并行存在互不干扰。
+	memberContext, contextErr := chromium.NewContext()
+	if contextErr != nil {
+		t.Fatalf("创建会员浏览器上下文失败: %v", contextErr)
+	}
+	defer func() { _ = memberContext.Close() }()
+	// memberPage 是会员动线复用的一页，登录后一直保持会话贯穿全部断言。
+	memberPage, pageErr := memberContext.NewPage()
+	if pageErr != nil {
+		t.Fatalf("创建会员页面失败: %v", pageErr)
+	}
+	attachE2EErrorCollection(memberPage, errors)
+
+	// 未登录访问首页应先呈现登录表单，再用会员凭证完成登录。
+	if _, gotoErr := memberPage.Goto(e2eBaseURL+"/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); gotoErr != nil {
+		failE2EWithScreenshot(t, memberPage, fmt.Sprintf("会员访问首页失败: %v", gotoErr))
+	}
+	waitE2EForSelector(t, memberPage, "input[type=password]", e2eNavigateTimeout)
+	executeE2ELogin(t, memberPage, errors, e2eMemberUsername, e2eMemberPassword)
+	// 仪表盘是普通用户的落地页，先证明会员会话本身可用。
+	assertE2EPageRendered(t, memberPage, errors, e2eDashboardPath)
+	// 三条仅管理员可见的配置路由逐个直达，都必须被改写回仪表盘而不是渲染配置表单。
+	for _, adminOnlyPath := range []string{"/app/settings", "/app/ai-settings", "/app/agent-center"} {
+		assertE2ERedirectedToDashboard(t, memberPage, errors, adminOnlyPath)
+	}
+	assertMemberConnectorsPage(t, memberPage, errors)
+}
+
+// assertE2ERedirectedToDashboard 以地址栏直达方式访问仅管理员路由，断言非管理员被改写回仪表盘。
+// 不能复用 assertE2EPageRendered：后者要求地址栏停留在被访问路径，与本动线的预期正好相反。
+func assertE2ERedirectedToDashboard(t *testing.T, page playwright.Page, errors *e2eConsoleErrors, path string) {
+	t.Helper()
+	// gotoErr 保存导航错误；导航失败说明路径或静态资源加载异常。
+	if _, gotoErr := page.Goto(e2eBaseURL+path, playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); gotoErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("导航到 %s 失败: %v", path, gotoErr))
+	}
+	// deadline 是等待路由被改写的截止时间；改写由 React 会话校验完成后的 effect 触发。
+	deadline := time.Now().Add(e2eNavigateTimeout)
+	// redirected 表示地址栏已落在仪表盘路径上。
+	redirected := false
+	for time.Now().Before(deadline) {
+		if strings.Contains(page.URL(), e2eDashboardPath) {
+			redirected = true
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !redirected {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("非管理员访问 %s 后地址栏未改写为 %s，当前 %q", path, e2eDashboardPath, page.URL()))
+	}
+	// 改写发生在会话校验之后，需再等应用真正挂载，避免只断言到空白骨架就收工。
+	waitE2ERendered(t, page, e2eDashboardPath)
+	assertNoE2EConsoleErrors(t, page, errors)
+}
+
+// assertMemberConnectorsPage 断言非管理员在连接器页只看到用户级分区，管理员分区完全不渲染。
+func assertMemberConnectorsPage(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	assertE2EPageRendered(t, page, errors, "/app/connectors")
+	// 「通知渠道」是所有登录用户可见的用户级分区，缺失说明页面骨架或渠道列表渲染中断。
+	waitE2EForText(t, page, "通知渠道", e2eNavigateTimeout)
+	// hiddenSectionCount 是「系统级配置」标题的匹配数量；非管理员必须为 0，出现即说明管理员门禁失效。
+	hiddenSectionCount, countErr := page.GetByText("系统级配置", playwright.PageGetByTextOptions{Exact: playwright.Bool(false)}).Count()
+	if countErr != nil {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("统计连接器页「系统级配置」分区数量失败: %v", countErr))
+	}
+	if hiddenSectionCount > 0 {
+		failE2EWithScreenshot(t, page, fmt.Sprintf("非管理员不应看到「系统级配置」分区，实际出现 %d 处", hiddenSectionCount))
+	}
+	assertNoE2EConsoleErrors(t, page, errors)
 }
 
 // assertAISettingsPage 校验 AI 设置页可渲染，且页级保存条按钮文案在位。
