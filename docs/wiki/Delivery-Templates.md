@@ -14,16 +14,14 @@
 
 Template messages can use these variables:
 
+- `{{buyer_nickname}}`: buyer nickname; replaced with an empty string when missing
 - `{{order_id}}`: order ID
-- `{{item_id}}`: product ID
-- `{{item_title}}`: product title
 - `{{buyer_id}}`: buyer ID
-- `{{buyer_nick}}`: buyer nickname
 - `{{card_name}}`: name of the card inventory bound to the rule
 - `{{cards.<name>}}`: card content bound to the rule, for example `{{cards.main}}`
 - `{{custom.<name>}}`: custom text entered in the automation rule
 
-Variable names must not contain spaces or Chinese characters, and all braces must be present. The system validates variable spelling when saving.
+`cards` and `custom` variable names may only contain letters, digits, underscores, or hyphens — no spaces or Chinese characters — and all braces must be present. The system validates variable spelling when saving and rejects unrecognized variables. A `{{delivery.xxx}}` prefix is accepted for compatibility but is not needed in normal use.
 
 ## Use a template in automation
 
@@ -34,3 +32,9 @@ Variable names must not contain spaces or Chinese characters, and all braces mus
 5. Save and enable the rule, then use a test order to verify message order and substitution.
 
 Delivery templates are only used for paid delivery and review gifts. They are not used for price changes or review reminders. A template referenced by a rule cannot be deleted; replace it in those rules first.
+
+## Delivery behavior
+
+- A card variable is fetched only once per template: multiple messages reuse the same content, so inventory is not deducted twice.
+- When a buyer orders multiple units, cards are prepared as "count per item × order quantity" and sent with the messages.
+- A message that renders to empty text is skipped; if sending fails, the cards consumed by that message are returned to inventory.
