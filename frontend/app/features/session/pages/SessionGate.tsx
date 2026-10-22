@@ -144,7 +144,7 @@ export const SessionGate: React.FC = () => {
           </form>
         )}
 
-        {formError ? <p className="mt-5 rounded-xl bg-red-50 p-3 text-center text-sm font-medium text-red-600">{formError}</p> : null}
+        {formError ? <p className="mt-5 rounded-xl bg-danger-50 p-3 text-center text-sm font-medium text-danger-600">{formError}</p> : null}
       </section>
     </main>
   );

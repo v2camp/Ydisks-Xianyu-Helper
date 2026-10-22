@@ -26,9 +26,9 @@ export const AIConfigEditor: React.FC<AIConfigEditorProps> = ({ settings, onChan
         tone="violet"
       />
       <div className="ios-card rounded-xl p-6 bg-white space-y-6">
-        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-          <h4 className="font-bold text-violet-900 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" />组合词语法</h4>
-          <ul className="text-xs text-violet-800 space-y-1">
+        <div className="bg-accent-50 border border-accent-200 rounded-xl p-4">
+          <h4 className="font-bold text-accent-900 mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" />组合词语法</h4>
+          <ul className="text-xs text-accent-800 space-y-1">
             <li>• 或 <code className="font-mono">|</code>　且 <code className="font-mono">&amp;</code>（相邻词默认且）　非 <code className="font-mono">!</code>　分组 <code className="font-mono">( )</code></li>
             <li>• 例：<code className="font-mono">(便宜 | 优惠) &amp; (元 | 块)</code>　例：<code className="font-mono">夸克 &amp; !会员</code></li>
             <li>• 双引号包裹的词按正则匹配：<code className="font-mono">"第[一二三\\d]季"</code></li>

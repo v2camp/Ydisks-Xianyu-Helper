@@ -31,7 +31,7 @@ const hardCodedColorPattern = /#[0-9a-f]{3,8}\b|rgba?\((?!var\(--color-)/gi; /* 
 const paletteClassPattern = createPaletteClassPattern();
 
 // paletteBaseline 是 colorPaletteBaseline.json 的内容：相对 frontend 根目录的源码路径 → 该文件当前的调色板类出现次数。
-// 旧口径仅统计 .tsx，共 54 个文件、780 处；新口径同时纳入 .ts 中拼接出的类名，具体数字见 colorPaletteBaseline.json。
+// 口径演进：最初仅统计 .tsx（54 文件 780 处），扩展到 .ts 后为 58 文件 845 处，随后逐批替换清零。
 // 生成方式：node scripts/color-baseline.mjs --write（与下方断言使用同一份正则与扫描函数）。
 // 只有在确认文件已被清理后才手工下调对应数字，禁止为了让新代码通过而抬高基线。
 const paletteBaseline: Record<string, number> = readPaletteBaseline();
@@ -89,4 +89,10 @@ describe('global color token contract', () => {
 
     expect(regressions.map(/* regressionFormatter 把超出基线的文件整理成「实际 / 基线」对照文本。 */ (item: PaletteBaselineDiff) => `${item.file}: 实际 ${item.count} 处，基线 ${item.baseline} 处`), remediation).toEqual([]);
   } /* 测试回调断言没有任何文件新增非中性调色板类。 */);
+
+  test('palette baseline stays empty after cleanup', () => {
+    // 调色板类已全量清零，基线为空是当前不变量：任何新增都必须改用语义令牌，
+    // 而不是把新债务写进基线。确需冻结历史债务时，必须先在设计评审里说明原因。
+    expect(Object.keys(paletteBaseline)).toEqual([]);
+  } /* 测试回调锁住「基线为空」这一状态，防止悄悄抬高基线。 */);
 } /* 测试套件回调汇总页面颜色令牌的静态契约。 */);

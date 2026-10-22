@@ -12,11 +12,11 @@ interface CardIconProps {
 export const CardIcon: React.FC<CardIconProps> = ({ type }) => {
   switch (type) {
     case 'text':
-      return <FileText className="w-5 h-5 text-blue-500" />;
+      return <FileText className="w-5 h-5 text-brand-500" />;
     case 'image':
-      return <ImageIcon className="w-5 h-5 text-purple-500" />;
+      return <ImageIcon className="w-5 h-5 text-accent-500" />;
     case 'api':
-      return <Code className="w-5 h-5 text-blue-500" />;
+      return <Code className="w-5 h-5 text-brand-500" />;
     default:
       return <CreditCard className="w-5 h-5 text-gray-500" />;
   }

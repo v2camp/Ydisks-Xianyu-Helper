@@ -1,4 +1,5 @@
 import { CircleDollarSign,Clock3,Gift,PackageCheck } from 'lucide-react';
+import { STATUS_TONE_STYLES } from '../../../shared/ui/tokens';
 import type {
 AccountDetail,
 AutomationAction,
@@ -207,20 +208,21 @@ export const actionSummary = (rule: ShippingRule) => {
   ).join(' / ');
 };
 
-// accentClasses 将触发类型主题色映射为规则页 Tailwind 类名。
+// accentClasses 将触发类型主题色映射为规则页语义令牌类名。
+// 四种主题色用于并列区分触发类型，因此保留各自的语义色族与边框档位，不合并到五档状态令牌。
 export const accentClasses = (accent: TriggerMeta['accent'], selected = false) => {
   // map 保存每种主题色在选中和未选中状态下的样式。
   const map: Record<string, string> = {
-    blue: selected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-blue-100 bg-blue-50/60 text-blue-700 hover:border-blue-300',
-    emerald: selected ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-emerald-100 bg-emerald-50/60 text-emerald-700 hover:border-emerald-300',
-    amber: selected ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-amber-100 bg-amber-50/60 text-amber-700 hover:border-amber-300',
-    violet: selected ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-violet-100 bg-violet-50/60 text-violet-700 hover:border-violet-300',
+    blue: selected ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-brand-100 bg-brand-50/60 text-brand-700 hover:border-brand-300',
+    emerald: selected ? 'border-success-500 bg-success-50 text-success-700' : 'border-success-100 bg-success-50/60 text-success-700 hover:border-success-300',
+    amber: selected ? 'border-warning-500 bg-warning-50 text-warning-700' : 'border-warning-100 bg-warning-50/60 text-warning-700 hover:border-warning-300',
+    violet: selected ? 'border-accent-500 bg-accent-50 text-accent-700' : 'border-accent-100 bg-accent-50/60 text-accent-700 hover:border-accent-300',
   };
   return map[accent] || map.blue;
 };
 
-// statusPill 返回自动化规则启用状态对应的标签样式。
-export const statusPill = (enabled: boolean) => enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500';
+// statusPill 返回自动化规则启用状态对应的标签样式：启用态取共享成功令牌，停用态保持中性灰弱化。
+export const statusPill = (enabled: boolean) => enabled ? STATUS_TONE_STYLES.ready : 'bg-gray-200 text-gray-500';
 
 // accountLabel 选择账号在规则页展示时最有意义的名称。
 export const accountLabel = (account?: AccountDetail) => account?.nickname || account?.remark || account?.id || '未知账号';

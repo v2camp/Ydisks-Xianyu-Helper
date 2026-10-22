@@ -17,14 +17,14 @@ const cssColor = (token: string, alpha?: number) => (
 
 // 状态徽章组件
 export const StatusBadge: React.FC<{ /** status 表示状态。 */ status: OrderStatus }> = ({ status }) => {
-  // styles 样式表。
+  // styles 样式表：与订单列表一致，待办状态用警告色强调，履约完成用成功色，退款与取消分别用危险色与中性色。
   const styles = {
-    processing: 'bg-blue-100 text-blue-800',
-    pending_ship: 'bg-brand text-white',
-    shipped: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
+    processing: 'bg-brand-100 text-brand-700',
+    pending_ship: 'bg-warning-500 text-white',
+    shipped: 'bg-success-100 text-success-700',
+    completed: 'bg-success-600 text-white',
     cancelled: 'bg-gray-100 text-gray-500',
-    refunding: 'bg-red-100 text-red-600',
+    refunding: 'bg-danger-100 text-danger-600',
     unknown: 'bg-gray-100 text-gray-500',
   };
 
@@ -112,7 +112,7 @@ const Dashboard: React.FC = () => {
 
   if (loadError && (!stats || !analytics)) {
     return (
-      <div className="p-8 flex flex-col items-center gap-3 text-red-600">
+      <div className="p-8 flex flex-col items-center gap-3 text-danger-600">
         <AlertCircle className="w-8 h-8" />
         <span>{loadError}</span>
         <button type="button" className="ios-btn-primary px-4 py-2 rounded-xl" onClick={refresh}>重新加载</button>
@@ -149,7 +149,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       {loadError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           <span>{loadError}</span>
           <button type="button" className="font-bold underline" onClick={refresh}>重试</button>
         </div>
@@ -161,7 +161,7 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm font-bold text-gray-700 bg-white px-5 py-2.5 rounded-full shadow-sm border border-gray-100 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
+            <span className="w-2.5 h-2.5 bg-success-500 rounded-full animate-pulse"></span>
             系统正常运行
           </div>
         </div>
@@ -190,27 +190,27 @@ const Dashboard: React.FC = () => {
           title="累计营收 (CNY)"
           value={`¥${analytics.revenue_stats.total_amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`}
           icon={DollarSign}
-          colorClass="bg-blue-400"
+          colorClass="bg-success-500"
           trend={trendPercent || undefined}
         />
         <StatCard
           title="活跃账号 / 总数"
           value={`${stats.active_cookies} / ${stats.total_cookies}`}
           icon={Users}
-          colorClass="bg-blue-500"
+          colorClass="bg-brand-500"
           scopeHint="全局资源，不随筛选变化"
         />
         <StatCard
           title="订单数"
           value={analytics.revenue_stats.total_orders.toLocaleString()}
           icon={ShoppingCart}
-          colorClass="bg-blue-500"
+          colorClass="bg-brand-500"
         />
         <StatCard
           title="库存卡密余量"
           value={stats.available_card_stock}
           icon={Package}
-          colorClass="bg-purple-500"
+          colorClass="bg-accent-500"
           scopeHint="全局资源，不随筛选变化"
         />
       </div>
@@ -231,7 +231,7 @@ const Dashboard: React.FC = () => {
                   <div key={`${item.name}-${index}`} className="space-y-2">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-extrabold ${index < 3 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-extrabold ${index < 3 ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                           {index + 1}
                         </span>
                         <span className="font-bold text-gray-800 text-sm truncate">{item.name}</span>
@@ -322,7 +322,7 @@ const Dashboard: React.FC = () => {
 			<div>
 			  <h3 className="font-bold text-lg text-gray-900">参与统计的订单</h3>
 			  {validOrdersTruncated && (
-				<p className="text-xs text-amber-700 mt-1">当前显示最近 {validOrders.length} / {validOrdersTotal} 条，搜索仅覆盖已加载明细。</p>
+				<p className="text-xs text-warning-700 mt-1">当前显示最近 {validOrders.length} / {validOrdersTotal} 条，搜索仅覆盖已加载明细。</p>
 			  )}
 			</div>
             <div className="relative">
@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
                 placeholder="搜索订单号/商品/买家..."
                 value={searchTerm}
                 onChange={/* 当前回调处理用户交互或异步状态变化。 */ (e) => setSearchTerm(e.target.value)}
-                className="pl-4 pr-4 py-2 rounded-xl bg-white border border-gray-100 text-sm focus:border-blue-400 outline-none w-48"
+                className="pl-4 pr-4 py-2 rounded-xl bg-white border border-gray-100 text-sm focus:border-brand-400 outline-none w-48"
                 type="text"
               />
             </div>
@@ -410,7 +410,7 @@ const Dashboard: React.FC = () => {
                             href={`https://www.goofish.com/order-detail?orderId=${order.order_id}&role=seller`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex text-gray-400 hover:text-blue-600 p-2 rounded-xl hover:bg-blue-50 transition-colors"
+                            className="inline-flex text-gray-400 hover:text-brand-600 p-2 rounded-xl hover:bg-brand-50 transition-colors"
                             title="查看闲鱼详情"
                           >
                             <ExternalLink className="w-4 h-4" />

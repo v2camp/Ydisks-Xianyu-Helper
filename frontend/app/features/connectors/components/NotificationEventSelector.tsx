@@ -38,7 +38,7 @@ export const NotificationEventSelector: React.FC<NotificationEventSelectorProps>
                 type="button"
                 data-event={event.value}
                 onClick={handleEventClick}
-                className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${checked ? 'border-brand bg-blue-50' : 'border-gray-100 hover:border-gray-300'}`}
+                className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${checked ? 'border-brand bg-brand-50' : 'border-gray-100 hover:border-gray-300'}`}
               >
                 <div className="flex items-center gap-2">
                   <span className={`w-4 h-4 rounded border flex items-center justify-center ${checked ? 'bg-brand border-brand' : 'border-gray-300'}`}>

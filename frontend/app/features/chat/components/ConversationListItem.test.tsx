@@ -17,7 +17,7 @@ describe('ConversationListItem', /* 当前测试组验证会话选择与悬停�
     render(<ConversationListItem session={session} active={false} formatClock={/* 当前回调为测试提供稳定时间文本。 */ () => '15:04'} onSelect={onSelect} onDelete={onDelete} />);
     // deleteButton 是默认透明、悬停或焦点时显示的小型红色垃圾桶按钮。
     const deleteButton = screen.getByRole('button', { name: '删除与测试买家的会话' });
-    expect(deleteButton.className).toContain('text-red-500');
+    expect(deleteButton.className).toContain('text-danger-500');
     expect(deleteButton.className).toContain('group-hover:opacity-100');
     expect(screen.getByText('15:04').className).toContain('group-hover:-translate-x-6');
     fireEvent.click(deleteButton);

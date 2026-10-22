@@ -24,7 +24,7 @@ export const YdisksBrandIcon: React.FC<YdisksBrandIconProps> = ({
   logoClassName = 'w-full h-full text-white',
 }) => (
   <div className="relative z-10 flex items-center justify-center">
-    <div className="absolute -inset-1 bg-blue-500/20 rounded-xl blur opacity-25" />
+    <div className="absolute -inset-1 bg-brand-500/20 rounded-xl blur opacity-25" />
     <div className={`relative ${sizeClass} rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}>
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 120 120" aria-hidden="true">
         <defs>

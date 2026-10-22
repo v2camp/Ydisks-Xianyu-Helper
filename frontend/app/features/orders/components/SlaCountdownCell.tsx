@@ -32,15 +32,15 @@ export const SlaCountdownCell: React.FC<SlaCountdownCellProps> = ({ slaDeadline,
   const toneStyles = {
     muted: 'text-gray-400',
     normal: 'text-gray-800 font-semibold',
-    warning: 'text-amber-600 font-bold',
-    danger: 'text-red-600 font-bold',
+    warning: 'text-warning-600 font-bold',
+    danger: 'text-danger-600 font-bold',
   } as const;
 
   return (
     <span className={`text-sm whitespace-nowrap ${toneStyles[view.tone]}`} data-testid="sla-countdown">
       {view.text}
       {view.badge && (
-        <span className={`ml-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${view.tone === 'danger' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+        <span className={`ml-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${view.tone === 'danger' ? 'bg-danger-100 text-danger-700' : 'bg-warning-100 text-warning-700'}`}>
           {view.badge}
         </span>
       )}

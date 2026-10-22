@@ -148,11 +148,11 @@ const Settings: React.FC = () => {
                 <p className="text-xs text-gray-500">按设定间隔把卡密与自动化规则快照保存到服务器数据目录 backups/ 下，保留最近 14 份</p>
               </div>
 
-              <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer">
+              <label className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer">
                 <input type="checkbox" className="mt-1" checked={settings.outbound_http_public_only || false} onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setSettings({ ...settings, outbound_http_public_only: event.target.checked })} />
                 <span>
-                  <span className="block text-sm font-bold text-amber-900">限制用户配置的 HTTP 出站请求只能访问公网</span>
-                  <span className="mt-1 block text-xs leading-5 text-amber-800">开启后会同时约束 API 发货、AI、HTTP 通知、远程图片和远程滑块服务；保存后立即生效，可能使内网服务不可用。</span>
+                  <span className="block text-sm font-bold text-warning-900">限制用户配置的 HTTP 出站请求只能访问公网</span>
+                  <span className="mt-1 block text-xs leading-5 text-warning-800">开启后会同时约束 API 发货、AI、HTTP 通知、远程图片和远程滑块服务；保存后立即生效，可能使内网服务不可用。</span>
                 </span>
               </label>
             </div>
@@ -161,7 +161,7 @@ const Settings: React.FC = () => {
           {/* 安全阀门：可在设置页调整的安全阈值，保存后均需在下次重启时生效（与原有环境变量语义一致）。 */}
           <section className="space-y-4">
             <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-red-500 text-white">
+              <div className="p-1.5 rounded-lg bg-danger-500 text-white">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               安全阀门
@@ -204,7 +204,7 @@ const Settings: React.FC = () => {
         <div className="space-y-8">
           <section className="space-y-4">
             <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-amber-500 text-white">
+              <div className="p-1.5 rounded-lg bg-warning-500 text-white">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               远程过滑块配置
@@ -244,7 +244,7 @@ const Settings: React.FC = () => {
                 </div>
               </div>
 
-              <label className="flex items-start gap-3 rounded-xl bg-amber-50 p-4 cursor-pointer">
+              <label className="flex items-start gap-3 rounded-xl bg-warning-50 p-4 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={String(settings['captcha.remote_pass_cookies'] || '').toLowerCase() === 'true'}
@@ -252,8 +252,8 @@ const Settings: React.FC = () => {
                   className="mt-0.5 w-4 h-4 rounded border-gray-300"
                 />
                 <span>
-                  <span className="block text-sm font-bold text-amber-900">允许向远程服务传递账号 Cookie</span>
-                  <span className="block mt-1 text-xs text-amber-700">默认关闭。仅在信任远程服务且需要由其自动重取过期验证链接时开启。</span>
+                  <span className="block text-sm font-bold text-warning-900">允许向远程服务传递账号 Cookie</span>
+                  <span className="block mt-1 text-xs text-warning-700">默认关闭。仅在信任远程服务且需要由其自动重取过期验证链接时开启。</span>
                 </span>
               </label>
 
@@ -334,7 +334,7 @@ const Settings: React.FC = () => {
               </div>
 
               {credentialsMessage && (
-                <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ${credentialsMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ${credentialsMessage.type === 'success' ? 'bg-success-50 text-success-700' : 'bg-danger-50 text-danger-700'}`}>
                   <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <span>{credentialsMessage.text}</span>
                 </div>

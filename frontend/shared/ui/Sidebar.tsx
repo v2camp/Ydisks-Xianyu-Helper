@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {!collapsed && (
           <div className="min-w-0 leading-tight">
             <div className="truncate text-base font-black tracking-tight text-slate-950">闲鱼助手</div>
-            <div className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.22em] text-sky-600">Operations</div>
+            <div className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.22em] text-brand-600">Operations</div>
           </div>
         )}
       </div>
@@ -81,7 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <span className="relative flex h-[19px] w-[19px] shrink-0">
                 <Icon className={`h-[19px] w-[19px] ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-700'}`} />
-                {item.id === 'chat' && hasUnreadChatMessage && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-red-500" role="status" aria-label="在线聊天有未读消息" />}
+                {item.id === 'chat' && hasUnreadChatMessage && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-danger-500" role="status" aria-label="在线聊天有未读消息" />}
               </span>
               {!collapsed && <span className="truncate text-sm font-bold">{item.label}</span>}
               {active && !collapsed && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/90" />}
@@ -127,7 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={onLogout}
             title={collapsed ? '退出登录' : undefined}
             aria-label="退出登录"
-            className={`flex h-10 w-full items-center rounded-xl text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 ${collapsed ? 'justify-center' : 'gap-3 px-3'}`}
+            className={`flex h-10 w-full items-center rounded-xl text-slate-500 transition-colors hover:bg-danger-50 hover:text-danger-600 ${collapsed ? 'justify-center' : 'gap-3 px-3'}`}
           >
             <LogOut className="h-5 w-5" />
             {!collapsed && <span className="text-sm font-bold">退出登录</span>}

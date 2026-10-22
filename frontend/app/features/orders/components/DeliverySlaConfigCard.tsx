@@ -33,7 +33,7 @@ export const DeliverySlaConfigCard: React.FC<DeliverySlaConfigCardProps> = ({ vi
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5">
       <div className="flex items-start gap-2">
-        <div className="p-1.5 rounded-lg bg-blue-500 text-white mt-0.5">
+        <div className="p-1.5 rounded-lg bg-brand-500 text-white mt-0.5">
           <Clock className="w-4 h-4" />
         </div>
         <div>
@@ -43,7 +43,7 @@ export const DeliverySlaConfigCard: React.FC<DeliverySlaConfigCardProps> = ({ vi
       </div>
 
       {invalidJson && (
-        <p className="text-xs font-medium text-red-600">配置 JSON 非法，已回退默认值；修改任一项后保存将覆盖为合法 JSON。</p>
+        <p className="text-xs font-medium text-danger-600">配置 JSON 非法，已回退默认值；修改任一项后保存将覆盖为合法 JSON。</p>
       )}
 
       <div className="space-y-2">
@@ -109,7 +109,7 @@ export const DeliverySlaConfigCard: React.FC<DeliverySlaConfigCardProps> = ({ vi
               type="button"
               onClick={/* removeRow 删除当前账号覆盖行。 */ () => removeAccountOverride(cookieId)}
               aria-label={`删除账号覆盖 ${cookieId}`}
-              className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-100"
+              className="rounded-lg p-2 text-danger-500 transition-colors hover:bg-danger-100"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -118,14 +118,14 @@ export const DeliverySlaConfigCard: React.FC<DeliverySlaConfigCardProps> = ({ vi
       </div>
 
       {message && (
-        <p className={`text-xs font-medium ${messageKind === 'success' ? 'text-green-600' : 'text-red-600'}`}>{message}</p>
+        <p className={`text-xs font-medium ${messageKind === 'success' ? 'text-success-600' : 'text-danger-600'}`}>{message}</p>
       )}
 
       <button
         type="button"
         onClick={/* saveClick 提交当前 SLA 配置草稿。 */ () => void save()}
         disabled={loading || saving}
-        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-700 disabled:opacity-50"
       >
         <Save className="w-4 h-4" />
         保存 SLA 配置

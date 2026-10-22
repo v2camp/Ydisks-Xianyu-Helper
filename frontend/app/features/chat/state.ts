@@ -1,5 +1,6 @@
 import type { ChatMessage,ChatSession } from './api';
 import type { ChatReadReceipt } from './types';
+import { STATUS_TONE_STYLES } from '../../../shared/ui/tokens';
 
 /** 将未读数规范为徽标可展示的文本，超过两位数时统一显示 99+。 */
 export const unreadBadgeLabel = (count: number): string => {
@@ -12,9 +13,9 @@ export const unreadBadgeLabel = (count: number): string => {
 export const unreadBadgeClassName = (count: number): string => {
   // normalized 保存用于区分单数字与多数字徽标的规范未读数量。
   const normalized = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-  return normalized < 10
-    ? 'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold leading-none text-white'
-    : 'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white';
+  // badgeBase 是未读徽标共用的排版与 danger 语义底色，避免把未读误读成普通提示。
+  const badgeBase = `inline-flex h-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold leading-none ${STATUS_TONE_STYLES.danger}`;
+  return normalized < 10 ? `${badgeBase} w-5` : `${badgeBase} min-w-5 px-1.5`;
 };
 
 /** 将可确认的普通入站消息转换为平台已读回执。 */

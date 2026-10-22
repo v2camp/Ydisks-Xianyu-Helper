@@ -66,14 +66,14 @@ export function EditableList<T extends object>(props: EditableListProps<T>): Rea
           return (
             <div
               key={getRowKey(row, index)}
-              className={`rounded-xl border p-3 space-y-2 ${hasError ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-white'}`}
+              className={`rounded-xl border p-3 space-y-2 ${hasError ? 'border-danger-300 bg-danger-50/50' : 'border-gray-200 bg-white'}`}
             >
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">{renderRow(row, index, /* rowUpdater 合并当前行字段补丁。 */ patch => updateRow(index, patch))}</div>
                 <button
                   type="button"
                   onClick={/* 当前回调删除当前列表行。 */ () => removeRow(index)}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-danger-50 hover:text-danger-500"
                   title={deleteLabel(index)}
                   aria-label={deleteLabel(index)}
                 >
@@ -81,7 +81,7 @@ export function EditableList<T extends object>(props: EditableListProps<T>): Rea
                 </button>
               </div>
               {errors.map(/* errorRenderer 展示当前行的单条校验错误。 */ (error, errorIndex) => (
-                <p key={`${getRowKey(row, index)}-err-${errorIndex}`} className="text-xs text-red-500">{error}</p>
+                <p key={`${getRowKey(row, index)}-err-${errorIndex}`} className="text-xs text-danger-500">{error}</p>
               ))}
             </div>
           );

@@ -208,14 +208,14 @@ export const AudioMessage: React.FC<AudioMessageProps> = ({ messageKey, src, out
           : '播放语音消息';
 
   return (
-    <div className={`flex h-11 min-w-56 items-center gap-2 rounded-2xl border px-2 shadow-sm ${outgoing ? 'rounded-br-md border-sky-400 bg-sky-500 text-white' : 'rounded-bl-md border-slate-200 bg-white text-slate-800'}`}>
+    <div className={`flex h-11 min-w-56 items-center gap-2 rounded-2xl border px-2 shadow-sm ${outgoing ? 'rounded-br-md border-brand-400 bg-brand-500 text-white' : 'rounded-bl-md border-slate-200 bg-white text-slate-800'}`}>
       <button
         type="button"
         aria-label={buttonLabel}
         title={buttonLabel}
         disabled={playbackState === 'loading'}
         onClick={/* 当前回调把用户点击交给可重试的异步播放流程。 */ () => void handleToggle()}
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait ${outgoing ? 'bg-white text-sky-600 hover:bg-sky-50 focus-visible:ring-white' : 'bg-sky-50 text-sky-600 hover:bg-sky-100 focus-visible:ring-sky-400'}`}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-wait ${outgoing ? 'bg-white text-brand-600 hover:bg-brand-50 focus-visible:ring-white' : 'bg-brand-50 text-brand-600 hover:bg-brand-100 focus-visible:ring-brand-400'}`}
       >
         {playbackState === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" />
           : playbackState === 'playing' ? <Pause className="h-4 w-4 fill-current" />
@@ -227,12 +227,12 @@ export const AudioMessage: React.FC<AudioMessageProps> = ({ messageKey, src, out
           {waveformBars.map(/* barHeight 和 barIndex 分别决定稳定波形柱的像素高度与 React 键。 */ (barHeight, barIndex) => (
             <span
               key={`${messageKey}-${barIndex}`}
-              className={`w-0.5 rounded-full ${playbackState === 'playing' ? 'animate-pulse' : ''} ${outgoing ? 'bg-sky-100' : playbackState === 'error' ? 'bg-red-300' : 'bg-sky-400'}`}
+              className={`w-0.5 rounded-full ${playbackState === 'playing' ? 'animate-pulse' : ''} ${outgoing ? 'bg-brand-100' : playbackState === 'error' ? 'bg-danger-300' : 'bg-brand-400'}`}
               style={{ height: `${barHeight}px`, animationDelay: `${barIndex * 45}ms` }}
             />
           ))}
         </div>
-        <span className={`shrink-0 font-mono text-[11px] font-semibold tabular-nums ${outgoing ? 'text-sky-100' : playbackState === 'error' ? 'text-red-500' : 'text-slate-500'}`}>{timeLabel}</span>
+        <span className={`shrink-0 font-mono text-[11px] font-semibold tabular-nums ${outgoing ? 'text-brand-100' : playbackState === 'error' ? 'text-danger-500' : 'text-slate-500'}`}>{timeLabel}</span>
         <span className="sr-only">{statusLabel}</span>
       </div>
     </div>

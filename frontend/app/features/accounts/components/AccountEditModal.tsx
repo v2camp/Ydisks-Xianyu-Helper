@@ -131,7 +131,7 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
 
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
             <div>
-              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-green-500" />自动发货</div>
+              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-success-500" />自动发货</div>
               <div className="text-xs text-gray-500">买家付款后自动发送卡密/模板消息（自动化总开关）</div>
             </div>
             <button
@@ -145,7 +145,7 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
 
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
             <div>
-              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-green-500" />自动确认发货</div>
+              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-success-500" />自动确认发货</div>
               <div className="text-xs text-gray-500">发完卡密后自动调闲鱼"已发货"接口；慢充业务建议关闭，避免触发买家自动收货倒计时</div>
             </div>
             <button
@@ -159,7 +159,7 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
 
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
             <div>
-              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-green-500" />自动免拼</div>
+              <div className="font-bold text-gray-900 flex items-center gap-2"><Check className="w-4 h-4 text-success-500" />自动免拼</div>
               <div className="text-xs text-gray-500">仅在收到“我已小刀，待刀成”系统消息时调用免拼；成功小刀待发货后才会发卡</div>
             </div>
             <button
@@ -173,7 +173,7 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
 
           {editForm.auto_bargain && (
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-sky-500" />免拼前安抚消息（可选）</label>
+              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><MessageSquare className="w-4 h-4 text-brand-500" />免拼前安抚消息（可选）</label>
               <textarea
                 value={editForm.bargain_soothe_template || ''}
                 onChange={handleBargainSootheChange}
@@ -186,7 +186,7 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
           )}
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" />暂停处理时长（分钟）</label>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-500" />暂停处理时长（分钟）</label>
             <input
               type="number"
               value={editForm.pause_duration}
@@ -198,20 +198,20 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
             />
             <p className="text-xs text-gray-500 mt-1">设置后会暂停处理该账号的订单，到时间后自动恢复</p>
             {editForm.pause_duration > 0 && !account.paused && editForm.pause_duration === (account.pause_duration || 0) && (
-              <button type="button" disabled={saving} onClick={handleRestartPause} className="mt-3 px-4 py-2 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-bold disabled:opacity-50">
+              <button type="button" disabled={saving} onClick={handleRestartPause} className="mt-3 px-4 py-2 rounded-xl bg-warning-50 text-warning-700 hover:bg-warning-100 text-sm font-bold disabled:opacity-50">
                 立即按当前时长重新暂停
               </button>
             )}
           </div>
 
           <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><Key className="w-5 h-5 text-blue-500" />登录信息</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><Key className="w-5 h-5 text-brand-500" />登录信息</h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4 rounded-xl bg-blue-50 p-4">
+              <div className="flex items-center justify-between gap-4 rounded-xl bg-brand-50 p-4">
                 <div>
                   <div className="font-bold text-gray-900">保存登录信息</div>
                   <div className="mt-1 text-xs text-gray-500">状态直接读取并修改闲鱼官方长登录设置</div>
-                  {longLogin.error && <div className="mt-1 text-xs text-red-600">{longLogin.error}</div>}
+                  {longLogin.error && <div className="mt-1 text-xs text-danger-600">{longLogin.error}</div>}
                 </div>
                 <button
                   type="button"
@@ -286,23 +286,23 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
                 </button>
               </div>
 
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+              <div className="rounded-xl border border-brand-100 bg-brand-50 p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <div className="font-bold text-blue-950">立即执行账号密码登录</div>
-                    <div className="text-xs text-blue-700 mt-1">需要在上方重新输入本次登录密码；成功后后端会更新 Cookie 和保存的登录信息。</div>
+                    <div className="font-bold text-brand-950">立即执行账号密码登录</div>
+                    <div className="text-xs text-brand-700 mt-1">需要在上方重新输入本次登录密码；成功后后端会更新 Cookie 和保存的登录信息。</div>
                   </div>
                   {(passwordLoginView.status === 'processing' || passwordLoginView.status === 'verification_required') ? (
-                    <button type="button" onClick={handleCancelPasswordLogin} className="px-4 py-2 rounded-xl bg-white text-red-600 font-bold text-sm border border-red-100">取消登录</button>
+                    <button type="button" onClick={handleCancelPasswordLogin} className="px-4 py-2 rounded-xl bg-white text-danger-600 font-bold text-sm border border-danger-100">取消登录</button>
                   ) : (
-                    <button type="button" onClick={handlePasswordLogin} className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm whitespace-nowrap">密码登录刷新授权</button>
+                    <button type="button" onClick={handlePasswordLogin} className="px-4 py-2 rounded-xl bg-brand-600 text-white font-bold text-sm whitespace-nowrap">密码登录刷新授权</button>
                   )}
                 </div>
                 {passwordLoginView.message && (
-                  <div className={`text-sm font-medium ${passwordLoginView.status === 'failed' ? 'text-red-700' : passwordLoginView.status === 'success' ? 'text-green-700' : 'text-blue-800'}`}>{passwordLoginView.message}</div>
+                  <div className={`text-sm font-medium ${passwordLoginView.status === 'failed' ? 'text-danger-700' : passwordLoginView.status === 'success' ? 'text-success-700' : 'text-brand-800'}`}>{passwordLoginView.message}</div>
                 )}
                 {passwordLoginView.status === 'verification_required' && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  <div className="rounded-xl border border-warning-200 bg-warning-50 p-3 text-warning-900">
                     <div className="font-extrabold">账号已触发平台风控，需要完成人脸识别</div>
                     <div className="text-xs mt-1 leading-5">请在闲鱼 App 或已打开的登录浏览器中按提示完成验证。本页面不会提供可直接打开的风控链接。</div>
                     {passwordLoginView.qrCodeUrl && <div className="mt-3 aspect-square w-48 overflow-hidden rounded-xl border bg-white"><SquareQRCode src={passwordLoginView.qrCodeUrl} alt="密码登录风控二维码" className="p-2" /></div>}
@@ -314,11 +314,11 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
 
           {(notifChannels.length > 0 || bindingsLoading || bindingsLoadError) && (
             <div className="border-t border-gray-200 pt-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2"><Bell className="w-5 h-5 text-blue-500" />通知渠道绑定</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2"><Bell className="w-5 h-5 text-brand-500" />通知渠道绑定</h3>
               <p className="text-xs text-gray-500 mb-4">勾选后，该账号的 token 失效、自动恢复失败、风控验证等事件会推送到这些渠道</p>
               {bindingsLoading && <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" />正在加载通知绑定</div>}
               {bindingsLoadError && !bindingsLoading && (
-                <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 flex items-center justify-between gap-3">
+                <div className="mb-3 rounded-xl bg-warning-50 p-3 text-sm text-warning-800 flex items-center justify-between gap-3">
                   <span>{bindingsLoadError}</span>
                   <button type="button" className="font-bold whitespace-nowrap" onClick={handleRetryBindings}>重试</button>
                 </div>

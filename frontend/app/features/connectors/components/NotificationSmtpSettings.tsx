@@ -78,7 +78,7 @@ export const NotificationSmtpSettings: React.FC<NotificationSmtpSettingsProps> =
     <section className="ios-card rounded-xl p-6 bg-white space-y-5">
       <div className="flex items-start justify-between">
         <div><h3 className="text-lg font-extrabold text-gray-800">SMTP 邮件配置</h3><p className="text-sm text-gray-500 mt-1">系统级邮件发送服务，供邮件通知渠道复用</p></div>
-        <div className="p-2 rounded-xl bg-blue-50 text-blue-600"><Mail className="w-5 h-5" /></div>
+        <div className="p-2 rounded-xl bg-brand-50 text-brand-600"><Mail className="w-5 h-5" /></div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2"><label className="block text-sm font-bold text-gray-800">SMTP 服务器</label><input data-field="smtp_server" type="text" value={typeof smtp.smtp_server === 'string' ? smtp.smtp_server : ''} onChange={handleTextChange} placeholder="smtp.qq.com" className="w-full ios-input px-4 py-3 rounded-xl text-sm" /></div>

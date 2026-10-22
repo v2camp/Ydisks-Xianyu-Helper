@@ -195,7 +195,7 @@ const ItemMultiSelect = ({ options, value, onChange, disabled = false, placehold
                     className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors ${selected ? 'bg-gray-100 font-bold text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}
                   >
                     <span className="truncate">{option.item_title || itemID}</span>
-                    {selected ? <Check className="h-4 w-4 shrink-0 text-emerald-600" /> : null}
+                    {selected ? <Check className="h-4 w-4 shrink-0 text-success-600" /> : null}
                   </button>
                 );
               })
@@ -207,7 +207,7 @@ const ItemMultiSelect = ({ options, value, onChange, disabled = false, placehold
               <button
                 type="button"
                 onClick={/* 当前回调清空全部已选商品。 */ () => onChange([])}
-                className="rounded-lg px-2 py-1 font-bold text-red-500 hover:bg-red-50"
+                className="rounded-lg px-2 py-1 font-bold text-danger-500 hover:bg-danger-50"
               >
                 清空
               </button>

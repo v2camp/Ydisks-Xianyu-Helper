@@ -58,7 +58,7 @@ const Connectors: React.FC<ConnectorsProps> = ({ isAdmin = false }) => {
           description="在「账号管理 → 编辑」里绑定到账号后，下列事件会推送到该渠道。"
         />
 
-        <div className="ios-card rounded-xl p-5 bg-blue-50/50 border border-blue-100">
+        <div className="ios-card rounded-xl p-5 bg-brand-50/50 border border-brand-100">
           <div className="flex items-start gap-3"><Bell className="w-5 h-5 text-brand mt-0.5 flex-shrink-0" /><div className="text-sm text-gray-700 leading-6">配置通知渠道并在「账号管理 → 编辑」里绑定后，以下事件会主动推送到该账号绑定的渠道；自动化任务通知已拆分为四类，可按需单独关闭：<ul className="mt-2 space-y-1 text-gray-600"><li>• <strong>拍下改价、付款发货、评价赠品、求评价</strong>：分别控制对应自动化任务结果</li><li>• <strong>账号 session 失效 / 自动恢复失败</strong>：账号状态告警</li><li>• <strong>触发风控验证</strong>：可能需要扫码完成验证</li></ul></div></div>
         </div>
 

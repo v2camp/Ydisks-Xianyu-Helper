@@ -10,7 +10,7 @@ exports[`DeliveryGuardCard > 渲染快照包含门禁标题、开关说明与占
         class="flex items-start gap-2"
       >
         <div
-          class="p-1.5 rounded-lg bg-red-500 text-white mt-0.5"
+          class="p-1.5 rounded-lg bg-danger-500 text-white mt-0.5"
         >
           <svg
             aria-hidden="true"
@@ -50,7 +50,7 @@ exports[`DeliveryGuardCard > 渲染快照包含门禁标题、开关说明与占
         </div>
       </div>
       <label
-        class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer"
+        class="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer"
         for="delivery-guard-enabled"
       >
         <input
@@ -62,19 +62,19 @@ exports[`DeliveryGuardCard > 渲染快照包含门禁标题、开关说明与占
         />
         <span>
           <span
-            class="block text-sm font-bold text-amber-900"
+            class="block text-sm font-bold text-warning-900"
           >
             发货内容违禁词门禁
           </span>
           <span
-            class="mt-1 block text-xs leading-5 text-amber-800"
+            class="mt-1 block text-xs leading-5 text-warning-800"
           >
             自动发货文本命中联系方式/引流链接/违禁词时拒发并转人工处理。
           </span>
         </span>
       </label>
       <label
-        class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer"
+        class="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer"
         for="delivery-guard-link-check"
       >
         <input
@@ -86,12 +86,12 @@ exports[`DeliveryGuardCard > 渲染快照包含门禁标题、开关说明与占
         />
         <span>
           <span
-            class="block text-sm font-bold text-amber-900"
+            class="block text-sm font-bold text-warning-900"
           >
             发货前链接健康检查
           </span>
           <span
-            class="mt-1 block text-xs leading-5 text-amber-800"
+            class="mt-1 block text-xs leading-5 text-warning-800"
           >
             发送前校验网盘链接可达性，失效不发并转人工（4xx 反爬不拦截）。
           </span>

@@ -45,12 +45,12 @@ const TemplateVariantEditor: React.FC<TemplateVariantEditorProps> = ({ index, va
           {deliveryTemplates.filter(/* templateCandidate 是待筛选的启用模板或当前既有引用。 */ templateCandidate => templateCandidate.enabled || templateCandidate.id === variant.delivery_template_id).map(/* templateCandidate 是待渲染的模板选项。 */ templateCandidate => <option key={templateCandidate.id} value={templateCandidate.id} disabled={!templateCandidate.enabled}>{templateCandidate.name}{templateCandidate.enabled ? '' : '（已停用，仅保留现有引用）'}</option>)}
         </select>
       </div>
-      {customKeys.length > 0 && <div className="min-w-0 md:col-span-full rounded-xl bg-amber-50 p-3 space-y-2">
+      {customKeys.length > 0 && <div className="min-w-0 md:col-span-full rounded-xl bg-warning-50 p-3 space-y-2">
         <div>
-          <p className="text-xs font-bold text-amber-800">发货规则自定义变量</p>
-          <p className="mt-1 text-xs leading-5 text-amber-700">按模板中的 key 填写字符串；例如 <code>{'{{custom.vip}}'}</code> 对应下方 key 为 <code>vip</code> 的值。</p>
+          <p className="text-xs font-bold text-warning-800">发货规则自定义变量</p>
+          <p className="mt-1 text-xs leading-5 text-warning-700">按模板中的 key 填写字符串；例如 <code>{'{{custom.vip}}'}</code> 对应下方 key 为 <code>vip</code> 的值。</p>
         </div>
-        {customKeys.map(/* key 是模板引用的自定义变量键。 */ key => <label key={key} className="grid min-w-0 grid-cols-[minmax(7rem,0.45fr)_minmax(0,1fr)] items-center gap-2 text-xs font-semibold text-amber-900">
+        {customKeys.map(/* key 是模板引用的自定义变量键。 */ key => <label key={key} className="grid min-w-0 grid-cols-[minmax(7rem,0.45fr)_minmax(0,1fr)] items-center gap-2 text-xs font-semibold text-warning-900">
           <code className="break-all">{`{{custom.${key}}}`}</code>
           <input value={variant.custom_variables?.[key] || ''} onChange={/* callback 更新指定键名的自定义字符串。 */ event => {
             // nextValues 保存更新后的自定义变量键值表副本。
@@ -60,14 +60,14 @@ const TemplateVariantEditor: React.FC<TemplateVariantEditorProps> = ({ index, va
           }} className="ios-input rounded-lg px-3 py-2" placeholder={`填写 ${key} 对应的字符串`} />
         </label>)}
       </div>}
-      <div className="min-w-0 md:col-span-full rounded-xl bg-sky-50 p-3 space-y-2">
-        <p className="text-xs font-bold text-sky-700">模板变量绑定</p>
+      <div className="min-w-0 md:col-span-full rounded-xl bg-brand-50 p-3 space-y-2">
+        <p className="text-xs font-bold text-brand-700">模板变量绑定</p>
         {(template?.keys || []).map(/* key 是当前模板要求绑定的变量键。 */ key => {
           // binding 保存当前变量已有的卡密绑定。
           const binding = variant.template_bindings?.find(/* bindingCandidate 是待匹配的变量绑定。 */ bindingCandidate => bindingCandidate.variable_key === key);
           return (
             <div key={key} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_90px] gap-2 items-center">
-              <code className="min-w-0 break-all text-xs text-sky-800">{`{{cards.${key}}}`}</code>
+              <code className="min-w-0 break-all text-xs text-brand-800">{`{{cards.${key}}}`}</code>
               <select value={binding?.card_id || ''} onChange={/* callback 更新变量库存绑定。 */ event => updateVariant(index, { template_bindings: (variant.template_bindings || []).map(/* bindingCandidate 是待处理的变量绑定。 */ bindingCandidate => bindingCandidate.variable_key === key ? { ...bindingCandidate, card_id: Number(event.target.value) } : bindingCandidate) })} className="ios-input min-w-0 px-2 py-2 rounded-lg text-xs">
                 <option value="">请选择卡密库存</option>
                 {availableCards.map(/* card 是待渲染的卡密库存选项。 */ card => <option key={card.id} value={card.id}>{card.name}</option>)}

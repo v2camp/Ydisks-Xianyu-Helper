@@ -8,7 +8,7 @@ export interface AllItemsConfirmationProps {
 
 // AllItemsConfirmation 展示账号级付款发货规则的高风险范围确认控件。
 const AllItemsConfirmation = ({ confirmed, onChange }: AllItemsConfirmationProps) => (
-  <label className="block rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+  <label className="block rounded-2xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-900">
     <input
       type="checkbox"
       checked={confirmed}

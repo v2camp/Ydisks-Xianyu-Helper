@@ -1,3 +1,5 @@
+import { STATUS_TONE_STYLES,type StatusTone } from '../../../shared/ui/tokens';
+
 // PublishBatchSummary 是选择最近批量任务时所需的最小状态模型。
 export interface PublishBatchSummary {
   // id 是批量任务标识。
@@ -62,20 +64,28 @@ export const batchStatusText = (status?: string): string => {
   }
 };
 
-// batchStatusClass 返回批量状态对应的标签样式。
-export const batchStatusClass = (status?: string): string => {
+// batchStatusTone 把后端批量状态归纳为语义色调，供标签和统计卡引用同一套共享状态令牌。
+const batchStatusTone = (status?: string): StatusTone => {
   switch (status) {
+    // 成功与已完成都是可交付的终态结果。
     case 'success':
     case 'completed':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+      return 'ready';
+    // 失败与部分失败都需要用户介入处理。
     case 'partially_failed':
     case 'failed':
-      return 'bg-red-50 text-red-700 border-red-100';
+      return 'danger';
+    // 运行中属于进行中的提示状态。
     case 'running':
-      return 'bg-blue-50 text-blue-700 border-blue-100';
+      return 'info';
+    // 已取消没有结论，保持中性以免误读成异常。
     case 'canceled':
-      return 'bg-gray-100 text-gray-600 border-gray-200';
+      return 'neutral';
+    // 预检待确认和等待中都属于尚未开始的提醒状态。
     default:
-      return 'bg-amber-50 text-amber-700 border-amber-100';
+      return 'warning';
   }
 };
+
+// batchStatusClass 返回批量状态对应的标签样式，色值统一由共享状态令牌提供。
+export const batchStatusClass = (status?: string): string => STATUS_TONE_STYLES[batchStatusTone(status)];

@@ -1,4 +1,5 @@
 import { describe,expect,test } from 'vitest';
+import { STATUS_TONE_STYLES } from '../../../shared/ui/tokens';
 import {
 batchStatusClass,
 batchStatusText,
@@ -71,12 +72,12 @@ describe('ItemList batch state',
       ([status, label]) => expect(batchStatusText(status)).toBe(label),
     );
     expect(batchStatusText()).toBe('-');
-    expect(batchStatusClass('success')).toContain('bg-emerald-50');
-    expect(batchStatusClass('completed')).toContain('bg-emerald-50');
-    expect(batchStatusClass('partially_failed')).toContain('bg-red-50');
-    expect(batchStatusClass('failed')).toContain('bg-red-50');
-    expect(batchStatusClass('running')).toContain('bg-blue-50');
-    expect(batchStatusClass('canceled')).toContain('bg-gray-100');
-    expect(batchStatusClass('pending')).toContain('bg-amber-50');
+    expect(batchStatusClass('success')).toBe(STATUS_TONE_STYLES.ready);
+    expect(batchStatusClass('completed')).toBe(STATUS_TONE_STYLES.ready);
+    expect(batchStatusClass('partially_failed')).toBe(STATUS_TONE_STYLES.danger);
+    expect(batchStatusClass('failed')).toBe(STATUS_TONE_STYLES.danger);
+    expect(batchStatusClass('running')).toBe(STATUS_TONE_STYLES.info);
+    expect(batchStatusClass('canceled')).toBe(STATUS_TONE_STYLES.neutral);
+    expect(batchStatusClass('pending')).toBe(STATUS_TONE_STYLES.warning);
     });
 });

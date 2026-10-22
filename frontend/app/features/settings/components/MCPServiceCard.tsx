@@ -37,7 +37,7 @@ export const MCPServiceCard: React.FC = () => {
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5" data-testid="mcp-service-card">
       <div className="flex items-start gap-2">
-        <div className="p-1.5 rounded-lg bg-indigo-500 text-white mt-0.5">
+        <div className="p-1.5 rounded-lg bg-accent-500 text-white mt-0.5">
           <PlugZap className="w-4 h-4" />
         </div>
         <div>
@@ -47,7 +47,7 @@ export const MCPServiceCard: React.FC = () => {
       </div>
 
       {service.statusError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-700">
           <span>{service.statusError}</span>
           <button type="button" className="font-bold underline" onClick={/* 当前回调重新读取 MCP 服务状态。 */ () => void service.reloadStatus()}>重新加载</button>
         </div>
@@ -77,7 +77,7 @@ export const MCPServiceCard: React.FC = () => {
             </span>
           </label>
 
-          <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer" htmlFor="mcp-allow-non-loopback">
+          <label className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer" htmlFor="mcp-allow-non-loopback">
             <input
               id="mcp-allow-non-loopback"
               type="checkbox"
@@ -87,11 +87,11 @@ export const MCPServiceCard: React.FC = () => {
               onChange={/* 当前回调切换非本机访问策略并立即保存。 */ event => void service.submitSettings({ enabled, allowNonLoopback: event.target.checked })}
             />
             <span>
-              <span className="flex items-center gap-1 text-sm font-bold text-amber-900">
+              <span className="flex items-center gap-1 text-sm font-bold text-warning-900">
                 <ShieldAlert className="w-4 h-4" />
                 允许非本机访问
               </span>
-              <span className="mt-1 block text-xs leading-5 text-amber-800">默认关闭。开启后局域网内其他机器只要拿到令牌即可调用全部管理能力，请仅在可信网络中使用。</span>
+              <span className="mt-1 block text-xs leading-5 text-warning-800">默认关闭。开启后局域网内其他机器只要拿到令牌即可调用全部管理能力，请仅在可信网络中使用。</span>
             </span>
           </label>
 
@@ -150,7 +150,7 @@ export const MCPServiceCard: React.FC = () => {
                 type="button"
                 disabled={service.tokenLoading || !status.hasToken}
                 onClick={/* 当前回调吊销全部持久化令牌。 */ () => void service.revokeToken()}
-                className="px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 text-sm font-bold flex items-center gap-2 disabled:opacity-40"
+                className="px-4 py-2.5 rounded-xl bg-danger-50 hover:bg-danger-100 text-danger-700 text-sm font-bold flex items-center gap-2 disabled:opacity-40"
               >
                 <Trash2 className="w-4 h-4" />
                 吊销令牌
@@ -164,14 +164,14 @@ export const MCPServiceCard: React.FC = () => {
             </div>
 
             {service.token && (
-              <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-2">
-                <p className="text-xs font-bold text-green-800">令牌只在此处显示一次，刷新或关闭页面后无法再查看，请立即复制保存。</p>
+              <div className="rounded-xl border border-success-200 bg-success-50 p-4 space-y-2">
+                <p className="text-xs font-bold text-success-800">令牌只在此处显示一次，刷新或关闭页面后无法再查看，请立即复制保存。</p>
                 <div className="flex items-center gap-2">
                   <input type="text" readOnly data-testid="mcp-token-plaintext" value={service.token} className="w-full ios-input px-3 py-2 rounded-lg text-xs font-mono" />
                   <button
                     type="button"
                     onClick={/* 当前回调复制一次性令牌明文。 */ () => void copyText('token', service.token)}
-                    className="px-3 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-bold flex items-center gap-1"
+                    className="px-3 py-2 rounded-lg bg-success-600 hover:bg-success-700 text-white text-xs font-bold flex items-center gap-1"
                     title="复制令牌"
                   >
                     {copied === 'token' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -180,7 +180,7 @@ export const MCPServiceCard: React.FC = () => {
                   <button
                     type="button"
                     onClick={/* 当前回调清除页面上保留的令牌明文。 */ service.dismissToken}
-                    className="px-3 py-2 rounded-lg bg-white text-green-800 text-xs font-bold"
+                    className="px-3 py-2 rounded-lg bg-white text-success-800 text-xs font-bold"
                   >
                     我已保存
                   </button>
@@ -190,7 +190,7 @@ export const MCPServiceCard: React.FC = () => {
           </div>
 
           {service.message && (
-            <div className={`rounded-xl px-4 py-3 text-sm font-medium ${service.message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            <div className={`rounded-xl px-4 py-3 text-sm font-medium ${service.message.type === 'success' ? 'bg-success-50 text-success-700' : 'bg-danger-50 text-danger-700'}`}>
               {service.message.text}
             </div>
           )}
@@ -208,7 +208,7 @@ export const MCPServiceCard: React.FC = () => {
               </button>
             </div>
 
-            {service.auditError && <p className="text-xs text-red-600">{service.auditError}</p>}
+            {service.auditError && <p className="text-xs text-danger-600">{service.auditError}</p>}
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -229,7 +229,7 @@ export const MCPServiceCard: React.FC = () => {
                       <td className="py-2 pr-3">{MCP_AUDIT_CATEGORY_LABELS[record.category] || record.category}</td>
                       <td className="py-2 pr-3 font-mono">{record.name}</td>
                       <td className="py-2 pr-3 font-mono">{record.cookieId || '—'}</td>
-                      <td className={`py-2 pr-3 font-bold ${record.success ? 'text-green-600' : 'text-red-600'}`}>
+                      <td className={`py-2 pr-3 font-bold ${record.success ? 'text-success-600' : 'text-danger-600'}`}>
                         {record.success ? '成功' : record.errorClass || '失败'}
                       </td>
                       <td className="py-2">{record.durationMs} ms</td>

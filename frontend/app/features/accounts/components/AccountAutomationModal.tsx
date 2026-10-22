@@ -15,7 +15,7 @@ interface Props {
 // Toggle 渲染可复用的开关控件。
 const Toggle: React.FC<{/** checked 表示开关当前是否选中。 */ checked: boolean; /** onChange 表示开关状态变化的回调。 */ onChange: () => void; /** label 表示控件的无障碍名称。 */ label: string}> = ({ checked, onChange, label }) => (
   <button type="button" aria-label={label} aria-pressed={checked} onClick={onChange}
-    className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${checked ? 'bg-sky-500' : 'bg-slate-300'}`}>
+    className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${checked ? 'bg-brand-500' : 'bg-slate-300'}`}>
     <span className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-6' : ''}`} />
   </button>
 );
@@ -60,7 +60,7 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
           {loading && <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">正在读取任务设置...</div>}
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><MessageSquareQuote className="h-5 w-5" /></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success-50 text-success-600"><MessageSquareQuote className="h-5 w-5" /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -71,11 +71,11 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
                 </div>
                 <label className="mt-4 block text-xs font-extrabold text-slate-600">统一好评文案</label>
                 <textarea aria-label="统一好评文案" value={form.rate_content} maxLength={500} onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, rate_content: event.target.value }))}
-                  className="mt-2 h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-800 placeholder:text-slate-400 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                  className="mt-2 h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-800 placeholder:text-slate-400 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100" />
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <span className="text-xs text-slate-400">最近扫描：{form.last_rate_scan_at ? new Date(form.last_rate_scan_at * 1000).toLocaleString('zh-CN') : '尚未执行'}</span>
                   <button type="button" disabled={running !== '' || !account.enabled} onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void run('auto_rate')}
-                    className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                    className="flex items-center gap-2 rounded-xl bg-success-50 px-3 py-2 text-xs font-extrabold text-success-700 hover:bg-success-100 disabled:opacity-50">
                     {running === 'auto_rate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}立即评价
                   </button>
                 </div>
@@ -85,7 +85,7 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Sparkles className="h-5 w-5" /></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-50 text-warning-600"><Sparkles className="h-5 w-5" /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -98,10 +98,10 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
                   <label className="block">
                     <span className="text-xs font-extrabold text-slate-600">每日执行时间</span>
                     <input type="time" value={form.polish_time} onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, polish_time: event.target.value }))}
-                      className="mt-2 block rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-sky-400" />
+                      className="mt-2 block rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-brand-400" />
                   </label>
                   <button type="button" disabled={running !== '' || !account.enabled} onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void run('auto_polish')}
-                    className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-extrabold text-amber-700 hover:bg-amber-100 disabled:opacity-50">
+                    className="flex items-center gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-extrabold text-warning-700 hover:bg-warning-100 disabled:opacity-50">
                     {running === 'auto_polish' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}立即擦亮
                   </button>
                 </div>
@@ -112,7 +112,7 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><PackageMinus className="h-5 w-5" /></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600"><PackageMinus className="h-5 w-5" /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -125,10 +125,10 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
                   <label className="block">
                     <span className="text-xs font-extrabold text-slate-600">每日执行时间</span>
                     <input type="time" value={form.delist_time} onChange={/* 当前回调处理用户交互或异步状态变化。 */ event => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, delist_time: event.target.value }))}
-                      className="mt-2 block rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-sky-400" />
+                      className="mt-2 block rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-brand-400" />
                   </label>
                   <button type="button" disabled={running !== '' || !account.enabled || selectedCount === 0} onClick={runDelist}
-                    className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                    className="flex items-center gap-2 rounded-xl bg-accent-50 px-3 py-2 text-xs font-extrabold text-accent-700 hover:bg-accent-100 disabled:opacity-50">
                     {running === 'auto_delist' ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageMinus className="h-4 w-4" />}立即下架
                   </button>
                 </div>
@@ -140,13 +140,13 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
                 </div>
                 <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
                   {delistItems.loading && <div className="px-2 py-3 text-xs text-slate-500">正在读取账号商品...</div>}
-                  {!delistItems.loading && delistItems.error && <div className="px-2 py-3 text-xs text-rose-600">{delistItems.error}</div>}
+                  {!delistItems.loading && delistItems.error && <div className="px-2 py-3 text-xs text-danger-600">{delistItems.error}</div>}
                   {!delistItems.loading && !delistItems.error && whitelistOptions.length === 0 && <div className="px-2 py-3 text-xs text-slate-500">该账号暂无可选商品，可先在商品页同步。</div>}
                   {!delistItems.loading && whitelistOptions.map(/* 当前回调渲染单个白名单商品选项。 */ item => (
                     <label key={item.item_id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-white">
                       <input type="checkbox" checked={form.delist_item_ids.includes(item.item_id)}
                         onChange={/* 当前回调处理用户交互或异步状态变化。 */ () => setForm(/* 当前回调处理用户交互或异步状态变化。 */ current => ({ ...current, delist_item_ids: toggleDelistItem(current.delist_item_ids, item.item_id) }))}
-                        className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-200" />
+                        className="h-4 w-4 rounded border-slate-300 text-accent-600 focus:ring-accent-200" />
                       <span className="truncate" title={item.item_title}>{item.item_title}</span>
                     </label>
                   ))}
@@ -157,11 +157,11 @@ const AccountAutomationModal: React.FC<Props> = ({ account, onClose, onSaved }) 
           </section>
 
           {summary && (
-            <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <div className="rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900">
               本次发现 {summary.found} 项，成功 {summary.success}，失败 {summary.failed}，跳过 {summary.skipped}。{summary.message || ''}
             </div>
           )}
-          {error && <div className="flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"><span>{error}</span>{retryAvailable && <button type="button" className="font-bold underline" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void retry()}>重试</button>}</div>}
+          {error && <div className="flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm font-medium text-danger-700"><span>{error}</span>{retryAvailable && <button type="button" className="font-bold underline" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void retry()}>重试</button>}</div>}
         </div>
 
         <div className="modal-footer">

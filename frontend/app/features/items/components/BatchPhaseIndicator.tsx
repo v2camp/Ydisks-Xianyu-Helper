@@ -20,7 +20,7 @@ export const BatchPhaseIndicator = ({ phase }: BatchPhaseIndicatorProps) => {
       {phases.map(
         // 阶段渲染器根据当前步骤切换高亮样式。
         ([phaseID, label]) => (
-          <div key={phaseID} className={`rounded-xl px-3 py-2 text-center text-xs font-extrabold border ${phase === phaseID ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
+          <div key={phaseID} className={`rounded-xl px-3 py-2 text-center text-xs font-extrabold border ${phase === phaseID ? 'bg-brand-600 text-white border-brand-600' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
             {label}
           </div>
         ),

@@ -11,14 +11,14 @@ import { useOrderActions } from '../orderActions';
 
 // StatusBadge 渲染订单状态徽标。
 const StatusBadge: React.FC<{ /** status 表示状态。 */ status: OrderStatus }> = ({ status }) => {
-  // styles 样式表。
+  // styles 样式表：待办类状态用高饱和警告色强调，履约完成用成功色，退款与取消分别用危险色与中性色。
   const styles = {
-    processing: 'bg-blue-100 text-blue-800',
-    pending_ship: 'bg-brand text-white',
-    shipped: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
+    processing: 'bg-brand-100 text-brand-700',
+    pending_ship: 'bg-warning-500 text-white',
+    shipped: 'bg-success-100 text-success-700',
+    completed: 'bg-success-600 text-white',
     cancelled: 'bg-gray-100 text-gray-500',
-    refunding: 'bg-red-100 text-red-600',
+    refunding: 'bg-danger-100 text-danger-600',
     unknown: 'bg-gray-100 text-gray-500',
   };
 
@@ -107,7 +107,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
             <button onClick={loadOrders} className="p-3 rounded-2xl bg-white border border-gray-100 text-gray-600 hover:bg-gray-50 hover:text-black transition-colors shadow-sm">
                 <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            <button onClick={handleSync} className="ios-btn-primary px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 text-sm flex items-center gap-2">
+            <button onClick={handleSync} className="ios-btn-primary px-6 py-3 rounded-2xl font-bold shadow-lg shadow-brand-200 text-sm flex items-center gap-2">
                 <Truck className="w-5 h-5" />
                 一键同步订单
             </button>
@@ -158,7 +158,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                         <div className="font-bold text-gray-900 line-clamp-1 text-sm">
                           {getItemNameById(order.cookie_id, order.item_id, order.item_title)}
                         </div>
-                        <div className="mt-1 flex w-fit min-w-0 max-w-full items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-blue-700" title={accountNickname(order.cookie_id)}>
+                        <div className="mt-1 flex w-fit min-w-0 max-w-full items-center gap-1 rounded-md bg-brand-50 px-2 py-1 text-[10px] font-extrabold text-brand-700" title={accountNickname(order.cookie_id)}>
                           <UserIcon className="h-3 w-3 shrink-0" />
                           <span className="min-w-0 truncate whitespace-nowrap">{accountNickname(order.cookie_id)}</span>
                         </div>
@@ -192,7 +192,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                       </div>
                   </td>
                   <td className="px-6 py-5 text-base font-extrabold text-gray-900 font-feature-settings-tnum">
-                    {order.amount ? `¥${order.amount}` : <span className="text-xs text-amber-600 font-bold">待获取</span>}
+                    {order.amount ? `¥${order.amount}` : <span className="text-xs text-warning-600 font-bold">待获取</span>}
                   </td>
                   <td className="px-6 py-5">
                     <StatusBadge status={order.status} />
@@ -213,14 +213,14 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                       href={`https://www.goofish.com/order-detail?orderId=${order.order_id}&role=seller`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mr-2 inline-flex text-gray-400 hover:text-blue-600 p-2 rounded-xl hover:bg-blue-50 transition-colors"
+                      className="mr-2 inline-flex text-gray-400 hover:text-brand-600 p-2 rounded-xl hover:bg-brand-50 transition-colors"
                       title="查看闲鱼详情"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
                     <button
                       onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleViewDetail(order)}
-                      className="mr-2 text-gray-400 hover:text-blue-600 p-2 rounded-xl hover:bg-blue-50 transition-colors"
+                      className="mr-2 text-gray-400 hover:text-brand-600 p-2 rounded-xl hover:bg-brand-50 transition-colors"
                       title="查看详情"
                     >
                       <Eye className="w-4 h-4" />
@@ -235,7 +235,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                     <button
                       onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleSyncSingle(order.order_id)}
                       disabled={syncingOrderId === order.order_id}
-                      className="mr-2 text-gray-400 hover:text-green-600 p-2 rounded-xl hover:bg-green-50 transition-colors disabled:opacity-50"
+                      className="mr-2 text-gray-400 hover:text-success-600 p-2 rounded-xl hover:bg-success-50 transition-colors disabled:opacity-50"
                       title="同步订单"
                     >
                       <RefreshCw className={`w-4 h-4 ${syncingOrderId === order.order_id ? 'animate-spin' : ''}`} />
@@ -243,7 +243,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                     <button
                       onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDelete(order.order_id)}
                       disabled={deletingOrderId === order.order_id}
-                      className="text-gray-400 hover:text-red-500 p-2 rounded-xl hover:bg-red-50 transition-colors disabled:opacity-50"
+                      className="text-gray-400 hover:text-danger-500 p-2 rounded-xl hover:bg-danger-50 transition-colors disabled:opacity-50"
                       title="删除订单"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -308,7 +308,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                   </div>
                   <div>
                     <div className="text-xs text-gray-500 mb-1">所属账号</div>
-                    <div className="truncate whitespace-nowrap text-sm font-bold text-blue-700" title={accountNickname(selectedOrder.cookie_id)}>{accountNickname(selectedOrder.cookie_id)}</div>
+                    <div className="truncate whitespace-nowrap text-sm font-bold text-brand-700" title={accountNickname(selectedOrder.cookie_id)}>{accountNickname(selectedOrder.cookie_id)}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-500 mb-1">状态</div>
@@ -392,7 +392,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                       closeDetailModal();
                       handleShip(selectedOrder.order_id);
                     }}
-                    className="flex-1 px-6 py-3 rounded-xl ios-btn-primary font-bold shadow-lg shadow-blue-200"
+                    className="flex-1 px-6 py-3 rounded-xl ios-btn-primary font-bold shadow-lg shadow-brand-200"
                   >
                     立即发货
                   </button>
@@ -431,8 +431,8 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
                 className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Truck className="w-5 h-5 text-blue-600" />
+                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Truck className="w-5 h-5 text-brand-600" />
                   </div>
                   <div>
                     <div className="font-bold text-gray-900 text-sm">仅修改闲鱼发货状态</div>
@@ -448,11 +448,11 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
               <button
                 onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => executeShip('full_delivery')}
                 disabled={shipLoading}
-                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-brand hover:bg-blue-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-brand hover:bg-brand-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <PackageCheck className="w-5 h-5 text-blue-700" />
+                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <PackageCheck className="w-5 h-5 text-brand-700" />
                   </div>
                   <div>
                     <div className="font-bold text-gray-900 text-sm">完整发货（匹配卡券并发送）</div>
@@ -474,7 +474,7 @@ const OrderList: React.FC<OrderListProps> = ({ isAdmin = false }) => {
 
               {/* 结果显示 */}
               {shipResult && (
-                <div className={`p-3 rounded-xl text-sm ${shipResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                <div className={`p-3 rounded-xl text-sm ${shipResult.success ? 'bg-success-50 text-success-800' : 'bg-danger-50 text-danger-800'}`}>
                   {shipResult.success ? '✓ ' : '✗ '}{shipResult.message}
                 </div>
               )}

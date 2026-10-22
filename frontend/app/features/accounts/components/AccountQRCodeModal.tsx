@@ -38,12 +38,12 @@ export const AccountQRCodeModal: React.FC<AccountQRCodeModalProps> = ({ target, 
             {status === 'loading' && <Loader2 className="w-10 h-10 text-brand animate-spin" />}
             {status === 'waiting' && <SquareQRCode src={codeUrl} alt="闲鱼登录二维码" className="p-2" />}
             {status === 'success' && (
-              <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-green-600 animate-fade-in">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4"><Check className="w-8 h-8" /></div>
+              <div className="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-success-600 animate-fade-in">
+                <div className="w-16 h-16 bg-success-100 rounded-full flex items-center justify-center mb-4"><Check className="w-8 h-8" /></div>
                 <span className="font-bold text-lg">登录成功</span>
               </div>
             )}
-            {status === 'error' && <div className="px-5 text-center"><span className="block text-red-600 font-bold">二维码获取失败</span><span className="mt-2 block text-xs leading-5 text-gray-500">{errorMessage || '请关闭窗口后重新发起扫码登录。'}</span></div>}
+            {status === 'error' && <div className="px-5 text-center"><span className="block text-danger-600 font-bold">二维码获取失败</span><span className="mt-2 block text-xs leading-5 text-gray-500">{errorMessage || '请关闭窗口后重新发起扫码登录。'}</span></div>}
             {status === 'verification' && <RiskVerificationPanel faceQrUrl={faceQrUrl} verificationScreenshot={verificationScreenshot} />}
           </div>
           {status !== 'verification' && <p className="text-xs text-gray-400 font-medium bg-gray-50 py-2 rounded-xl">二维码有效期为5分钟，请尽快扫码。</p>}

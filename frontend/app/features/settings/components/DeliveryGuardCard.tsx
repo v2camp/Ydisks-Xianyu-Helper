@@ -29,7 +29,7 @@ export const DeliveryGuardCard: React.FC<DeliveryGuardCardProps> = ({ settings, 
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5">
       <div className="flex items-start gap-2">
-        <div className="p-1.5 rounded-lg bg-red-500 text-white mt-0.5">
+        <div className="p-1.5 rounded-lg bg-danger-500 text-white mt-0.5">
           <ShieldAlert className="w-4 h-4" />
         </div>
         <div>
@@ -39,10 +39,10 @@ export const DeliveryGuardCard: React.FC<DeliveryGuardCardProps> = ({ settings, 
       </div>
 
       {guardParse.invalid && (
-        <p className="text-xs font-medium text-red-600">配置 JSON 非法，已回退默认值；修改任一项后保存将覆盖为合法 JSON。</p>
+        <p className="text-xs font-medium text-danger-600">配置 JSON 非法，已回退默认值；修改任一项后保存将覆盖为合法 JSON。</p>
       )}
 
-      <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer" htmlFor="delivery-guard-enabled">
+      <label className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer" htmlFor="delivery-guard-enabled">
         <input
           id="delivery-guard-enabled"
           type="checkbox"
@@ -52,12 +52,12 @@ export const DeliveryGuardCard: React.FC<DeliveryGuardCardProps> = ({ settings, 
           onChange={/* 违禁词门禁开关变化后合并写回门禁 JSON 草稿。 */ event => applyGuard({ enabled: event.target.checked })}
         />
         <span>
-          <span className="block text-sm font-bold text-amber-900">发货内容违禁词门禁</span>
-          <span className="mt-1 block text-xs leading-5 text-amber-800">自动发货文本命中联系方式/引流链接/违禁词时拒发并转人工处理。</span>
+          <span className="block text-sm font-bold text-warning-900">发货内容违禁词门禁</span>
+          <span className="mt-1 block text-xs leading-5 text-warning-800">自动发货文本命中联系方式/引流链接/违禁词时拒发并转人工处理。</span>
         </span>
       </label>
 
-      <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 cursor-pointer" htmlFor="delivery-guard-link-check">
+      <label className="flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 cursor-pointer" htmlFor="delivery-guard-link-check">
         <input
           id="delivery-guard-link-check"
           type="checkbox"
@@ -67,8 +67,8 @@ export const DeliveryGuardCard: React.FC<DeliveryGuardCardProps> = ({ settings, 
           onChange={/* 链接健康检查开关变化后合并写回门禁 JSON 草稿。 */ event => applyGuard({ link_check: event.target.checked })}
         />
         <span>
-          <span className="block text-sm font-bold text-amber-900">发货前链接健康检查</span>
-          <span className="mt-1 block text-xs leading-5 text-amber-800">发送前校验网盘链接可达性，失效不发并转人工（4xx 反爬不拦截）。</span>
+          <span className="block text-sm font-bold text-warning-900">发货前链接健康检查</span>
+          <span className="mt-1 block text-xs leading-5 text-warning-800">发送前校验网盘链接可达性，失效不发并转人工（4xx 反爬不拦截）。</span>
         </span>
       </label>
 
