@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -550,146 +551,295 @@ func TestEmailRecipientPatchRejectsAmbiguousUpdates(t *testing.T) {
 	}
 }
 
-// TestChannelServiceQQEditorExposesTargetsAndCredentialPresence 验证 qq 编辑器回读两个 openid 与渠道级凭据是否存在，且不返回凭据内容。
-func TestChannelServiceQQEditorExposesTargetsAndCredentialPresence(t *testing.T) {
-	// scenario 枚举 qq 配置的凭据齐备、缺失、不完整和损坏四种状态，配置值均为虚构占位。
+// TestChannelServiceEditorReturnsPerTypeConfig 验证各渠道类型的编辑器回读：Config 只含可回显的非空键，
+// SavedCredentialKeys 只含敏感键名且按字典序排序，响应中绝不出现任何敏感键的值。
+func TestChannelServiceEditorReturnsPerTypeConfig(t *testing.T) {
+	// markers 是全部虚构敏感值中的可识别片段，响应文本不得包含其中任何一个。
+	markers := []string{"fixture-secret", "fixture-token", "fixture-key", "fixture-app", "access_token=fixture", "Bearer fixture"}
+	// scenario 描述一种渠道类型的存储配置与期望回读结果。
 	for _, scenario := range []struct {
 		// name 是失败输出使用的场景名称。
 		name string
-		// config 是存储中的 qq 配置 JSON。
+		// channelType 是存储中的渠道类型，可能包含历史别名。
+		channelType string
+		// config 是存储中的配置 JSON，值均为虚构占位。
 		config string
-		// wantUserOpenID 是期望回显的单聊目标。
-		wantUserOpenID string
-		// wantGroupOpenID 是期望回显的群聊目标。
-		wantGroupOpenID string
-		// wantCredentials 表示期望的渠道级凭据存在性。
-		wantCredentials bool
+		// wantConfig 是期望回显的可回显键值；nil 表示无任何可回显键。
+		wantConfig map[string]string
+		// wantKeys 是期望回显的敏感键名，必须已按字典序排序；nil 表示无敏感键。
+		wantKeys []string
 	}{
-		{name: "自填凭据", config: `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"fixture-user","group_openid":"fixture-group"}`, wantUserOpenID: "fixture-user", wantGroupOpenID: "fixture-group", wantCredentials: true},
-		{name: "缺少凭据", config: `{"user_openid":" fixture-user ","group_openid":"fixture-group"}`, wantUserOpenID: "fixture-user", wantGroupOpenID: "fixture-group", wantCredentials: false},
-		{name: "凭据不完整", config: `{"app_id":"fixture-app","app_secret":"","group_openid":"fixture-group"}`, wantGroupOpenID: "fixture-group", wantCredentials: false},
-		{name: "配置损坏", config: `broken`, wantCredentials: false},
+		{
+			name: "qq 全部键", channelType: "qq",
+			config:     `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":" fixture-user ","group_openid":"fixture-group"}`,
+			wantConfig: map[string]string{"user_openid": "fixture-user", "group_openid": "fixture-group"},
+			wantKeys:   []string{"app_id", "app_secret"},
+		},
+		{
+			name: "qq 仅目标", channelType: "qq",
+			config:     `{"user_openid":"fixture-user","group_openid":"  "}`,
+			wantConfig: map[string]string{"user_openid": "fixture-user"},
+		},
+		{
+			name: "bark 不含跳转地址", channelType: "bark",
+			config:     `{"device_key":"fixture-key","server_url":" https://bark.invalid ","title":"标题","sound":"","group":"g","url":"https://jump.invalid"}`,
+			wantConfig: map[string]string{"server_url": "https://bark.invalid", "title": "标题", "group": "g"},
+			wantKeys:   []string{"device_key"},
+		},
+		{
+			name: "dingtalk", channelType: "dingtalk",
+			config:   `{"webhook_url":"https://oapi.invalid/robot?access_token=fixture","secret":"fixture-secret"}`,
+			wantKeys: []string{"secret", "webhook_url"},
+		},
+		{
+			name: "dingtalk 别名", channelType: "ding_talk",
+			config:   `{"webhook_url":"https://oapi.invalid/robot?access_token=fixture","secret":"  "}`,
+			wantKeys: []string{"webhook_url"},
+		},
+		{
+			name: "feishu 别名", channelType: "lark",
+			config:   `{"webhook_url":"https://open.invalid/hook","secret":"fixture-secret"}`,
+			wantKeys: []string{"secret", "webhook_url"},
+		},
+		{
+			name: "feishu", channelType: "feishu",
+			config:   `{"webhook_url":"https://open.invalid/hook"}`,
+			wantKeys: []string{"webhook_url"},
+		},
+		{
+			name: "webhook 请求头归敏感", channelType: "webhook",
+			config:     `{"http_method":"POST","webhook_url":"https://hook.invalid/x?key=fixture","headers":{"Authorization":"Bearer fixture"}}`,
+			wantConfig: map[string]string{"http_method": "POST"},
+			wantKeys:   []string{"headers", "webhook_url"},
+		},
+		{
+			name: "wechat", channelType: "wechat",
+			config:   `{"webhook_url":"https://qyapi.invalid/hook?key=fixture"}`,
+			wantKeys: []string{"webhook_url"},
+		},
+		{
+			name: "telegram", channelType: "telegram",
+			config:     `{"chat_id":" fixture-chat ","bot_token":"fixture-token"}`,
+			wantConfig: map[string]string{"chat_id": "fixture-chat"},
+			wantKeys:   []string{"bot_token"},
+		},
+		{
+			name: "email 不进入通用配置", channelType: "email",
+			config: `{"to_email":"receiver@example.com","smtp_password":"fixture-secret"}`,
+		},
+		{
+			name: "配置损坏", channelType: "qq",
+			config: `broken`,
+		},
+		{
+			name: "未知类型", channelType: "captcha",
+			config: `{"token":"fixture-token"}`,
+		},
 	} {
-		// repository 提供当前场景的 qq 记录，不接触真实机器人凭据。
-		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: "qq", Type: "qq", Config: scenario.config}}
+		// repository 提供当前场景的虚构配置，不接触真实凭据。
+		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: scenario.name, Type: scenario.channelType, Config: scenario.config}}
 		// editor、err 保存脱敏编辑视图及读取错误。
 		editor, err := NewChannelService(repository, nil).GetChannelEditor(context.Background(), 7, 1)
 		if err != nil {
 			t.Fatalf("场景 %s 读取编辑视图失败: %v", scenario.name, err)
 		}
-		if editor.UserOpenID != scenario.wantUserOpenID || editor.GroupOpenID != scenario.wantGroupOpenID || editor.HasChannelCredentials != scenario.wantCredentials {
-			t.Fatalf("场景 %s 编辑视图字段异常: %+v", scenario.name, editor)
+		if !reflect.DeepEqual(editor.Config, scenario.wantConfig) {
+			t.Fatalf("场景 %s 可回显配置异常: got=%v want=%v", scenario.name, editor.Config, scenario.wantConfig)
+		}
+		if !reflect.DeepEqual(editor.SavedCredentialKeys, scenario.wantKeys) {
+			t.Fatalf("场景 %s 敏感键名异常: got=%v want=%v", scenario.name, editor.SavedCredentialKeys, scenario.wantKeys)
+		}
+		// encoded 是编辑器视图的 JSON 表达，用于确认任何虚构敏感值都没有进入响应。
+		encoded, encodeErr := json.Marshal(editor)
+		if encodeErr != nil {
+			t.Fatalf("场景 %s 序列化编辑视图失败: %v", scenario.name, encodeErr)
+		}
+		// marker 是当前需要确认未泄露的敏感值片段。
+		for _, marker := range markers {
+			if strings.Contains(string(encoded), marker) {
+				t.Fatalf("场景 %s 编辑视图泄露敏感值 %q", scenario.name, marker)
+			}
 		}
 	}
 }
 
-// TestChannelServiceQQUpdateMergesConfig 验证 qq 更新按键合并：未提交的键保留、空串值删除该键、旧配置损坏按空对象处理。
-func TestChannelServiceQQUpdateMergesConfig(t *testing.T) {
-	// oldConfig 是包含目标与渠道级凭据的虚构 qq 配置。
-	const oldConfig = `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"old-user","group_openid":"fixture-group","extra":{"n":2}}`
-	// repository 保存原记录的端口替身，updatedRecord 用于断言合并结果。
-	repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: "qq", Type: "qq", Config: oldConfig}}
-	// service 是待验证的渠道应用服务。
-	service := NewChannelService(repository, nil)
-	// openIDPatch 只提交新的单聊目标，未提交的凭据与群聊目标必须保留。
-	openIDPatch := `{"user_openid":"new-user"}`
-	// err 保存合并单聊目标后的更新结果。
-	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &openIDPatch}); err != nil {
-		t.Fatalf("合并 openid 更新失败: %v", err)
-	}
-	// config 保存首次合并后的配置，仅用于断言，禁止输出到日志。
-	var config map[string]any
-	// err 校验首次合并结果可解析，失败信息不输出配置内容。
-	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &config); err != nil {
-		t.Fatal("合并后的 qq 配置不是合法 JSON")
-	}
-	if config["user_openid"] != "new-user" || config["group_openid"] != "fixture-group" || config["app_id"] != "fixture-app" || config["app_secret"] != "fixture-secret" || config["extra"] == nil {
-		t.Fatal("qq 合并更新丢失了未提交的键")
-	}
-
-	// clearPatch 用空串表示删除渠道级凭据，以便回退到连接器凭据。
-	clearPatch := `{"app_id":"","app_secret":" "}`
-	// err 保存清空渠道级凭据的更新结果。
-	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &clearPatch}); err != nil {
-		t.Fatalf("清空渠道级凭据失败: %v", err)
-	}
-	// cleared 保存清空凭据后的配置。
-	var cleared map[string]any
-	// err 校验清空凭据后的配置可解析。
-	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &cleared); err != nil {
-		t.Fatal("清空后的 qq 配置不是合法 JSON")
-	}
-	// exists 表示被删除的 app_id 键是否仍残留在配置中。
-	if _, exists := cleared["app_id"]; exists {
-		t.Fatal("空串提交必须删除 app_id 键")
-	}
-	// exists 表示被删除的 app_secret 键是否仍残留在配置中。
-	if _, exists := cleared["app_secret"]; exists {
-		t.Fatal("空串提交必须删除 app_secret 键")
-	}
-	if cleared["user_openid"] != "new-user" || cleared["group_openid"] != "fixture-group" {
-		t.Fatal("清空凭据不应影响 qq 目标配置")
-	}
-
-	// emptyPatch 提交空对象，等价于不修改任何键。
-	emptyPatch := `{}`
-	// err 保存空对象提交的更新结果。
-	if err := service.UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &emptyPatch}); err != nil {
-		t.Fatalf("空对象更新失败: %v", err)
-	}
-	// preserved 保存空对象提交后的配置。
-	var preserved map[string]any
-	// err 校验空对象提交后的配置可解析。
-	if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &preserved); err != nil {
-		t.Fatal("空对象更新后的 qq 配置不是合法 JSON")
-	}
-	if preserved["user_openid"] != "new-user" || preserved["group_openid"] != "fixture-group" {
-		t.Fatal("空对象提交不应删除已有 qq 键")
-	}
-
-	// brokenRepository 模拟历史损坏配置，合并时必须按空对象处理且不报错。
-	brokenRepository := &channelRepositoryStub{record: &ChannelRecord{ID: 2, Name: "qq", Type: "qq", Config: `broken`}}
-	// brokenPatch 提交完整目标，结果只包含本次提交的键。
-	brokenPatch := `{"user_openid":"fixture-user"}`
-	// err 保存损坏配置合并的更新结果，非法旧配置不得导致失败。
-	if err := NewChannelService(brokenRepository, nil).UpdateChannel(context.Background(), 7, 2, ChannelPatch{Config: &brokenPatch}); err != nil {
-		t.Fatalf("损坏配置合并失败: %v", err)
-	}
-	// repaired 保存损坏配置合并后的结果。
-	var repaired map[string]any
-	// err 校验损坏配置合并结果可解析。
-	if err := json.Unmarshal([]byte(brokenRepository.updatedRecord.Config), &repaired); err != nil {
-		t.Fatal("损坏配置合并结果不是合法 JSON")
-	}
-	if repaired["user_openid"] != "fixture-user" {
-		t.Fatal("损坏配置合并未写入本次提交的键")
-	}
-}
-
-// TestChannelServiceNonQQUpdateReplacesConfig 验证非 qq 渠道保持整体替换语义，避免合并规则被误扩大。
-func TestChannelServiceNonQQUpdateReplacesConfig(t *testing.T) {
-	// scenario 枚举邮件与 webhook 两类非 qq 渠道，配置值均为虚构占位。
+// TestChannelServiceUpdateMergesConfigByType 验证声明了 Merge 的类型按键合并：未提交键保留、空串删键、
+// 空对象保留全部键、旧配置损坏按空对象处理、非对象提交视为未提交。
+func TestChannelServiceUpdateMergesConfigByType(t *testing.T) {
+	// scenario 描述一种合并场景：现有配置、本次提交与期望结果。
 	for _, scenario := range []struct {
 		// name 是失败输出使用的场景名称。
 		name string
-		// channelType 是现有渠道协议。
+		// channelType 是现有渠道协议类型。
 		channelType string
-		// oldConfig 是原始存储配置。
+		// oldConfig 是原始存储配置，值均为虚构占位。
+		oldConfig string
+		// submitted 是本次提交的配置 JSON。
+		submitted string
+		// want 是期望的最终配置键值，只用于断言。
+		want map[string]any
+	}{
+		{
+			name: "qq 部分提交保留其余键", channelType: "qq",
+			oldConfig: `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"old-user","group_openid":"fixture-group","extra":{"n":2}}`,
+			submitted: `{"user_openid":"new-user"}`,
+			want:      map[string]any{"app_id": "fixture-app", "app_secret": "fixture-secret", "user_openid": "new-user", "group_openid": "fixture-group", "extra": map[string]any{"n": float64(2)}},
+		},
+		{
+			name: "qq 空串删除凭据键", channelType: "qq",
+			oldConfig: `{"app_id":"fixture-app","app_secret":"fixture-secret","user_openid":"old-user"}`,
+			submitted: `{"app_id":"","app_secret":" "}`,
+			want:      map[string]any{"user_openid": "old-user"},
+		},
+		{
+			name: "qq 空对象全保留", channelType: "qq",
+			oldConfig: `{"app_id":"fixture-app","user_openid":"old-user"}`,
+			submitted: `{}`,
+			want:      map[string]any{"app_id": "fixture-app", "user_openid": "old-user"},
+		},
+		{
+			name: "qq 旧配置损坏按空对象", channelType: "qq",
+			oldConfig: `broken`,
+			submitted: `{"user_openid":"fixture-user"}`,
+			want:      map[string]any{"user_openid": "fixture-user"},
+		},
+		{
+			name: "qq 非对象提交视为未提交", channelType: "qq",
+			oldConfig: `{"user_openid":"old-user"}`,
+			submitted: `["ignored"]`,
+			want:      map[string]any{"user_openid": "old-user"},
+		},
+		{
+			name: "bark 部分提交保留凭据", channelType: "bark",
+			oldConfig: `{"device_key":"fixture-key","server_url":"https://old.invalid","title":"旧标题"}`,
+			submitted: `{"title":"新标题"}`,
+			want:      map[string]any{"device_key": "fixture-key", "server_url": "https://old.invalid", "title": "新标题"},
+		},
+		{
+			name: "bark 空串删除标题", channelType: "bark",
+			oldConfig: `{"device_key":"fixture-key","title":"旧标题"}`,
+			submitted: `{"title":""}`,
+			want:      map[string]any{"device_key": "fixture-key"},
+		},
+		{
+			name: "dingtalk 部分提交", channelType: "dingtalk",
+			oldConfig: `{"webhook_url":"https://oapi.invalid/robot?access_token=fixture","secret":"fixture-secret"}`,
+			submitted: `{"secret":"new-secret"}`,
+			want:      map[string]any{"webhook_url": "https://oapi.invalid/robot?access_token=fixture", "secret": "new-secret"},
+		},
+		{
+			name: "dingtalk 别名合并", channelType: "ding_talk",
+			oldConfig: `{"webhook_url":"https://oapi.invalid/robot","secret":"fixture-secret"}`,
+			submitted: `{"webhook_url":"https://oapi.invalid/new"}`,
+			want:      map[string]any{"webhook_url": "https://oapi.invalid/new", "secret": "fixture-secret"},
+		},
+		{
+			name: "feishu 部分提交", channelType: "feishu",
+			oldConfig: `{"webhook_url":"https://open.invalid/hook","secret":"fixture-secret"}`,
+			submitted: `{"secret":"new-secret"}`,
+			want:      map[string]any{"webhook_url": "https://open.invalid/hook", "secret": "new-secret"},
+		},
+		{
+			name: "lark 别名合并", channelType: "lark",
+			oldConfig: `{"webhook_url":"https://open.invalid/hook"}`,
+			submitted: `{"secret":"fixture-secret"}`,
+			want:      map[string]any{"webhook_url": "https://open.invalid/hook", "secret": "fixture-secret"},
+		},
+		{
+			name: "webhook 请求头保留", channelType: "webhook",
+			oldConfig: `{"http_method":"POST","webhook_url":"https://hook.invalid/x","headers":{"Authorization":"Bearer fixture"}}`,
+			submitted: `{"http_method":"PUT"}`,
+			want:      map[string]any{"http_method": "PUT", "webhook_url": "https://hook.invalid/x", "headers": map[string]any{"Authorization": "Bearer fixture"}},
+		},
+		{
+			name: "wechat 部分提交", channelType: "wechat",
+			oldConfig: `{"webhook_url":"https://qyapi.invalid/hook?key=fixture"}`,
+			submitted: `{"webhook_url":"https://qyapi.invalid/new"}`,
+			want:      map[string]any{"webhook_url": "https://qyapi.invalid/new"},
+		},
+		{
+			name: "telegram 部分提交", channelType: "telegram",
+			oldConfig: `{"chat_id":"old-chat","bot_token":"fixture-token"}`,
+			submitted: `{"chat_id":"new-chat"}`,
+			want:      map[string]any{"chat_id": "new-chat", "bot_token": "fixture-token"},
+		},
+	} {
+		// repository 保存当前场景原记录，updatedRecord 用于断言合并结果。
+		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: scenario.name, Type: scenario.channelType, Config: scenario.oldConfig}}
+		// submitted 是本次提交的配置副本，避免取到循环变量地址。
+		submitted := scenario.submitted
+		// err 保存按键合并后的更新结果。
+		if err := NewChannelService(repository, nil).UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &submitted}); err != nil {
+			t.Fatalf("场景 %s 更新失败: %v", scenario.name, err)
+		}
+		if repository.updatedRecord == nil {
+			t.Fatalf("场景 %s 未写入更新记录", scenario.name)
+		}
+		// merged 保存合并后的配置，仅用于断言，禁止输出到日志。
+		var merged map[string]any
+		// err 保存合并结果的解析错误，失败信息不输出配置内容。
+		if err := json.Unmarshal([]byte(repository.updatedRecord.Config), &merged); err != nil {
+			t.Fatalf("场景 %s 合并结果不是合法 JSON", scenario.name)
+		}
+		if !reflect.DeepEqual(merged, scenario.want) {
+			t.Fatalf("场景 %s 合并结果异常: got=%v want=%v", scenario.name, merged, scenario.want)
+		}
+	}
+}
+
+// TestChannelServiceUpdateReplacesConfigWhenRequested 验证邮件渠道与显式 ReplaceConfig 调用仍整体替换配置。
+func TestChannelServiceUpdateReplacesConfigWhenRequested(t *testing.T) {
+	// scenario 描述一种必须整体替换的场景：现有类型、原配置、提交配置与是否显式要求替换。
+	for _, scenario := range []struct {
+		// name 是失败输出使用的场景名称。
+		name string
+		// channelType 是现有渠道协议类型。
+		channelType string
+		// oldConfig 是原始存储配置，值均为虚构占位。
 		oldConfig string
 		// submitted 是本次提交的配置。
 		submitted string
+		// replace 表示显式要求整体替换（MCP 的 config_json 语义）。
+		replace bool
 	}{
-		{name: "邮件", channelType: "email", oldConfig: `{"to_email":"old@example.com","smtp_password":"fixture-secret"}`, submitted: `{"to_email":"new@example.com"}`},
-		{name: "webhook", channelType: "webhook", oldConfig: `{"url":"https://fixture.invalid/hook","token":"fixture-token"}`, submitted: `{"url":"https://fixture.invalid/new"}`},
+		{name: "email 整体替换", channelType: "email", oldConfig: `{"to_email":"old@example.com","smtp_password":"fixture-secret"}`, submitted: `{"to_email":"new@example.com"}`},
+		{name: "qq 显式替换", channelType: "qq", oldConfig: `{"app_id":"fixture-app","user_openid":"old-user"}`, submitted: `{"user_openid":"new-user"}`, replace: true},
+		{name: "bark 显式替换", channelType: "bark", oldConfig: `{"device_key":"fixture-key","title":"旧标题"}`, submitted: `{"title":"新标题"}`, replace: true},
+		{name: "未知类型整体替换", channelType: "captcha", oldConfig: `{"token":"fixture-token"}`, submitted: `{"other":"value"}`},
 	} {
 		// repository 提供当前场景的原记录，更新结果必须与提交值完全一致。
 		repository := &channelRepositoryStub{record: &ChannelRecord{ID: 1, Name: scenario.name, Type: scenario.channelType, Config: scenario.oldConfig}}
+		// submitted 是本次提交的配置副本，避免取到循环变量地址。
+		submitted := scenario.submitted
 		// err 保存更新结果。
-		if err := NewChannelService(repository, nil).UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &scenario.submitted}); err != nil {
+		if err := NewChannelService(repository, nil).UpdateChannel(context.Background(), 7, 1, ChannelPatch{Config: &submitted, ReplaceConfig: scenario.replace}); err != nil {
 			t.Fatalf("场景 %s 更新失败: %v", scenario.name, err)
 		}
 		if repository.updatedRecord.Config != scenario.submitted {
-			t.Fatal("非 qq 渠道必须保持整体替换语义")
+			t.Fatalf("场景 %s 必须整体替换配置", scenario.name)
+		}
+	}
+}
+
+// TestChannelConfigSpecForNormalizesAliases 验证历史别名命中同一份配置键分类，且规范类型保持独立。
+func TestChannelConfigSpecForNormalizesAliases(t *testing.T) {
+	// scenario 枚举类型名与期望命中的规范类型，用于确认别名只影响查表。
+	for _, scenario := range []struct {
+		// name 是失败输出使用的场景名称。
+		name string
+		// channelType 是待查表的类型名。
+		channelType string
+		// want 是期望命中的规范类型。
+		want string
+	}{
+		{name: "钉钉别名", channelType: "ding_talk", want: "dingtalk"},
+		{name: "飞书别名", channelType: "lark", want: "feishu"},
+		{name: "钉钉规范名", channelType: "dingtalk", want: "dingtalk"},
+		{name: "飞书规范名", channelType: "feishu", want: "feishu"},
+		{name: "未知类型", channelType: "captcha", want: ""},
+	} {
+		if !reflect.DeepEqual(channelConfigSpecFor(scenario.channelType), channelConfigSpecs[scenario.want]) {
+			t.Fatalf("场景 %s 未命中期望配置键分类", scenario.name)
 		}
 	}
 }
