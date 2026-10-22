@@ -3,8 +3,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { enableCustomSMTP } from '../../../../notificationEmailConfig';
 import type { NotificationChannel,NotificationChannelType,NotificationEventType,SystemSettings } from '../api';
-import { notificationChannelTypes,QQ_CHANNEL_CREDENTIAL_KEYS,qqChannelCredentialsOptional } from '../state';
-import type { NotificationForm } from '../types';
+import { notificationChannelTypes } from '../state';
+import type { CredentialSource,NotificationForm } from '../types';
 import { NotificationEventSelector } from './NotificationEventSelector';
 
 // NotificationChannelModalProps 描述渠道编辑弹窗所需的状态和回调。
@@ -25,10 +25,12 @@ export interface NotificationChannelModalProps {
   setShowChannelSmtpPassword: React.Dispatch<React.SetStateAction<boolean>>;
   // saving 表示渠道保存请求是否正在执行。
   saving: boolean;
-  // connectorReady 表示系统级 QQ 机器人连接器凭据已就绪，qq 渠道可隐藏凭据字段并复用系统凭据。
-  connectorReady?: boolean;
-  // hasChannelCredentials 表示当前 qq 渠道仍自带一套 app_id/app_secret，留空保存会沿用它们。
-  hasChannelCredentials?: boolean;
+  // credentialSource 是当前渠道类型的凭据来源；非空表示凭据由已就绪连接器接管，对应字段不再展示。
+  credentialSource?: CredentialSource | null;
+  // savedCredentialKeys 是当前渠道已保存的凭据键名，这些字段可以留空并沿用服务端原值。
+  savedCredentialKeys?: string[];
+  // resetCredentialState 在渠道类型切换时清空上一类型的凭据状态。
+  resetCredentialState: () => void;
   // onClose 关闭弹窗。
   onClose: () => void;
   // onSave 提交渠道表单。
@@ -36,29 +38,42 @@ export interface NotificationChannelModalProps {
 }
 
 // NotificationChannelModal 渲染渠道字段、SMTP 覆盖项和事件绑定表单。
-export const NotificationChannelModal: React.FC<NotificationChannelModalProps> = ({ showModal, editing, form, setForm, smtp, showChannelSmtpPassword, setShowChannelSmtpPassword, saving, connectorReady = false, hasChannelCredentials = false, onClose, onSave }) => {
+export const NotificationChannelModal: React.FC<NotificationChannelModalProps> = ({ showModal, editing, form, setForm, smtp, showChannelSmtpPassword, setShowChannelSmtpPassword, saving, credentialSource = null, savedCredentialKeys = [], resetCredentialState, onClose, onSave }) => {
   // meta 是当前渠道类型对应的字段和指南。
   const meta = notificationChannelTypes[form.type];
-  // inheritsConnector 表示 qq 渠道改用连接器系统级凭据，两个渠道级凭据字段不再展示。
-  const inheritsConnector = form.type === 'qq' && connectorReady;
-  // credentialsOptional 表示 qq 渠道的渠道级凭据可以留空：连接器已就绪或渠道已保存独立凭据。
-  const credentialsOptional = qqChannelCredentialsOptional(form.type, { connectorReady, hasChannelCredentials });
-  // useConnectorCredentials 表示用户已勾选改用连接器凭据；空串提交会被服务端合并语义解释为删除该键。
-  const useConnectorCredentials = form.config.app_id === '' && form.config.app_secret === '';
+  // credentialKeys 是当前渠道类型声明的凭据键，只有这些键参与隐藏、可选与清除。
+  const credentialKeys = meta.credential.keys;
+  // hiddenKeys 是由连接器接管、渠道表单不再展示的凭据键。
+  const hiddenKeys = credentialSource?.hiddenKeys ?? [];
+  // optionalKeys 是本次无需重填的凭据键：连接器接管的键与渠道已保存的键合并去重。
+  const optionalKeys = Array.from(new Set([...hiddenKeys, ...savedCredentialKeys]));
+  // hasSavedCredentials 表示当前渠道仍保存着本类型的独立凭据，留空保存会沿用它们。
+  const hasSavedCredentials = savedCredentialKeys.some(
+    // key 是当前待判定的已保存键名。
+    key => credentialKeys.includes(key),
+  );
+  // inheritsConnectorCredentials 表示用户已明确改用连接器凭据，保存时由载荷把这些键写成空串。
+  const inheritsConnectorCredentials = form.credentialAction === 'clear';
+  // hiddenCredentialLabels 是连接器接管的凭据在弹窗中的字段名，用于生成来源说明。
+  const hiddenCredentialLabels = credentialKeys
+    .filter(/* hiddenFilter 只保留由连接器接管的凭据键。 */ key => hiddenKeys.includes(key))
+    .map(/* labelMapper 把凭据键换成用户可读的字段名。 */ key => meta.fields.find(/* fieldMatcher 匹配当前凭据键的字段定义。 */ field => field.key === key)?.label ?? key);
   // handleNameChange 更新渠道名称。
   const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => setForm(
     // nextFormUpdater 使用函数式更新名称字段。
     current => ({ ...current, name: event.target.value }),
   );
-  // handleTypeChange 切换渠道类型并清空旧类型配置。
+  // handleTypeChange 切换渠道类型，清空旧类型配置并复位凭据状态，避免沿用上一类型的已保存键。
   const handleTypeChange = (event: React.MouseEvent<HTMLButtonElement>) => {
     // type 是按钮数据属性中的目标渠道类型。
     const type = event.currentTarget.dataset.type as NotificationChannelType | undefined;
-    if (!type) return;
+    // 重复点击当前类型不应丢弃已填配置与凭据状态。
+    if (!type || type === form.type) return;
     setForm(
       // nextFormUpdater 使用函数式更新渠道类型。
       current => ({ ...current, type, config: {}, preserveSMTP: false }),
     );
+    resetCredentialState();
   };
   // handleConfigFieldChange 更新普通或独立 SMTP 配置字段。
   const handleConfigFieldChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,24 +118,13 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalProps> =
     // nextPasswordState 使用函数式更新密码显示状态。
     value => !value,
   );
-  // handleToggleConnectorCredentials 切换 qq 渠道是否改用连接器凭据：勾选时提交空串，服务端按合并语义删除渠道级凭据。
+  // handleToggleConnectorCredentials 切换是否改用连接器凭据：勾选只记录清除意图，具体空串由保存载荷生成。
   const handleToggleConnectorCredentials = (event: React.ChangeEvent<HTMLInputElement>) => {
     // checked 表示用户是否勾选改用连接器凭据。
     const checked = event.target.checked;
     setForm(
-      // nextFormUpdater 勾选时写入删除标记，取消勾选时移除提交键以在原处保留渠道现有凭据。
-      current => {
-        // nextConfig 是本次保存要提交的渠道配置副本。
-        const nextConfig = { ...current.config };
-        if (checked) {
-          nextConfig.app_id = '';
-          nextConfig.app_secret = '';
-        } else {
-          delete nextConfig.app_id;
-          delete nextConfig.app_secret;
-        }
-        return { ...current, config: nextConfig };
-      },
+      // nextFormUpdater 勾选时记录清除意图，取消勾选时显式回到「沿用渠道凭据」。
+      current => ({ ...current, credentialAction: checked ? 'clear' : 'retain' }),
     );
   };
   // renderGuideStep 渲染当前渠道指南中的单个步骤。
@@ -152,13 +156,13 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalProps> =
             </div>
           </div>
           <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-2"><div className="flex items-center gap-2"><Bell className="w-4 h-4 text-amber-600" /><span className="text-sm font-bold text-amber-800">如何获取 {meta.label} 配置？</span></div><ol className="space-y-1.5 text-xs text-amber-900/90 leading-5 list-decimal pl-5">{meta.guide.steps.map(renderGuideStep)}</ol>{meta.guide.urlFormat && <div className="text-xs text-amber-900/90"><span className="font-bold">格式示例：</span><code className="mt-1 block bg-amber-100/70 px-2.5 py-1.5 rounded-lg break-all font-mono text-[11px]">{meta.guide.urlFormat}</code></div>}{meta.guide.note && <p className="text-xs text-amber-800/80 leading-5 pt-1">💡 {meta.guide.note}</p>}</div>
-          {inheritsConnector && (
+          {hiddenKeys.length > 0 && (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2 text-xs leading-5 text-gray-700">
-              <p>AppID / AppSecret 使用「连接器 → QQ 机器人」的系统级凭据。</p>
-              {hasChannelCredentials && (
+              <p>{hiddenCredentialLabels.join(' / ')} 使用「连接器 → {credentialSource?.connectorName || '连接器'}」的系统级凭据。</p>
+              {hasSavedCredentials && (
                 <>
                   <p>当前渠道仍保存着独立凭据，继续保存将沿用它们。</p>
-                  <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={useConnectorCredentials} onChange={handleToggleConnectorCredentials} />改用连接器凭据</label>
+                  <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={inheritsConnectorCredentials} onChange={handleToggleConnectorCredentials} />改用连接器凭据</label>
                 </>
               )}
             </div>
@@ -167,10 +171,10 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalProps> =
             {meta.fields.map(
               // field 是当前渠道配置字段。
               field => {
-                // 连接器已就绪时凭据由系统级配置统一提供，渠道表单不再展示这两个字段。
-                if (inheritsConnector && QQ_CHANNEL_CREDENTIAL_KEYS.includes(field.key)) return null;
+                // 连接器已就绪时凭据由系统级配置统一提供，渠道表单不再展示这些字段。
+                if (hiddenKeys.includes(field.key)) return null;
                 // optionalCredential 表示该凭据字段在当前场景可以留空，服务端已保存的值会被沿用。
-                const optionalCredential = credentialsOptional && QQ_CHANNEL_CREDENTIAL_KEYS.includes(field.key);
+                const optionalCredential = optionalKeys.includes(field.key) && credentialKeys.includes(field.key);
                 return <div key={field.key} className="space-y-2"><label className="block text-sm font-bold text-gray-800">{field.label}{field.required && !optionalCredential && <span className="text-red-500 ml-1">*</span>}</label><input data-field={field.key} type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'} value={String(form.config[field.key] || '')} onChange={handleConfigFieldChange} placeholder={optionalCredential ? '已保存，留空则保持原值' : field.placeholder} className="w-full ios-input px-4 py-3 rounded-xl text-sm" />{(optionalCredential || field.help) && <p className="text-xs text-gray-500">{optionalCredential ? '已保存，留空则保持原值；填写新值会覆盖服务端保存的凭据。' : field.help}</p>}</div>;
               },
             )}

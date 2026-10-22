@@ -12,6 +12,8 @@ export interface NotificationField {
   placeholder?: string;
   // type 是输入控件的 HTML 类型。
   type?: 'text' | 'password' | 'number';
+  // sensitive 表示该字段是凭据明文，服务端只回传其是否已保存，编辑时一律不回显。
+  sensitive?: boolean;
   // required 表示该字段是否必须填写。
   required?: boolean;
   // help 是字段下方的补充说明。
@@ -36,8 +38,26 @@ export interface NotificationChannelMeta {
   icon: ElementType;
   // fields 是渠道配置字段定义。
   fields: NotificationField[];
+  // credential 是渠道凭据声明：keys 为凭据键，providerConnectorId 为可代填这些键的上游连接器。
+  credential: NotificationCredentialSpec;
   // guide 是渠道凭据获取指南。
   guide: NotificationGuide;
+}
+
+// NotificationCredentialSpec 描述一种渠道类型把哪些配置键当作凭据，以及可由哪个连接器统一提供。
+export interface NotificationCredentialSpec {
+  // keys 是该渠道类型的凭据键，只有这些键参与必填豁免与显式清除。
+  keys: string[];
+  // providerConnectorId 是能代填这些凭据的连接器标识，缺省表示该类型凭据只能由渠道自填。
+  providerConnectorId?: string;
+}
+
+// CredentialSource 描述当前渠道凭据由哪个已就绪的连接器统一提供。
+export interface CredentialSource {
+  // hiddenKeys 是由连接器接管、无需在渠道表单展示的凭据键。
+  hiddenKeys: string[];
+  // connectorName 是提供凭据的连接器中文名称，用于弹窗内的来源说明。
+  connectorName?: string;
 }
 
 // NotificationEventMeta 描述可供渠道订阅的一类系统事件。
@@ -60,6 +80,8 @@ export interface NotificationForm {
   enabled: boolean;
   // preserveSMTP 表示编辑邮件时保留服务端现有 SMTP，仅单独更新收件地址。
   preserveSMTP?: boolean;
+  // credentialAction 表示本次保存对渠道级凭据的意图：clear 显式删除，retain 与缺省都表示沿用服务端原值。
+  credentialAction?: 'retain' | 'clear';
   // config 保存渠道类型对应的配置值。
   config: Record<string, unknown>;
   // event_types 保存用户选择的通知事件，空数组表示全部事件。
@@ -112,10 +134,10 @@ export interface ConnectorsState {
   connectorSettings: SystemSettings;
   // connectorSaving 表示连接器配置是否正在保存。
   connectorSaving: boolean;
-  // qqConnectorReady 表示系统级 QQ 机器人连接器凭据是否已就绪，qq 渠道可据此继承系统凭据。
-  qqConnectorReady: boolean;
-  // hasChannelCredentials 表示当前编辑的 qq 渠道仍保存着一套独立 app_id/app_secret。
-  hasChannelCredentials: boolean;
+  // credentialSource 描述当前渠道类型的凭据是否由已就绪的连接器统一提供，为空表示需要渠道自填或沿用已保存值。
+  credentialSource: CredentialSource | null;
+  // savedCredentialKeys 是当前编辑渠道已保存的凭据键名，只含键名不含值，供弹窗提示留空沿用。
+  savedCredentialKeys: string[];
   // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取。
   settingsLoading: boolean;
   // settingsError 是系统设置读取失败的用户可见文案，非空时对应区块展示错误态与重试入口。
@@ -158,6 +180,8 @@ export interface ConnectorsState {
   openEdit: (channel: NotificationChannel) => Promise<void>;
   // closeModal 关闭弹窗并取消当前保存请求。
   closeModal: () => void;
+  // resetCredentialState 清空已保存凭据键与清除意图，渠道类型切换后不再沿用上一类型的凭据状态。
+  resetCredentialState: () => void;
   // showToast 展示短暂的成功或失败提示。
   showToast: (type: NotificationToast['type'], text: string) => void;
   // handleSave 保存当前渠道配置。
