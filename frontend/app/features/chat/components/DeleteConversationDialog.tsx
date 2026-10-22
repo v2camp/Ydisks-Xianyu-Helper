@@ -74,16 +74,16 @@ export const DeleteConversationDialog: React.FC<DeleteConversationDialogProps> =
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]" onMouseDown={/* 当前回调只在未提交时允许点击遮罩关闭。 */ event => { if (!deleting && event.target === event.currentTarget) onCancel(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="delete-conversation-title" aria-describedby="delete-conversation-description" className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start gap-4 px-6 pb-4 pt-6">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600"><Trash2 className="h-5 w-5" /></div>
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-danger-50 text-danger-600"><Trash2 className="h-5 w-5" /></div>
           <div className="min-w-0">
             <h2 id="delete-conversation-title" className="text-lg font-black tracking-tight text-slate-950">删除会话</h2>
             <p id="delete-conversation-description" className="mt-2 text-sm leading-6 text-slate-600">将从本机清空与「{buyerName}」的聊天消息。订单、自动化和 AI 记忆不会删除；收到新消息后会话会重新出现。此操作无法撤销。</p>
           </div>
         </div>
-        {error && <div role="alert" className="mx-6 flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 text-xs font-medium leading-5 text-red-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
+        {error && <div role="alert" className="mx-6 flex items-start gap-2 rounded-xl bg-danger-50 px-3 py-2.5 text-xs font-medium leading-5 text-danger-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
         <div className="mt-2 flex justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
           <button ref={cancelButtonRef} type="button" onClick={onCancel} disabled={deleting} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50">取消</button>
-          <button type="button" onClick={onConfirm} disabled={deleting} className="flex min-w-24 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-red-400">
+          <button type="button" onClick={onConfirm} disabled={deleting} className="flex min-w-24 items-center justify-center gap-2 rounded-xl bg-danger-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-danger-700 focus:outline-none focus:ring-4 focus:ring-danger-100 disabled:cursor-not-allowed disabled:bg-danger-400">
             {deleting && <Loader2 className="h-4 w-4 animate-spin" />}{deleting ? '删除中' : '确认删除'}
           </button>
         </div>

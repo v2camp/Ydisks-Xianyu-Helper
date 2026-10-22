@@ -36,8 +36,8 @@ export const ManualLocationPicker: React.FC<ManualLocationPickerProps> = ({ open
       <div className="modal-container" style={{ maxWidth: '720px' }} role="dialog" aria-modal="true" aria-labelledby="manual-location-title">
         <div className="modal-header flex items-start justify-between gap-4">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-sky-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
               AMap POI
             </div>
             <h3 id="manual-location-title" className="text-xl font-extrabold text-gray-900">手动选择发货地</h3>
@@ -85,9 +85,9 @@ export const ManualLocationPicker: React.FC<ManualLocationPickerProps> = ({ open
             </label>
           </div>
 
-          <div className="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm"><Search className="h-4 w-4" /></div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm"><Search className="h-4 w-4" /></div>
               <div>
                 <div className="text-sm font-extrabold text-gray-900">搜索具体位置</div>
                 <div className="text-xs text-gray-500">例如：小区、街道、公司、商场或园区</div>
@@ -107,7 +107,7 @@ export const ManualLocationPicker: React.FC<ManualLocationPickerProps> = ({ open
             </div>
           </div>
 
-          {locationState.error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{locationState.error}</div>}
+          {locationState.error && <div className="rounded-xl border border-danger-200 bg-danger-50 px-4 py-3 text-sm leading-6 text-danger-700">{locationState.error}</div>}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -119,9 +119,9 @@ export const ManualLocationPicker: React.FC<ManualLocationPickerProps> = ({ open
                 {locationState.locations.map(/* locationOptionRenderer 渲染可确认的高德 POI 候选。 */ location => {
                   // selected 标记当前候选是否已被用户选中。
                   const selected = locationState.selectedLocation?.poi_id === location.poi_id;
-                  return <button type="button" key={`${location.poi_id}-${location.division_id}`} onClick={/* locationClickAction 选择当前高德 POI。 */ () => locationState.selectLocation(location)} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${selected ? 'border-sky-400 bg-sky-50 shadow-sm' : 'border-gray-100 bg-white hover:border-sky-200 hover:bg-sky-50/50'}`}>
+                  return <button type="button" key={`${location.poi_id}-${location.division_id}`} onClick={/* locationClickAction 选择当前高德 POI。 */ () => locationState.selectLocation(location)} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${selected ? 'border-brand-400 bg-brand-50 shadow-sm' : 'border-gray-100 bg-white hover:border-brand-200 hover:bg-brand-50/50'}`}>
                     <span className="min-w-0">
-                      <span className="flex items-center gap-2 text-sm font-extrabold text-gray-900">{selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-600" />}{location.poi_name}</span>
+                      <span className="flex items-center gap-2 text-sm font-extrabold text-gray-900">{selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />}{location.poi_name}</span>
                       <span className="mt-1 block truncate text-xs text-gray-500">{locationLabel(location)}</span>
                     </span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />

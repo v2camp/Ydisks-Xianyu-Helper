@@ -1,8 +1,8 @@
-import { useCallback,useEffect,useRef,useState } from 'react';
+import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
 import type { NotificationChannel,SystemSettings } from './api';
 import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
-import { connectorTypes,qqBotConnector } from './registry';
-import { buildConnectorSettings,buildNotificationPayload,connectorReady,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
+import { connectorTypes } from './registry';
+import { buildConnectorSettings,buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,resolveCredentialSource,validateNotificationForm } from './state';
 import type { ConnectorsState,NotificationForm } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 import type { SaveBarState } from '../../../shared/ui/SaveBar';
@@ -17,8 +17,8 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const [showModal, setShowModal] = useState(false);
   // editing 保存当前正在编辑的渠道。
   const [editing, setEditing] = useState<NotificationChannel | null>(null);
-  // hasChannelCredentials 表示当前编辑的 qq 渠道仍自带一套 app_id/app_secret，留空保存时会沿用它们。
-  const [hasChannelCredentials, setHasChannelCredentials] = useState(false);
+  // savedCredentialKeys 保存当前编辑渠道已保存的凭据键名，只含键名不含值，供弹窗提示「留空则保持原值」。
+  const [savedCredentialKeys, setSavedCredentialKeys] = useState<string[]>([]);
   // saving 表示渠道保存或删除动作是否正在执行。
   const [saving, setSaving] = useState(false);
   // testingId 保存当前正在测试发送的渠道 ID。
@@ -31,8 +31,6 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const [connectorSettings, setConnectorSettings] = useState<SystemSettings>({});
   // connectorSaving 表示连接器配置保存是否正在执行。
   const [connectorSaving, setConnectorSaving] = useState(false);
-  // qqConnectorReady 表示系统级 QQ 机器人连接器凭据是否已就绪；普通用户不读系统设置，草稿为空时自然为 false。
-  const qqConnectorReady = connectorReady(qqBotConnector, connectorSettings);
   // smtpSaving 表示系统 SMTP 保存是否正在执行。
   const [smtpSaving, setSmtpSaving] = useState(false);
   // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取；管理员首帧即进入读取态，避免先闪出「未配置」。
@@ -53,6 +51,12 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const [showChannelSmtpPassword, setShowChannelSmtpPassword] = useState(false);
   // form 保存渠道编辑弹窗的当前表单。
   const [form, setForm] = useState<NotificationForm>(emptyNotificationForm);
+  // credentialSource 是当前渠道类型的凭据来源：连接器就绪时凭据由系统级配置接管。普通用户不读系统设置，草稿为空时自然为空。
+  const credentialSource = useMemo(
+    // credentialSourceResolver 只在该类型连接器或系统设置草稿变化时重新判定。
+    () => resolveCredentialSource(form.type, connectorSettings, connectorTypes),
+    [form.type, connectorSettings],
+  );
   // channelGeneration 隔离渠道加载和刷新产生的旧响应。
   const channelGeneration = useRef(0);
   // channelAbort 保存当前渠道列表请求的取消控制器。
@@ -214,6 +218,19 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     [],
   );
 
+  // resetCredentialState 清空已保存凭据键与清除意图；渠道类型切换后不得沿用上一类型的凭据状态。
+  const resetCredentialState = useCallback(
+    // 重置回调清空凭据键集合，并把表单的清除意图还原为缺省（保存即保留）。
+    () => {
+      setSavedCredentialKeys([]);
+      setForm(
+        // nextFormUpdater 只清除清除意图，其余表单值保持不变。
+        current => ({ ...current, credentialAction: undefined }),
+      );
+    },
+    [],
+  );
+
   // openCreate 打开新建渠道表单并清理上一次编辑状态。
   const openCreate = useCallback(
     // 新建回调重置表单并打开渠道弹窗。
@@ -221,7 +238,7 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     editorGeneration.current += 1;
     editorAbort.current?.abort();
     setEditing(null);
-    setHasChannelCredentials(false);
+    setSavedCredentialKeys([]);
     setForm(emptyNotificationForm());
     setShowChannelSmtpPassword(false);
     setShowModal(true);
@@ -241,21 +258,21 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
       editorAbort.current = controller;
       setShowModal(false);
       try {
-        // editor 只含收件地址、模式标记与 qq 目标 openid，SMTP 与 app_secret 明文始终留在服务端。
+        // editor 只含可回显的非敏感配置与已保存的凭据键名，凭据明文始终留在服务端。
         const editor = await getNotificationChannel(channel.id, { signal: controller.signal });
         if (generation !== editorGeneration.current || controller.signal.aborted) return;
         // initialForm 是读取完成后一次性建立的表单，之后不再由该请求回填。
         const initialForm = normalizeNotificationForm(channel, smtp);
         setEditing(channel);
-        setHasChannelCredentials(channel.type === 'qq' && editor.has_channel_credentials === true);
+        setSavedCredentialKeys(editor.saved_credential_keys ?? []);
         setForm(channel.type === 'email' ? {
           ...initialForm, preserveSMTP: true,
           config: { to_email: editor.to_email || '', use_custom_smtp: editor.use_custom_smtp === true },
-        } : channel.type === 'qq' ? {
-          // qq 表单只回填目标 openid；app_id/app_secret 一律不写入，空串会被服务端合并语义当作删除渠道级凭据。
-          ...initialForm,
-          config: { user_openid: editor.user_openid || '', group_openid: editor.group_openid || '' },
-        } : initialForm);
+        } : {
+          // 非邮件渠道回填服务端可安全回显的配置；敏感凭据键不在其中，留空保存即沿用服务端原值。
+          ...initialForm, credentialAction: undefined,
+          config: { ...initialForm.config, ...(editor.config ?? {}) },
+        });
         setShowChannelSmtpPassword(false);
         setShowModal(true);
       } catch (error: unknown /* 编辑读取失败时仅显示可读错误，不开放缺少配置的表单。 */) {
@@ -276,7 +293,7 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
     editorAbort.current?.abort();
     setSaving(false);
     setShowModal(false);
-    setHasChannelCredentials(false);
+    setSavedCredentialKeys([]);
     },
     [],
   );
@@ -285,8 +302,8 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const handleSave = useCallback(
     // 保存回调执行渠道校验、请求和成功刷新。
     async () => {
-    // validationError 是渠道表单预检失败时的用户提示；qq 渠道凭据可继承连接器或沿用已保存值。
-    const validationError = validateNotificationForm(form, { connectorReady: qqConnectorReady, hasChannelCredentials });
+    // validationError 是渠道表单预检失败时的用户提示；凭据键可由连接器接管或沿用已保存值。
+    const validationError = validateNotificationForm(form, { hiddenKeys: credentialSource?.hiddenKeys, savedCredentialKeys });
     if (validationError) {
       showToast('error', validationError);
       return;
@@ -321,7 +338,7 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
       if (isCurrentNotificationRequest(generation, actionGeneration.current)) setSaving(false);
     }
     },
-    [editing, form, hasChannelCredentials, loadChannels, qqConnectorReady, showToast],
+    [credentialSource, editing, form, loadChannels, savedCredentialKeys, showToast],
   );
 
   // handleDelete 删除渠道并在成功后刷新列表。
@@ -498,11 +515,11 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   return {
     channels, loading, showModal, editing, saving, testingId, toast, smtp, smtpSaving,
     connectorSettings, connectorSaving,
-    qqConnectorReady, hasChannelCredentials,
+    credentialSource, savedCredentialKeys,
     settingsLoading, settingsError,
     connectorSaveState, connectorSaveError, smtpSaveState, smtpSaveError,
     showSmtpPassword, showChannelSmtpPassword, form, setForm, setSmtp, setConnectorSettings, setShowSmtpPassword,
-    setShowChannelSmtpPassword, loadChannels, loadSmtp, refresh, openCreate, openEdit, closeModal, showToast,
+    setShowChannelSmtpPassword, loadChannels, loadSmtp, refresh, openCreate, openEdit, closeModal, resetCredentialState, showToast,
     handleSave, handleDelete, handleToggleEnabled, handleTest, handleSaveSmtp, handleSaveConnector,
     resetConnectorSaveState, resetSmtpSaveState,
   };

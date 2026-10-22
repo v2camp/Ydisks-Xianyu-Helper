@@ -77,7 +77,7 @@ export const PublishImagesEditor = ({ images, previews, maxImages = 9, onChange 
             onDragOver={/* dragOverAction 允许图片卡片接收拖拽释放。 */ event => event.preventDefault()}
             onDrop={/* dropAction 将拖拽图片移动到目标位置。 */ event => dropImage(event, index)}
             onDragEnd={/* dragEndAction 清理已结束或取消的拖拽状态。 */ () => setDragIndex(null)}
-            className={`group relative overflow-hidden rounded-2xl border bg-white shadow-sm transition ${dragIndex === index ? 'border-emerald-300 opacity-60' : 'border-slate-200 hover:border-emerald-300'}`}
+            className={`group relative overflow-hidden rounded-2xl border bg-white shadow-sm transition ${dragIndex === index ? 'border-success-300 opacity-60' : 'border-slate-200 hover:border-success-300'}`}
           >
             <img src={preview.url} alt={`第 ${index + 1} 张商品图片`} className="aspect-square w-full object-cover" />
             <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-slate-950/70 px-2 py-1.5 text-[11px] font-bold text-white">
@@ -85,21 +85,21 @@ export const PublishImagesEditor = ({ images, previews, maxImages = 9, onChange 
               <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-white/95 p-1.5">
-              <button type="button" disabled={index === 0} aria-label={`将第 ${index + 1} 张图片前移`} className="rounded-lg p-1.5 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-30" onClick={/* moveUpAction 将图片前移一位。 */ () => moveImage(index, index - 1)}>
+              <button type="button" disabled={index === 0} aria-label={`将第 ${index + 1} 张图片前移`} className="rounded-lg p-1.5 text-slate-700 hover:bg-success-50 hover:text-success-700 disabled:cursor-not-allowed disabled:opacity-30" onClick={/* moveUpAction 将图片前移一位。 */ () => moveImage(index, index - 1)}>
                 <ChevronUp className="h-4 w-4" />
               </button>
-              <button type="button" disabled={index === images.length - 1} aria-label={`将第 ${index + 1} 张图片后移`} className="rounded-lg p-1.5 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-30" onClick={/* moveDownAction 将图片后移一位。 */ () => moveImage(index, index + 1)}>
+              <button type="button" disabled={index === images.length - 1} aria-label={`将第 ${index + 1} 张图片后移`} className="rounded-lg p-1.5 text-slate-700 hover:bg-success-50 hover:text-success-700 disabled:cursor-not-allowed disabled:opacity-30" onClick={/* moveDownAction 将图片后移一位。 */ () => moveImage(index, index + 1)}>
                 <ChevronDown className="h-4 w-4" />
               </button>
-              <button type="button" aria-label={`删除第 ${index + 1} 张图片`} className="ml-auto rounded-lg p-1.5 text-slate-700 hover:bg-red-50 hover:text-red-600" onClick={/* removeAction 删除当前图片。 */ () => removeImage(index)}>
+              <button type="button" aria-label={`删除第 ${index + 1} 张图片`} className="ml-auto rounded-lg p-1.5 text-slate-700 hover:bg-danger-50 hover:text-danger-600" onClick={/* removeAction 删除当前图片。 */ () => removeImage(index)}>
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </article>
         ))}
 
-        {images.length < maxImages && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-100 px-3 text-center text-slate-700 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700">
-          <UploadCloud className="mb-2 h-7 w-7 text-emerald-600" />
+        {images.length < maxImages && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-100 px-3 text-center text-slate-700 transition hover:border-success-400 hover:bg-success-50 hover:text-success-700">
+          <UploadCloud className="mb-2 h-7 w-7 text-success-600" />
           <span className="text-sm font-extrabold">继续添加</span>
           <span className="mt-1 text-[11px] text-slate-600">支持 JPG / PNG / GIF</span>
           <input className="hidden" type="file" accept="image/*" multiple onChange={/* fileChangeAction 追加用户新选择的图片并重置控件。 */ appendImages} />

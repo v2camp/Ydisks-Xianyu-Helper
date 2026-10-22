@@ -18,15 +18,13 @@ type notificationChannelEditorResponse struct {
 	ToEmail string `json:"to_email,omitempty"`
 	// UseCustomSMTP 表示邮件渠道是否使用独立 SMTP，不包含 SMTP 密码。
 	UseCustomSMTP bool `json:"use_custom_smtp,omitempty"`
-	// UserOpenID 是 qq 渠道的单聊目标 openid；其他渠道为空。它只是目标标识，不是发送凭据。
-	UserOpenID string `json:"user_openid,omitempty"`
-	// GroupOpenID 是 qq 渠道的群聊目标 openid；其他渠道为空。它只是目标标识，不是发送凭据。
-	GroupOpenID string `json:"group_openid,omitempty"`
-	// HasChannelCredentials 表示 qq 渠道配置是否自填了 app_id 与 app_secret；只回传存在性，不回传 AppSecret。
-	HasChannelCredentials bool `json:"has_channel_credentials,omitempty"`
+	// Config 是该渠道类型可回显的非敏感配置键值，不含任何敏感键的值。
+	Config map[string]string `json:"config,omitempty"`
+	// SavedCredentialKeys 是该渠道类型已保存的敏感配置键名，只回传键名，不回传值。
+	SavedCredentialKeys []string `json:"saved_credential_keys,omitempty"`
 }
 
 // newNotificationChannelEditorResponse 将应用层编辑器视图转换为脱敏 HTTP DTO。
 func newNotificationChannelEditorResponse(channel notificationsapp.ChannelEditor) notificationChannelEditorResponse {
-	return notificationChannelEditorResponse{ID: channel.ID, Name: channel.Name, Type: channel.Type, EventTypes: channel.EventTypes, Enabled: channel.Enabled, ToEmail: channel.ToEmail, UseCustomSMTP: channel.UseCustomSMTP, UserOpenID: channel.UserOpenID, GroupOpenID: channel.GroupOpenID, HasChannelCredentials: channel.HasChannelCredentials}
+	return notificationChannelEditorResponse{ID: channel.ID, Name: channel.Name, Type: channel.Type, EventTypes: channel.EventTypes, Enabled: channel.Enabled, ToEmail: channel.ToEmail, UseCustomSMTP: channel.UseCustomSMTP, Config: channel.Config, SavedCredentialKeys: channel.SavedCredentialKeys}
 }

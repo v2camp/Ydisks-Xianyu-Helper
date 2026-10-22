@@ -157,7 +157,7 @@ export interface NotificationChannelResponse {
   user_id?: number;
 }
 
-/** 通知渠道编辑接口返回的脱敏 DTO；不包含任何渠道凭据。 */
+/** 通知渠道编辑接口返回的脱敏 DTO；不包含任何渠道凭据明文。 */
 export interface NotificationChannelEditorResponse {
   /** 通知渠道主键。 */
   id: number;
@@ -173,10 +173,8 @@ export interface NotificationChannelEditorResponse {
   to_email?: string;
   /** 邮件渠道是否使用独立 SMTP。 */
   use_custom_smtp?: boolean;
-  /** qq 渠道的单聊目标 openid；其他渠道为空，它只是平台目标标识而非发送凭据。 */
-  user_openid?: string;
-  /** qq 渠道的群聊目标 openid；其他渠道为空，它只是平台目标标识而非发送凭据。 */
-  group_openid?: string;
-  /** qq 渠道配置是否自填了 app_id 与 app_secret；只表示存在性，不回传 AppSecret。 */
-  has_channel_credentials?: boolean;
+  /** 该渠道类型可回显的非敏感配置键值，只含已存在且非空的键；敏感键的值不会出现在这里。 */
+  config?: Record<string, string>;
+  /** 该渠道类型已保存的敏感凭据键名，按字典序排序；只回传键名，不回传值。 */
+  saved_credential_keys?: string[];
 }

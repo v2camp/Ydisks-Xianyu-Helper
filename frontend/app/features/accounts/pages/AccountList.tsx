@@ -198,7 +198,7 @@ const AccountList: React.FC = () => {
           />
           <button
             onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => startQRLogin()}
-            className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 transition-transform hover:scale-105 active:scale-95"
+            className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-brand-200 transition-transform hover:scale-105 active:scale-95"
           >
             <QrCode className="w-5 h-5" />
             扫码添加新账号
@@ -206,9 +206,9 @@ const AccountList: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-blue-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+      <div className="rounded-2xl border border-brand-100 bg-brand-50 px-5 py-4 text-sm text-brand-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
         <div className="font-bold">当前显示 {filteredAccounts.length} / {accounts.length} 个账号</div>
-        <div className="text-blue-700">如果某个账号只显示 ID，点该账号右侧“刷新资料”；若刷新失败，先点二维码重新授权。</div>
+        <div className="text-brand-700">如果某个账号只显示 ID，点该账号右侧“刷新资料”；若刷新失败，先点二维码重新授权。</div>
       </div>
 
       {/* Account Grid */}

@@ -72,7 +72,7 @@ export const PublishSpecsEditor = ({ specs, skuRows, onChange }: PublishSpecsEdi
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <span className="text-lg font-black leading-none text-slate-300" aria-hidden="true">⋮⋮</span>
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-              <select aria-label={`第 ${specIndex + 1} 个规格类型`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 shadow-sm focus:!border-0 focus:ring-2 focus:ring-emerald-100" value={spec.customName ? '__custom__' : spec.name} onChange={/* event 携带用户选择的规格类型。 */ event => {
+              <select aria-label={`第 ${specIndex + 1} 个规格类型`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 shadow-sm focus:!border-0 focus:ring-2 focus:ring-success-100" value={spec.customName ? '__custom__' : spec.name} onChange={/* event 携带用户选择的规格类型。 */ event => {
                 // nextName 保存用户刚选择或输入的规格名称。
                 const nextName = event.target.value;
                 updateSpec(specIndex, nextName === '__custom__' ? { customName: true, name: '' } : { customName: false, name: nextName });
@@ -81,25 +81,25 @@ export const PublishSpecsEditor = ({ specs, skuRows, onChange }: PublishSpecsEdi
                 {standardSpecNames.filter(/* name 保留未被其他维度占用的官方规格名。 */ name => !specs.some(/* otherSpec、otherIndex 检查规格名是否重复。 */ (otherSpec, otherIndex) => otherIndex !== specIndex && otherSpec.name === name)).map(/* name 渲染一个官方规格选项。 */ name => <option key={name} value={name}>{name}</option>)}
                 <option value="__custom__">无合适选项？输入自定义类型</option>
               </select>
-              {spec.customName && <input aria-label={`第 ${specIndex + 1} 个自定义规格类型`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-emerald-100" placeholder="输入自定义类型" value={spec.name} onChange={/* event 携带自定义规格名称变化。 */ event => updateSpec(specIndex, { name: event.target.value })} />}
+              {spec.customName && <input aria-label={`第 ${specIndex + 1} 个自定义规格类型`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-success-100" placeholder="输入自定义类型" value={spec.name} onChange={/* event 携带自定义规格名称变化。 */ event => updateSpec(specIndex, { name: event.target.value })} />}
             </div>
             <label className="flex shrink-0 items-center gap-2 text-xs font-bold text-slate-600">
               <input type="checkbox" checked={spec.supportImage} onChange={/* event 携带规格图片开关的新状态。 */ event => updateSpec(specIndex, { supportImage: event.target.checked })} />
               支持规格图片
             </label>
-            <button type="button" aria-label={`删除第 ${specIndex + 1} 个规格类型`} className="self-end rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 sm:self-auto" onClick={/* 删除当前规格维度并重建组合。 */ () => removeSpec(specIndex)}>
+            <button type="button" aria-label={`删除第 ${specIndex + 1} 个规格类型`} className="self-end rounded-lg p-2 text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-500 sm:self-auto" onClick={/* 删除当前规格维度并重建组合。 */ () => removeSpec(specIndex)}>
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {spec.values.map(/* value、valueIndex 渲染一个规格值输入行。 */ (value, valueIndex) => (
               <div key={value.valueId} className="flex items-center gap-2">
-                <input aria-label={`${spec.name || `第 ${specIndex + 1} 个规格`}第 ${valueIndex + 1} 个规格值`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-emerald-100" placeholder={`请输入具体的${spec.name || '规格值'}`} value={value.value} onChange={/* event 携带规格值输入变化。 */ event => updateSpecValue(specIndex, valueIndex, { value: event.target.value })} onKeyDown={/* event 携带规格值输入框的按键事件。 */ event => handleSpecValueKeyDown(specIndex, valueIndex, event.key)} />
-                {spec.supportImage && <label className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border ${value.image ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-slate-200 bg-white text-slate-400'} hover:border-emerald-300`} title={value.image ? `已选择 ${value.image.name}` : '上传规格图片'}>
+                <input aria-label={`${spec.name || `第 ${specIndex + 1} 个规格`}第 ${valueIndex + 1} 个规格值`} className="ios-input min-w-0 flex-1 rounded-xl !border-0 !bg-white px-3 py-2.5 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-success-100" placeholder={`请输入具体的${spec.name || '规格值'}`} value={value.value} onChange={/* event 携带规格值输入变化。 */ event => updateSpecValue(specIndex, valueIndex, { value: event.target.value })} onKeyDown={/* event 携带规格值输入框的按键事件。 */ event => handleSpecValueKeyDown(specIndex, valueIndex, event.key)} />
+                {spec.supportImage && <label className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border ${value.image ? 'border-success-300 bg-success-50 text-success-600' : 'border-slate-200 bg-white text-slate-400'} hover:border-success-300`} title={value.image ? `已选择 ${value.image.name}` : '上传规格图片'}>
                   <ImagePlus className="h-4 w-4" />
                   <input className="hidden" type="file" accept="image/*" onChange={/* event 携带规格值图片文件选择结果。 */ event => updateSpecValue(specIndex, valueIndex, { image: event.target.files?.[0] || null })} />
                 </label>}
-                <button type="button" aria-label={`删除${spec.name || '规格'}值 ${value.value || valueIndex + 1}`} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500" onClick={/* 删除当前规格值并重建组合。 */ () => removeSpecValue(specIndex, valueIndex)}>
+                <button type="button" aria-label={`删除${spec.name || '规格'}值 ${value.value || valueIndex + 1}`} className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-danger-50 hover:text-danger-500" onClick={/* 删除当前规格值并重建组合。 */ () => removeSpecValue(specIndex, valueIndex)}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -108,7 +108,7 @@ export const PublishSpecsEditor = ({ specs, skuRows, onChange }: PublishSpecsEdi
         </div>
       ))}
 
-      <button type="button" disabled={specs.length >= 2} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-extrabold text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={addSpec}>
+      <button type="button" disabled={specs.length >= 2} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-extrabold text-slate-600 transition-colors hover:border-success-300 hover:bg-success-50 hover:text-success-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={addSpec}>
         <Plus className="h-4 w-4" />添加规格类型（{specs.length}/2）
       </button>
 
@@ -120,12 +120,12 @@ export const PublishSpecsEditor = ({ specs, skuRows, onChange }: PublishSpecsEdi
           <tbody className="divide-y divide-slate-100">
             {skuRows.map(/* row、rowIndex 渲染一个 SKU 组合行。 */ (row, rowIndex) => <tr key={row.rowKey}>
               {row.valueLabels.map(/* label、valueIndex 渲染当前组合的规格值单元格。 */ (label, valueIndex) => <td key={`${row.rowKey}-${valueIndex}`} className="whitespace-nowrap px-4 py-3 font-bold text-slate-700">{label}</td>)}
-              <td className="px-4 py-2"><div className="flex items-center gap-1"><span className="font-bold text-slate-700">¥</span><input aria-label={`${row.valueLabels.join(' ')} 价格`} className="ios-input w-full rounded-xl !border-0 !bg-white px-3 py-2 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-emerald-100" inputMode="decimal" placeholder="0.00" value={row.price} onChange={/* event 携带 SKU 售价变化。 */ event => updateSkuRow(rowIndex, { price: event.target.value })} /></div></td>
-              <td className="px-4 py-2"><input aria-label={`${row.valueLabels.join(' ')} 库存`} className="ios-input w-full rounded-xl !border-0 !bg-white px-3 py-2 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-emerald-100" inputMode="numeric" min="0" placeholder="0" value={row.quantity} onChange={/* event 携带 SKU 库存变化。 */ event => updateSkuRow(rowIndex, { quantity: event.target.value })} /></td>
+              <td className="px-4 py-2"><div className="flex items-center gap-1"><span className="font-bold text-slate-700">¥</span><input aria-label={`${row.valueLabels.join(' ')} 价格`} className="ios-input w-full rounded-xl !border-0 !bg-white px-3 py-2 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-success-100" inputMode="decimal" placeholder="0.00" value={row.price} onChange={/* event 携带 SKU 售价变化。 */ event => updateSkuRow(rowIndex, { price: event.target.value })} /></div></td>
+              <td className="px-4 py-2"><input aria-label={`${row.valueLabels.join(' ')} 库存`} className="ios-input w-full rounded-xl !border-0 !bg-white px-3 py-2 !text-slate-900 !placeholder:text-slate-500 shadow-sm focus:!border-0 focus:ring-2 focus:ring-success-100" inputMode="numeric" min="0" placeholder="0" value={row.quantity} onChange={/* event 携带 SKU 库存变化。 */ event => updateSkuRow(rowIndex, { quantity: event.target.value })} /></td>
             </tr>)}
           </tbody>
         </table>
-        {specs.length > 0 && skuRows.length === 0 && <p className="px-4 py-4 text-xs text-amber-700">请先填写每种规格的规格值，组合表会自动出现。</p>}
+        {specs.length > 0 && skuRows.length === 0 && <p className="px-4 py-4 text-xs text-warning-700">请先填写每种规格的规格值，组合表会自动出现。</p>}
       </div>}
     </section>
   );

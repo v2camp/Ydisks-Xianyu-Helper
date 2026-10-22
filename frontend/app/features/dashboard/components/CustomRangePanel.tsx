@@ -72,7 +72,7 @@ export const CustomRangePanel: React.FC<CustomRangePanelProps> = ({ startDate, e
         ))}
       </div>
 
-      {invalid !== '' && <p className="mt-2 text-xs font-bold text-red-600">{invalid}</p>}
+      {invalid !== '' && <p className="mt-2 text-xs font-bold text-danger-600">{invalid}</p>}
 
       <div className="mt-3 flex items-center justify-end gap-2">
         <button

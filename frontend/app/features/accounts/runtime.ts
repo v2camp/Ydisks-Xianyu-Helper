@@ -1,3 +1,4 @@
+import { STATUS_TONE_STYLES,type StatusTone } from '../../../shared/ui/tokens';
 import type { AccountDetail } from './api';
 import type { AccountRuntimeStatus } from './api';
 import type { AccountRuntimePresentation } from './types';
@@ -32,29 +33,53 @@ export const mergeAccountRuntimeStatuses = (
   },
 );
 
-// accountRuntimePresentation 将后端运行状态转换为列表徽标和状态点样式。
+// RUNTIME_DOT_STYLES 把同一套状态语义映射到头像旁状态点的实心圆点：徽标的「浅底 + 深字」不适合 6px 的点状指示，
+// 因此按同族取 500 档实心底色，保证圆点与徽标同义同族；中性态用浅灰，避免已停用账号抢视觉焦点。
+const RUNTIME_DOT_STYLES: Record<StatusTone, string> = {
+  ready: 'bg-success-500',
+  info: 'bg-brand-500',
+  warning: 'bg-warning-500',
+  danger: 'bg-danger-500',
+  neutral: 'bg-gray-300',
+};
+
+// runtimePresentation 用同一档语义色派生徽标与状态点，避免两处各写一套色值而漂移。
+const runtimePresentation = (label: string, tone: StatusTone): AccountRuntimePresentation => ({
+  label,
+  badge: STATUS_TONE_STYLES[tone],
+  dot: RUNTIME_DOT_STYLES[tone],
+});
+
+// accountRuntimePresentation 将后端运行状态转换为列表徽标和状态点样式；具体色值由语义色档决定。
 export const accountRuntimePresentation = (account: AccountDetail): AccountRuntimePresentation => {
   if (!account.enabled || account.runtime_state === 'disabled') {
-    return { label: '已停用', badge: 'bg-gray-100 text-gray-500', dot: 'bg-gray-300' };
+    return runtimePresentation('已停用', 'neutral');
   }
   switch (account.runtime_state) {
+    // 在线可正常收发消息，是本模块唯一的「可执行」终态。
     case 'online':
-      return { label: '在线', badge: 'bg-green-100 text-green-700', dot: 'bg-green-500' };
+      return runtimePresentation('在线', 'ready');
+    // 启动与连接中属于过程态，只需提示「正在进行」，不应读作告警。
     case 'starting':
     case 'connecting':
-      return { label: '连接中', badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' };
+      return runtimePresentation('连接中', 'info');
+    // 重连中意味着链路已断但仍在自愈，需要用户留意。
     case 'reconnecting':
-      return { label: '重连中', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
+      return runtimePresentation('重连中', 'warning');
+    // 登录失效必须重新扫码，属于需要用户处置的终态。
     case 'auth_expired':
-      return { label: '登录已失效', badge: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
+      return runtimePresentation('登录已失效', 'danger');
+    // 平台风控验证同样需要人工介入，但可通过人脸识别自愈，因此按警示而非错误处理。
     case 'verification_required':
-      return { label: '需要验证', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' };
+      return runtimePresentation('需要验证', 'warning');
+    // 同账号在别处登录导致的状态冲突，需用户处置，与运行异常同档。
     case 'runtime_conflict':
-      return { label: '运行状态冲突', badge: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
+      return runtimePresentation('运行状态冲突', 'danger');
     case 'error':
     case 'stopped':
-      return { label: '运行异常', badge: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
+      return runtimePresentation('运行异常', 'danger');
+    // 其余未知状态保持中性，避免把「尚未探明」显示成异常。
     default:
-      return { label: '状态检测中', badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' };
+      return runtimePresentation('状态检测中', 'neutral');
   }
 };

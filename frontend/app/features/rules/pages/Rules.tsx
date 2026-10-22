@@ -444,8 +444,8 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                           <div className="flex flex-wrap gap-2 text-xs font-bold">
                             <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">{meta.label}</span>
                             <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">{rule.item_title || rule.item_id || '账号级规则'}</span>
-                            {needsAllItemsConfirmation(rule) && <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800">需确认适用于全部商品 · 暂不发货</span>}
-                            <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700">{actionSummary(rule)}</span>
+                            {needsAllItemsConfirmation(rule) && <span className="px-2.5 py-1 rounded-lg bg-warning-50 text-warning-800">需确认适用于全部商品 · 暂不发货</span>}
+                            <span className="px-2.5 py-1 rounded-lg bg-brand-50 text-brand-700">{actionSummary(rule)}</span>
                           </div>
                         </div>
                       </div>
@@ -460,13 +460,13 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                         </button>
                         <button
                           onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleToggleAutomation(rule)}
-                          className={`px-4 py-2 rounded-xl text-sm font-bold ${rule.enabled ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold ${rule.enabled ? 'bg-warning-50 text-warning-700 hover:bg-warning-100' : 'bg-success-50 text-success-700 hover:bg-success-100'}`}
                         >
                           {rule.enabled ? '禁用' : '启用'}
                         </button>
                         <button
                           onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDeleteAutomation(rule.id)}
-                          className="p-2.5 rounded-xl text-red-500 hover:bg-red-50"
+                          className="p-2.5 rounded-xl text-danger-500 hover:bg-danger-50"
                           title="删除"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -540,7 +540,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
 
       {activeTab === 'reply' && (
         <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-4 py-2 rounded-xl mb-5 w-fit">
+          <div className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 px-4 py-2 rounded-xl mb-5 w-fit">
             <AlertCircle className="w-4 h-4" />
             这里只处理买家用户消息；系统通知不会进入关键词或 AI 回复。
           </div>
@@ -558,7 +558,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                       <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold">账号级</span>
                     ) : (
                       itemLabels.map(/* 当前回调渲染单个关联商品标签。 */ label => (
-                        <span key={`${rule.id}-${label}`} className="max-w-[16rem] truncate px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold" title={label}>{label}</span>
+                        <span key={`${rule.id}-${label}`} className="max-w-[16rem] truncate px-3 py-1 bg-brand-50 text-brand-700 rounded-lg text-xs font-bold" title={label}>{label}</span>
                       ))
                     )}
                   </div>
@@ -577,7 +577,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                   >
                     <Edit className="w-4 h-4" />
                   </button>
-                  <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDeleteReply(rule.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors" title="删除">
+                  <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDeleteReply(rule.id)} className="p-2 text-gray-400 hover:text-danger-500 hover:bg-danger-50 rounded-xl transition-colors" title="删除">
                     <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
@@ -591,7 +591,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
 
       {activeTab === 'default' && (
         <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-4 py-2 rounded-xl mb-5 w-fit">
+          <div className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 px-4 py-2 rounded-xl mb-5 w-fit">
             <AlertCircle className="w-4 h-4" />
             默认回复只处理买家用户消息；关键词未命中且 AI 未接管时才会使用。
           </div>
@@ -602,19 +602,19 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
               // enabled 启用状态。
               const enabled = Boolean(defaultReply?.enabled);
               return (
-                <div key={account.id} className={`flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl border transition-all gap-4 ${enabled ? 'border-purple-100 bg-purple-50/50 hover:bg-white hover:shadow-lg' : 'border-gray-100 bg-surface-subtle hover:bg-white hover:shadow-lg'}`}>
+                <div key={account.id} className={`flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl border transition-all gap-4 ${enabled ? 'border-accent-100 bg-accent-50/50 hover:bg-white hover:shadow-lg' : 'border-gray-100 bg-surface-subtle hover:bg-white hover:shadow-lg'}`}>
                   <div className="flex items-center gap-4 min-w-0">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${enabled ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${enabled ? 'bg-accent-600 text-white' : 'bg-gray-200 text-gray-400'}`}>
                       <Bot className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-bold text-gray-900 text-lg truncate">{accountLabel(account)}</h3>
-                        <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${enabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+                        <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${enabled ? 'bg-success-100 text-success-700' : 'bg-gray-200 text-gray-500'}`}>
                           {enabled ? '已启用' : '未启用'}
                         </span>
                         {defaultReply?.reply_once && (
-                          <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-purple-100 text-purple-700">只回复一次</span>
+                          <span className="px-2 py-0.5 rounded-lg text-xs font-bold bg-accent-100 text-accent-700">只回复一次</span>
                         )}
                       </div>
                       <div className="text-sm text-gray-600 line-clamp-2">
@@ -634,11 +634,11 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                       <>
                         <button
                           onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleClearDefaultReplyRecords(account.id)}
-                          className="px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                          className="px-3 py-2 text-xs font-bold text-brand-600 hover:bg-brand-50 rounded-xl transition-colors"
                         >
                           清空记录
                         </button>
-                        <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleDeleteDefaultReply(account.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors" title="删除">
+                        <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleDeleteDefaultReply(account.id)} className="p-2 text-gray-400 hover:text-danger-500 hover:bg-danger-50 rounded-xl transition-colors" title="删除">
                           <Trash2 className="w-5 h-5" />
                         </button>
                       </>
@@ -771,10 +771,10 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                       <div className="mt-4 rounded-2xl bg-gray-50 border border-gray-100 p-4">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold">{selectedRuleItem.item_title || selectedRuleItem.item_id}</span>
-                          <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${isMultiSpecRule ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                          <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${isMultiSpecRule ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-500'}`}>
                             {isMultiSpecRule ? '多规格商品' : '普通商品'}
                           </span>
-                          <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700">按订单购买数量自动发货</span>
+                          <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-success-50 text-success-700">按订单购买数量自动发货</span>
                         </div>
                         <p className="text-xs leading-5 text-gray-500">
                           多规格状态来自闲鱼商品本身，发布后不能在这里修改；系统会在买家付款后读取订单详情，按实际购买规格和数量匹配下面的发货规则。
@@ -796,7 +796,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                   {currentTrigger === 'order_created' ? (
                     <section className="bg-white rounded-3xl border border-gray-100 p-5">
                       <div className="flex items-center gap-2 mb-4">
-                        <CircleDollarSign className="w-5 h-5 text-violet-600" />
+                        <CircleDollarSign className="w-5 h-5 text-accent-600" />
                         <h4 className="font-black text-gray-900">改价设置</h4>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -823,8 +823,8 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                           <p className="text-xs text-gray-500 mt-2">留空则只改价不发送消息。</p>
                         </div>
                       </div>
-                      <div className="mt-4 rounded-2xl bg-violet-50 border border-violet-100 p-4">
-                        <p className="text-xs leading-5 text-violet-700">
+                      <div className="mt-4 rounded-2xl bg-accent-50 border border-accent-100 p-4">
+                        <p className="text-xs leading-5 text-accent-700">
                           改价仅对买家尚未付款的订单生效；订单已付款、已关闭或平台限制改价时任务会记录失败原因。建议配合商品说明引导买家「先拍下再等改价」。
                         </p>
                       </div>
@@ -950,7 +950,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                                 ...editingAutomationRule,
                                 variants: displayVariants.filter(/* 当前回调处理集合中的单个元素。 */ (_, variantIndex) => variantIndex !== index),
                               })}
-                              className="w-10 h-10 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-25"
+                              className="w-10 h-10 flex items-center justify-center rounded-lg text-danger-500 hover:bg-danger-50 disabled:opacity-25"
                               title="删除发货内容"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -962,7 +962,7 @@ const Rules: React.FC<RulesProps> = ({ initialDeliveryTarget, onDeliveryTargetHa
                   ) : (
                     <section className="bg-white rounded-3xl border border-gray-100 p-5">
                       <div className="flex items-center gap-2 mb-4">
-                        <Clock3 className="w-5 h-5 text-amber-600" />
+                        <Clock3 className="w-5 h-5 text-warning-600" />
                         <h4 className="font-black text-gray-900">求评价计划</h4>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

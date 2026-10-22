@@ -38,3 +38,31 @@ export const SAVE_BAR_STYLES: Record<SaveBarState, string> = {
   error: 'bg-danger-500',
   success: 'bg-success-500',
 };
+
+// ChipTone 是列表标签的语义色：ai 由模型生成、review 待人工复核、polish 建议润色、
+// delivery 交付相关、confirm 待确认、exempt 豁免（无需处理）。
+export type ChipTone = 'ai' | 'review' | 'polish' | 'delivery' | 'confirm' | 'exempt';
+
+// CHIP_TONE_STYLES 把标签语义映射到「浅底 + 同族深字」：同一族取 100 底色配 700 字色保证对比度，
+// 豁免态用中性灰弱化，避免把「无需处理」误读成告警。
+export const CHIP_TONE_STYLES: Record<ChipTone, string> = {
+  ai: 'bg-accent-100 text-accent-700',
+  review: 'bg-success-100 text-success-700',
+  polish: 'bg-warning-100 text-warning-700',
+  delivery: 'bg-brand-100 text-brand-700',
+  confirm: 'bg-info-100 text-info-700',
+  exempt: 'bg-gray-100 text-gray-500',
+};
+
+// StatusTone 是行内状态的语义色：ready 可执行、info 仅提示、warning 需留意、danger 需处置、neutral 中性无结论。
+export type StatusTone = 'ready' | 'info' | 'warning' | 'danger' | 'neutral';
+
+// STATUS_TONE_STYLES 把状态语义映射到「浅底 + 同族深字」，与 CHIP_TONE_STYLES 共用同一套明度关系，
+// 使标签与状态在并排展示时不会出现粗细、深浅不一致的视觉噪音。
+export const STATUS_TONE_STYLES: Record<StatusTone, string> = {
+  ready: 'bg-success-100 text-success-700',
+  info: 'bg-brand-100 text-brand-700',
+  warning: 'bg-warning-100 text-warning-700',
+  danger: 'bg-danger-100 text-danger-700',
+  neutral: 'bg-gray-100 text-gray-500',
+};

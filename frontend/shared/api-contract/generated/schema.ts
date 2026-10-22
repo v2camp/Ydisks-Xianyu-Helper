@@ -2732,12 +2732,12 @@ export interface components {
             enabled: boolean;
             to_email?: string;
             use_custom_smtp?: boolean;
-            /** @description qq 渠道的单聊目标 openid；其他渠道为空，不是发送凭据。 */
-            user_openid?: string;
-            /** @description qq 渠道的群聊目标 openid；其他渠道为空，不是发送凭据。 */
-            group_openid?: string;
-            /** @description qq 渠道配置是否自填了 app_id 与 app_secret；只表示存在性，不回传 AppSecret。 */
-            has_channel_credentials?: boolean;
+            /** @description 该渠道类型可回显的非敏感配置键值，只包含已存在且非空的键；敏感键的值不会出现在这里。 */
+            config?: {
+                [key: string]: string;
+            };
+            /** @description 该渠道类型敏感的配置键名中已存在且非空的部分，按字典序排序；只回传键名，不回传值。 */
+            saved_credential_keys?: string[];
         };
         NotificationChannelCreateRequest: {
             name: string;

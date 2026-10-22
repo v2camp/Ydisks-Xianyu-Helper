@@ -77,14 +77,14 @@ export const NotificationChannelList: React.FC<NotificationChannelListProps> = (
           <div className="text-xs text-gray-400 mt-1 truncate">订阅：{notificationEventSummary(channel.event_types)}</div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button data-channel-id={channel.id} onClick={handleToggleClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${channel.enabled ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+          <button data-channel-id={channel.id} onClick={handleToggleClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${channel.enabled ? 'bg-success-50 text-success-700 hover:bg-success-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
             {channel.enabled ? '启用中' : '已停用'}
           </button>
-          <button data-channel-id={channel.id} onClick={handleTestClick} disabled={testingId === channel.id} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-brand hover:bg-blue-100 transition-colors flex items-center gap-1 disabled:opacity-50">
+          <button data-channel-id={channel.id} onClick={handleTestClick} disabled={testingId === channel.id} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-50 text-brand hover:bg-brand-100 transition-colors flex items-center gap-1 disabled:opacity-50">
             {testingId === channel.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}测试
           </button>
           <button data-channel-id={channel.id} onClick={handleEditClick} className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors" title="编辑"><Edit2 className="w-4 h-4" /></button>
-          <button data-channel-id={channel.id} onClick={handleDeleteClick} className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500 transition-colors" title="删除"><Trash2 className="w-4 h-4" /></button>
+          <button data-channel-id={channel.id} onClick={handleDeleteClick} className="w-8 h-8 rounded-lg bg-danger-50 hover:bg-danger-100 flex items-center justify-center text-danger-500 transition-colors" title="删除"><Trash2 className="w-4 h-4" /></button>
         </div>
       </div>
     );

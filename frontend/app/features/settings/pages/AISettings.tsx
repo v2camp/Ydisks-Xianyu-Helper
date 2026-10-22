@@ -175,7 +175,7 @@ const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
                               setSettings({...settings, ai_model: model});
                               setModelDropdownOpen(false);
                             }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-brand flex items-center justify-between gap-3"
+                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-brand-50 hover:text-brand flex items-center justify-between gap-3"
                           >
                             <span className="truncate">{model}</span>
                             {model === currentModel && <Check className="w-4 h-4 shrink-0 text-brand" />}
@@ -207,21 +207,21 @@ const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
                 </button>
               </div>
               {modelError ? (
-                <p className="text-xs text-red-500">{modelError}</p>
+                <p className="text-xs text-danger-500">{modelError}</p>
               ) : (
                 <p className="text-xs text-gray-500">
                   {aiModels.length > 0 ? `已从当前 API 地址读取到 ${aiModels.length} 个模型` : '模型列表从当前 API 地址读取，也可以手动输入模型名'}
                 </p>
               )}
               {connectionTestMessage && (
-                <div className={`rounded-lg px-3 py-2 text-xs font-medium ${connectionTestMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                <div className={`rounded-lg px-3 py-2 text-xs font-medium ${connectionTestMessage.type === 'success' ? 'bg-success-50 text-success-700 border border-success-100' : 'bg-danger-50 text-danger-700 border border-danger-100'}`}>
                   {connectionTestMessage.type === 'success' ? '✓ ' : '✗ '}{connectionTestMessage.text}
                 </div>
               )}
             </div>
 
             {/* 常见 AI 服务提示：默认折叠，展开后才列出兼容地址；两条示例来自常量，避免散落在 JSX 里。 */}
-            <details className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
+            <details className="p-3 bg-brand-50 rounded-xl text-xs text-brand-700">
               <summary className="cursor-pointer font-bold select-none">常见 AI 服务</summary>
               <ul className="list-disc list-inside mt-2 space-y-0.5">
                 {COMMON_AI_SERVICES.map(/* service 是一条参考服务及其兼容 API 地址。 */ service => (
@@ -239,11 +239,11 @@ const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
         <section className="space-y-4">
           <SectionHeader icon={Sparkles} title="AI 回复人工确认" tone="brand" />
           <div className="ios-card rounded-xl p-6 bg-white">
-            <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 cursor-pointer">
+            <label className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 cursor-pointer">
               <input type="checkbox" className="mt-1" checked={settings.ai_reply_review_mode || false} onChange={/* 勾选变化更新 AI 回复人工确认开关草稿。 */ event => setSettings({ ...settings, ai_reply_review_mode: event.target.checked })} />
               <span>
-                <span className="block text-sm font-bold text-blue-900">AI 回复人工确认模式</span>
-                <span className="mt-1 block text-xs leading-5 text-blue-800">开启后 AI 生成的回复不会自动发送，需在会话页人工确认后再发出，防止误发。</span>
+                <span className="block text-sm font-bold text-brand-900">AI 回复人工确认模式</span>
+                <span className="mt-1 block text-xs leading-5 text-brand-800">开启后 AI 生成的回复不会自动发送，需在会话页人工确认后再发出，防止误发。</span>
               </span>
             </label>
           </div>

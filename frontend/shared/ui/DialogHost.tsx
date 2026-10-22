@@ -28,11 +28,11 @@ interface DialogVariantMeta {
 
 // DIALOG_VARIANTS 汇总全部语义变体的展示参数，组件不自行拼接颜色值。
 const DIALOG_VARIANTS: Record<DialogVariant, DialogVariantMeta> = {
-  info: { Icon: Info, badgeClass: 'bg-blue-50 text-blue-600', defaultTitle: '提示' },
+  info: { Icon: Info, badgeClass: 'bg-brand-50 text-brand-600', defaultTitle: '提示' },
   success: { Icon: CheckCircle2, badgeClass: 'bg-success-50 text-success-600', defaultTitle: '操作成功' },
   warning: { Icon: AlertTriangle, badgeClass: 'bg-warning-50 text-warning-600', defaultTitle: '请注意' },
   error: { Icon: XCircle, badgeClass: 'bg-danger-50 text-danger-600', defaultTitle: '操作失败' },
-  question: { Icon: HelpCircle, badgeClass: 'bg-blue-50 text-blue-600', defaultTitle: '请确认' },
+  question: { Icon: HelpCircle, badgeClass: 'bg-brand-50 text-brand-600', defaultTitle: '请确认' },
   danger: { Icon: AlertTriangle, badgeClass: 'bg-danger-50 text-danger-600', defaultTitle: '请确认' },
 };
 

@@ -1,4 +1,5 @@
 import { describe,expect,test } from 'vitest';
+import { STATUS_TONE_STYLES } from '../../../shared/ui/tokens';
 import type { AccountDetail,ShippingRule } from './api';
 import {
 accentClasses,
@@ -95,10 +96,10 @@ describe('规则工具函数', /* 当前回调处理规则配置和展示状态�
       { action_type: 'send_card', card_id: 2, enabled: true },
       { action_type: 'send_text', message_template: '忽略', enabled: true },
     ] }))).toBe('库存一 / 卡密 2');
-    expect(accentClasses('blue', true)).toContain('border-blue-500');
-    expect(accentClasses('amber')).toContain('hover:border-amber-300');
-    expect(accentClasses('unknown' as never)).toContain('border-blue-100');
-    expect(statusPill(true)).toContain('bg-emerald-100');
+    expect(accentClasses('blue', true)).toContain('border-brand-500');
+    expect(accentClasses('amber')).toContain('hover:border-warning-300');
+    expect(accentClasses('unknown' as never)).toContain('border-brand-100');
+    expect(statusPill(true)).toBe(STATUS_TONE_STYLES.ready);
     expect(statusPill(false)).toContain('bg-gray-200');
     expect(boolFlag(true)).toBe(true);
     expect(boolFlag(1)).toBe(true);

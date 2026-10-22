@@ -223,7 +223,7 @@ const ConfigBlock: React.FC<ConfigBlockProps> = ({ icon, title, hint, placeholde
           {viewMode === 'form' ? 'JSON' : '表单'}
         </button>
       </div>
-      {viewError && <p className="text-xs text-red-500">{viewError}</p>}
+      {viewError && <p className="text-xs text-danger-500">{viewError}</p>}
       {viewMode === 'form' ? children : (
         <div className="space-y-2">
           <textarea
@@ -232,10 +232,10 @@ const ConfigBlock: React.FC<ConfigBlockProps> = ({ icon, title, hint, placeholde
             placeholder={placeholder}
             spellCheck={false}
             aria-label={`${title} JSON 原文`}
-            className={`w-full ios-input px-4 py-3 rounded-xl h-56 font-mono text-xs leading-5 resize-y ${isValidJSON(value) ? 'border-gray-200' : 'border-red-300'}`}
+            className={`w-full ios-input px-4 py-3 rounded-xl h-56 font-mono text-xs leading-5 resize-y ${isValidJSON(value) ? 'border-gray-200' : 'border-danger-300'}`}
           />
           {!isValidJSON(value) && (
-            <p className="text-xs text-red-500">JSON 格式非法</p>
+            <p className="text-xs text-danger-500">JSON 格式非法</p>
           )}
         </div>
       )}
@@ -304,7 +304,7 @@ export const PolicyConfigForm: React.FC<AIConfigBlockProps> = ({ settings, onCha
           <button
             type="button"
             onClick={fillRecommended}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 border border-violet-200 px-3 py-2 text-xs font-bold text-violet-700 transition-colors hover:bg-violet-100"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-accent-50 border border-accent-200 px-3 py-2 text-xs font-bold text-accent-700 transition-colors hover:bg-accent-100"
           >
             <Sparkles className="w-3.5 h-3.5" />
             填入推荐话术
@@ -376,7 +376,7 @@ export const KnowledgeConfigForm: React.FC<AIConfigBlockProps> = ({ settings, on
           <button
             type="button"
             onClick={fillRecommended}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 border border-violet-200 px-3 py-2 text-xs font-bold text-violet-700 transition-colors hover:bg-violet-100"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-accent-50 border border-accent-200 px-3 py-2 text-xs font-bold text-accent-700 transition-colors hover:bg-accent-100"
           >
             <Sparkles className="w-3.5 h-3.5" />
             填入推荐语料
@@ -466,7 +466,7 @@ export const ScopeConfigForm: React.FC<AIConfigBlockProps> = ({ settings, onChan
               key={template.id}
               type="button"
               onClick={/* 当前回调把常用意图模板追加进意图列表。 */ () => insertTemplate(template)}
-              className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition-colors hover:bg-violet-100"
+              className="rounded-full border border-accent-200 bg-accent-50 px-3 py-1.5 text-xs font-bold text-accent-700 transition-colors hover:bg-accent-100"
             >
               + {template.label}
             </button>

@@ -65,10 +65,10 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
 
           {state.batchTab === 'create' ? (
             <div className="space-y-4">
-              <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-xs text-blue-900 leading-5">
-                上传表格，每行一个卡密组。表头：<code className="bg-blue-100/70 px-1.5 py-0.5 rounded">名称,类型,内容,描述,启用,延迟秒,多规格,规格名,规格值</code>。
+              <div className="rounded-xl bg-brand-50 border border-brand-100 p-4 text-xs text-brand-900 leading-5">
+                上传表格，每行一个卡密组。表头：<code className="bg-brand-100/70 px-1.5 py-0.5 rounded">名称,类型,内容,描述,启用,延迟秒,多规格,规格名,规格值</code>。
                 类型填 text/data/image；data 类型的“内容”按行存卡密（CSV 单元格内换行需用引号包裹）。
-                <span className="mt-2 block font-bold text-blue-950">「内容」列 = 自动发货时发给买家的文字/卡密（必填，买家实际收到这一列）；「描述」列 = 仅自己可见的备注，绝不会发送给买家。</span>
+                <span className="mt-2 block font-bold text-brand-950">「内容」列 = 自动发货时发给买家的文字/卡密（必填，买家实际收到这一列）；「描述」列 = 仅自己可见的备注，绝不会发送给买家。</span>
                 <span className="mt-1 block">若把链接/卡密误填进「描述」，买家将收不到交付内容；如被检测为填反，该行会被拒绝。</span>
               </div>
               <div className="flex items-center gap-3">
@@ -81,7 +81,7 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
                 </label>
               </div>
               {state.batchResult?.error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex items-center justify-between gap-3">
+                <div className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700 flex items-center justify-between gap-3">
                   <span>{state.batchResult.error}</span>
                   <button type="button" onClick={handleRetryCreate} disabled={!state.batchFile || state.batchBusy} className="font-bold whitespace-nowrap">重试</button>
                 </div>
@@ -97,7 +97,7 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
                       ).map(
                         // row 是待展示失败说明的单行结果。
                         row => (
-                        <div key={row.row_no} className="text-xs text-red-600">第 {row.row_no} 行「{row.name}」：{row.error}</div>
+                        <div key={row.row_no} className="text-xs text-danger-600">第 {row.row_no} 行「{row.name}」：{row.error}</div>
                         ),
                       )}
                     </div>
@@ -108,7 +108,7 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
           ) : (
             <div className="space-y-4">
               {dataCards.length === 0 ? (
-                <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">暂无 data（批量卡密）类型的卡密组，请先创建一个再充卡密。</div>
+                <div className="rounded-xl bg-warning-50 border border-warning-200 p-4 text-sm text-warning-800">暂无 data（批量卡密）类型的卡密组，请先创建一个再充卡密。</div>
               ) : (
                 <>
                   <div className="space-y-2">
@@ -123,12 +123,12 @@ export const BatchCardImportModal: React.FC<CardBatchModalProps> = ({
                     <p className="text-xs text-gray-500">预览：{state.appendPreview.length} 个有效卡密，空行自动忽略。</p>
                   </div>
                   {state.appendError && (
-                    <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-center justify-between gap-3">
+                    <div className="rounded-xl bg-danger-50 border border-danger-200 p-3 text-sm text-danger-700 flex items-center justify-between gap-3">
                       <span>{state.appendError}</span>
                       <button type="button" onClick={handleRetryAppend} disabled={state.batchBusy} className="font-bold whitespace-nowrap">重试</button>
                     </div>
                   )}
-                  {state.appendResult && <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-sm text-green-700 font-bold">已追加 {state.appendResult.added} 个卡密</div>}
+                  {state.appendResult && <div className="rounded-xl bg-success-50 border border-success-200 p-3 text-sm text-success-700 font-bold">已追加 {state.appendResult.added} 个卡密</div>}
                 </>
               )}
             </div>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -54,12 +55,52 @@ type ChannelEditor struct {
 	ToEmail string
 	// UseCustomSMTP 表示邮件渠道是否使用独立 SMTP；不代表任何 SMTP 凭据内容。
 	UseCustomSMTP bool
-	// UserOpenID 是 qq 渠道配置里的单聊目标 openid；其他渠道为空。它只是平台目标标识，不是发送凭据。
-	UserOpenID string
-	// GroupOpenID 是 qq 渠道配置里的群聊目标 openid；其他渠道为空。它只是平台目标标识，不是发送凭据。
-	GroupOpenID string
-	// HasChannelCredentials 表示 qq 渠道配置里 app_id 与 app_secret 均非空；只回传存在性，不回传 AppSecret 本身。
-	HasChannelCredentials bool
+	// Config 是该渠道类型可回显的非敏感配置键值，只包含已存在且非空的键；敏感键的值永不进入该字段。
+	Config map[string]string
+	// SavedCredentialKeys 是该渠道类型敏感的配置键名中已存在且非空的部分，按字典序排序；只回传键名，不回传值。
+	SavedCredentialKeys []string
+}
+
+// channelConfigSpec 描述一种通知渠道类型的配置键分类：哪些键可回显、哪些键只回显存在性，以及更新时是否按键合并。
+type channelConfigSpec struct {
+	// Editable 是编辑器可回显实际值的非敏感配置键。
+	Editable []string
+	// Sensitive 是凭据类配置键；编辑器只回显键名是否存在，禁止回传值。
+	Sensitive []string
+	// Merge 表示部分更新时按提交的键合并配置，而不是整体替换。
+	Merge bool
+}
+
+// channelConfigSpecs 是渠道类型到配置键分类的唯一来源，应用层据此回读与合并配置。
+// webhook_url 通常内嵌 access_token 或 key、headers 可能携带 Authorization，因此都归入 Sensitive；
+// bark 配置里的 url 是点击通知后的跳转地址而非发送凭据，不纳入任何一类。
+// email 走 EmailRecipient 字段与整体替换语义，不参与通用配置回显。
+var channelConfigSpecs = map[string]channelConfigSpec{
+	"qq":       {Editable: []string{"user_openid", "group_openid"}, Sensitive: []string{"app_id", "app_secret"}, Merge: true},
+	"bark":     {Editable: []string{"server_url", "title", "sound", "group"}, Sensitive: []string{"device_key"}, Merge: true},
+	"dingtalk": {Sensitive: []string{"webhook_url", "secret"}, Merge: true},
+	"feishu":   {Sensitive: []string{"webhook_url", "secret"}, Merge: true},
+	"webhook":  {Editable: []string{"http_method"}, Sensitive: []string{"webhook_url", "headers"}, Merge: true},
+	"wechat":   {Sensitive: []string{"webhook_url"}, Merge: true},
+	"telegram": {Editable: []string{"chat_id"}, Sensitive: []string{"bot_token"}, Merge: true},
+	"email":    {Merge: false},
+}
+
+// channelConfigTypeAliases 把历史别名归一到规范类型，仅用于查找配置键分类，不改写已存储的渠道类型值。
+var channelConfigTypeAliases = map[string]string{
+	"ding_talk": "dingtalk",
+	"lark":      "feishu",
+}
+
+// channelConfigSpecFor 返回渠道类型对应的配置键分类；别名在此归一，未登记类型返回零值，表示既不回显也不合并。
+func channelConfigSpecFor(channelType string) channelConfigSpec {
+	// normalizedType 是去除空白并按别名归一后的类型名，仅用于查表。
+	normalizedType := strings.TrimSpace(channelType)
+	// canonicalType、isAlias 是别名表命中的规范类型及其命中结果。
+	if canonicalType, isAlias := channelConfigTypeAliases[normalizedType]; isAlias {
+		normalizedType = canonicalType
+	}
+	return channelConfigSpecs[normalizedType]
 }
 
 // ChannelRecord 是通知渠道更新时由持久化端口返回的内部记录，Config 仅允许留在应用编排与存储边界。
@@ -102,6 +143,9 @@ type ChannelPatch struct {
 	Type *string
 	// Config 是可选的新敏感配置 JSON，禁止记录日志或返回响应。
 	Config *string
+	// ReplaceConfig 表示把 Config 视为完整配置整体替换；为 false 时，声明了 Merge 的渠道类型按提交的键合并。
+	// 该字段只供应用层内部调用方（例如 MCP 的 config_json 语义）使用，HTTP 请求不暴露它。
+	ReplaceConfig bool
 	// EmailRecipient 仅更新已有邮件渠道的收件地址，保留全部 SMTP 字段；与 Config 互斥。
 	EmailRecipient *string
 	// EventTypes 是可选的新订阅事件类型编码。
@@ -201,18 +245,12 @@ func (s *ChannelService) GetChannelEditor(ctx context.Context, userID, channelID
 	if json.Unmarshal([]byte(record.Config), &config) != nil {
 		config = nil
 	}
-	if record.Type == "qq" {
-		// 目标是平台分配的 openid，不同 AppID 下取值不同；此处只回显目标标识，不回传 AppSecret。
-		editor.UserOpenID = strings.TrimSpace(stringValue(config["user_openid"]))
-		editor.GroupOpenID = strings.TrimSpace(stringValue(config["group_openid"]))
-		// 只回传渠道级凭据是否齐备的布尔结论，前端据此区分「渠道自填凭据」与「改用连接器凭据」。
-		// appID 是渠道级机器人接入标识，仅用于判断凭据是否齐备。
-		appID := strings.TrimSpace(stringValue(config["app_id"]))
-		// appSecret 是渠道级机器人密钥，只参与存在性判断，禁止进入响应。
-		appSecret := strings.TrimSpace(stringValue(config["app_secret"]))
-		editor.HasChannelCredentials = appID != "" && appSecret != ""
-		return editor, nil
-	}
+	// spec 保存当前渠道类型的配置键分类；record.Type 本身保持存储原值，仅在查表时归一别名。
+	spec := channelConfigSpecFor(record.Type)
+	// 通用的可回显键值回读：只有 spec 声明的非敏感键才可能进入 Config，敏感键的值不会出现在这里。
+	editor.Config = editableChannelConfig(spec, config)
+	// 敏感键只回读键名，供前端区分「已保存凭据」与「改用连接器凭据」，永不回传值。
+	editor.SavedCredentialKeys = savedChannelCredentialKeys(spec, config)
 	if record.Type != "email" {
 		return editor, nil
 	}
@@ -283,9 +321,11 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 		record.Type = *patch.Type
 	}
 	if patch.Config != nil {
-		if existingType == "qq" {
-			// qq 渠道的配置含目标 openid 与渠道级凭据，编辑器不会回传它们，因此必须按键合并而不是整体替换。
-			record.Config = mergeQQConfig(record.Config, *patch.Config)
+		// spec 按更新前的渠道类型取配置键分类，避免本次同时改类型时误用新类型的合并规则。
+		spec := channelConfigSpecFor(existingType)
+		if spec.Merge && !patch.ReplaceConfig {
+			// 编辑器不会回传敏感键，因此声明了 Merge 的类型必须按键合并，不能整体替换丢掉未提交的凭据。
+			record.Config = mergeChannelConfig(record.Config, *patch.Config)
 		} else {
 			record.Config = *patch.Config
 		}
@@ -323,15 +363,15 @@ func patchEmailRecipient(config, recipient string) (string, error) {
 	return string(encoded), err
 }
 
-// mergeQQConfig 把提交的 qq 渠道配置按键合并进现有配置，用空串值表示删除该键，未提交的键保留原值。
+// mergeChannelConfig 把提交的渠道配置按键合并进现有配置，用空串值表示删除该键，未提交的键保留原值。
 // 旧配置为空或不是 JSON 对象时按空对象处理，不因历史脏数据拒绝更新；提交内容不是 JSON 对象时视为未提交任何键。
-func mergeQQConfig(existing, submitted string) string {
+func mergeChannelConfig(existing, submitted string) string {
 	// fields 保存现有配置的每个键及其原始 JSON 表达；其值可能包含渠道级凭据，禁止日志和 HTTP 响应使用。
 	var fields map[string]json.RawMessage
 	if json.Unmarshal([]byte(existing), &fields) != nil || fields == nil {
 		fields = make(map[string]json.RawMessage)
 	}
-	// incoming 保存本次提交的键集合；无法解析为对象时保持原配置，避免把非对象内容写入 qq 渠道。
+	// incoming 保存本次提交的键集合；无法解析为对象时保持原配置，避免把非对象内容写入渠道配置。
 	var incoming map[string]json.RawMessage
 	if json.Unmarshal([]byte(submitted), &incoming) == nil && incoming != nil {
 		// key、raw 是当前提交的配置键及其原始 JSON 值。
@@ -515,5 +555,56 @@ func parseConfigBool(value any) bool {
 		return typedValue == 1
 	default:
 		return false
+	}
+}
+
+// editableChannelConfig 按配置键分类提取可回显的非敏感键值；未声明、非字符串或去空白后为空的键不进入结果。
+// 返回值全部来自 Editable 白名单，敏感键即使存在于配置中也不会被读到。
+func editableChannelConfig(spec channelConfigSpec, config map[string]any) map[string]string {
+	// editable 保存可安全回显的键值；没有任何非空键时保持 nil，便于 HTTP 层省略该字段。
+	var editable map[string]string
+	// key 是当前待回显的配置键。
+	for _, key := range spec.Editable {
+		// text 是配置值去空白后的文本，只有字符串类型才有非空结果。
+		text := strings.TrimSpace(stringValue(config[key]))
+		if text == "" {
+			continue
+		}
+		if editable == nil {
+			editable = make(map[string]string, len(spec.Editable))
+		}
+		editable[key] = text
+	}
+	return editable
+}
+
+// savedChannelCredentialKeys 返回已存在且非空的敏感键名，按字典序排序以保证响应稳定；绝不返回值本身。
+func savedChannelCredentialKeys(spec channelConfigSpec, config map[string]any) []string {
+	// keys 保存已保存凭据的键名，顺序由 spec 声明决定，稍后统一排序。
+	keys := make([]string, 0, len(spec.Sensitive))
+	// key 是当前待判定的敏感配置键。
+	for _, key := range spec.Sensitive {
+		if configValuePresent(config[key]) {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// configValuePresent 判断配置值是否可视为「已填写」：字符串去空白后非空，其他类型只要存在即视为已填写。
+// 该判定只用于敏感键的存在性回显，不把值本身交给调用方。
+func configValuePresent(value any) bool {
+	// typedValue 是按 JSON 实际类型解包后的配置值。
+	switch typedValue := value.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(typedValue) != ""
+	default:
+		return true
 	}
 }

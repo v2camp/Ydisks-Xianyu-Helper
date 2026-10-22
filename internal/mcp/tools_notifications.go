@@ -478,6 +478,8 @@ func notificationUncertainDTOsFromApp(items []notificationsapp.UncertainSummary,
 func channelPatchFromArgs(args Arguments) notificationsapp.ChannelPatch {
 	// patch 是待提交的部分更新；字符串指针字段只在显式提交时赋值。
 	var patch notificationsapp.ChannelPatch
+	// ReplaceConfig 固定为 true：MCP 的 config_json 语义是「渠道完整配置」，保持整体替换而不触发 HTTP 编辑器的按键合并。
+	patch.ReplaceConfig = true
 	// value、ok 是渠道名称入参及其存在性。
 	if value, ok := args["name"]; ok {
 		// text 是新的渠道名称。

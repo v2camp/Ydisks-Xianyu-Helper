@@ -59,7 +59,7 @@ const CardList: React.FC = () => {
           </button>
           <button
             onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setShowAddModal(true)}
-            className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 transition-transform hover:scale-105 active:scale-95"
+            className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-brand-200 transition-transform hover:scale-105 active:scale-95"
         >
           <Plus className="w-5 h-5" />
           添加新卡密
@@ -152,10 +152,10 @@ const CardList: React.FC = () => {
                     </td>
                     <td className="px-2 py-5">
                       <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-bold ${
-                        card.type === 'text' ? 'bg-blue-50 text-blue-600' :
-                        card.type === 'data' ? 'bg-purple-50 text-purple-600' :
-                        card.type === 'api' ? 'bg-blue-50 text-blue-600' :
-                        'bg-pink-50 text-pink-600'
+                        card.type === 'text' ? 'bg-brand-50 text-brand-600' :
+                        card.type === 'data' ? 'bg-accent-50 text-accent-600' :
+                        card.type === 'api' ? 'bg-brand-50 text-brand-600' :
+                        'bg-accent-50 text-accent-600'
                       }`}>
                         {card.type === 'text' ? '文本' :
                          card.type === 'data' ? '批量' :
@@ -180,7 +180,7 @@ const CardList: React.FC = () => {
                         onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => toggleCardStatus(card)}
                         aria-label={`切换卡密 ${card.name} 状态`}
                         className={`w-12 h-8 rounded-full relative transition-colors ${
-                          card.enabled ? 'bg-green-500' : 'bg-gray-300'
+                          card.enabled ? 'bg-success-500' : 'bg-gray-300'
                         }`}
                       >
                         <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-sm transition-transform ${
@@ -200,7 +200,7 @@ const CardList: React.FC = () => {
                         <button
                           onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDelete(card.id)}
                           aria-label={`删除卡密 ${card.name}`}
-                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-danger-50 hover:text-danger-500"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -240,7 +240,7 @@ const CardList: React.FC = () => {
                 {/* 基本信息 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">卡密名称 <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">卡密名称 <span className="text-danger-500">*</span></label>
                     <input
                       type="text"
                       value={editForm.name || ''}
@@ -328,7 +328,7 @@ const CardList: React.FC = () => {
                         placeholder="请输入数据，每行一个：&#10;卡号1:密码1&#10;卡号2:密码2&#10;或者&#10;兑换码1&#10;兑换码2"
                       />
                       <p className="text-xs text-gray-500 mt-2">支持格式：卡号:密码 或 单独的兑换码</p>
-                      <p className="text-xs text-gray-500">当前库存：<span className="font-bold text-blue-600">
+                      <p className="text-xs text-gray-500">当前库存：<span className="font-bold text-brand-600">
                         {editForm.data_content ? editForm.data_content.split('\n').filter(/* 当前回调处理集合中的单个元素。 */ line => line.trim()).length : 0}
                       </span> 条</p>
                     </div>

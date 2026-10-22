@@ -1,7 +1,12 @@
 import { AlertCircle,Bot,CalendarClock,Check,Clock,ClipboardCheck,Edit2,Loader2,MessageCircle,Power,QrCode,RefreshCw,Sparkles,Trash2,User,Zap } from 'lucide-react';
 import React from 'react';
+import { CHIP_TONE_STYLES,STATUS_TONE_STYLES } from '../../../../shared/ui/tokens';
 import type { AccountDetail } from '../api';
 import { accountRuntimePresentation } from '../runtime';
+
+// CHIP_OFF_STYLES 是常显能力徽章的关闭态：白底描边比浅灰填充更弱，又不会和 exempt 档的浅灰填充撞色，
+// 保证「自动确认发货 / 自动免拼」开启与关闭一眼可分。
+const CHIP_OFF_STYLES = 'bg-white text-gray-400 ring-1 ring-gray-200';
 
 // AccountCardProps 描述账号卡片展示所需的数据和动作。
 export interface AccountCardProps {
@@ -69,37 +74,37 @@ export const AccountCard = React.memo(/* AccountCard 负责渲染单个账号卡
             <h3 className="text-xl font-extrabold text-gray-900 break-words">{account.nickname || account.remark || `账号 ${account.id.substring(0, 6)}...`}</h3>
             <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${runtime.badge}`}>{runtime.label}</span>
             {account.ai_enabled && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold flex items-center gap-1">
+              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1 ${CHIP_TONE_STYLES.ai}`}>
                 <Bot className="w-3 h-3" /> AI
               </span>
             )}
             {account.auto_rate_enabled && (
-              <span className="flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+              <span className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${CHIP_TONE_STYLES.review}`}>
                 <MessageCircle className="h-3 w-3" /> 自动评价
               </span>
             )}
             {account.auto_polish_enabled && (
-              <span className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+              <span className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${CHIP_TONE_STYLES.polish}`}>
                 <Sparkles className="h-3 w-3" /> 每日擦亮
               </span>
             )}
-            {account.auto_confirm && <span className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700"><Check className="h-3 w-3" /> 自动发货</span>}
-            {/* 自动确认发货常显：开启与「自动发货」同色系，关闭用灰色弱化，避免半截发货不可见。 */}
+            {account.auto_confirm && <span className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${CHIP_TONE_STYLES.delivery}`}><Check className="h-3 w-3" /> 自动发货</span>}
+            {/* 自动确认发货常显：开启用 confirm 档与「自动发货」区分，关闭用描边弱化，避免半截发货不可见。 */}
             <span
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_consign ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}`}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_consign ? CHIP_TONE_STYLES.confirm : CHIP_OFF_STYLES}`}
               title={account.auto_consign ? '发完卡密后会自动点发货' : '发完卡密后不会自动点发货，需手动发货'}
             >
               <ClipboardCheck className="h-3 w-3" /> 自动确认发货
             </span>
-            {/* 自动免拼常显：开启用玫瑰色区分砍价链路，关闭同样灰色弱化。 */}
+            {/* 自动免拼常显：开启用豁免档区分砍价链路，关闭同样描边弱化。 */}
             <span
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_bargain ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-500'}`}
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-0.5 text-xs font-bold ${account.auto_bargain ? CHIP_TONE_STYLES.exempt : CHIP_OFF_STYLES}`}
               title={account.auto_bargain ? '待刀成阶段会自动调用免拼' : '待刀成阶段不会自动免拼'}
             >
               <Zap className="h-3 w-3" /> 自动免拼
             </span>
             {account.profile_error && (
-              <span className="px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-700 text-xs font-bold flex items-center gap-1" title={account.profile_error}>
+              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1 ${STATUS_TONE_STYLES.warning}`} title={account.profile_error}>
                 <AlertCircle className="w-3 h-3" /> 资料未同步
               </span>
             )}
@@ -110,37 +115,37 @@ export const AccountCard = React.memo(/* AccountCard 负责渲染单个账号卡
               <p className="font-mono text-xs text-gray-400">ID: {account.id}</p>
             </div>
             {account.runtime_message && account.runtime_state !== 'online' && account.runtime_state !== 'disabled' && (
-              <div className={`mb-3 flex flex-wrap items-center gap-2 text-sm font-medium ${requiresLogin ? 'text-red-700' : 'text-amber-700'}`}>
+              <div className={`mb-3 flex flex-wrap items-center gap-2 text-sm font-medium ${requiresLogin ? 'text-danger-700' : 'text-warning-700'}`}>
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{account.runtime_message}</span>
                 {requiresLogin && (
-                  <button type="button" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onReauthorize(account)} className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700 hover:bg-red-100">
+                  <button type="button" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onReauthorize(account)} className="inline-flex items-center gap-1.5 rounded-lg bg-danger-50 px-2.5 py-1 text-xs font-bold text-danger-700 hover:bg-danger-100">
                     <QrCode className="w-3.5 h-3.5" /> 重新授权
                   </button>
                 )}
               </div>
             )}
-            {account.paused && <span className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700"><Clock className="h-3 w-3" /> 暂停处理中</span>}
+            {account.paused && <span className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold ${STATUS_TONE_STYLES.info}`}><Clock className="h-3 w-3" /> 暂停处理中</span>}
             <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
               <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onRefreshProfile(account)} disabled={refreshing} className="p-3 rounded-xl transition-colors text-gray-600 hover:bg-gray-100 disabled:opacity-50" title="刷新昵称和头像">
                 <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
-              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onReauthorize(account)} className={`p-3 rounded-xl transition-colors ${requiresLogin ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-blue-600 hover:bg-blue-50'}`} title="重新扫码授权当前账号">
+              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onReauthorize(account)} className={`p-3 rounded-xl transition-colors ${requiresLogin ? 'text-danger-600 bg-danger-50 hover:bg-danger-100' : 'text-brand-600 hover:bg-brand-50'}`} title="重新扫码授权当前账号">
                 <QrCode className="w-5 h-5" />
               </button>
               <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onEdit(account)} className="p-3 rounded-xl hover:bg-gray-100 transition-colors text-gray-600" title="编辑账号">
                 <Edit2 className="w-5 h-5" />
               </button>
-              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onAI(account)} className="p-3 rounded-xl hover:bg-purple-100 transition-colors text-purple-600" title="AI设置">
+              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onAI(account)} className="p-3 rounded-xl hover:bg-accent-100 transition-colors text-accent-600" title="AI设置">
                 <Bot className="w-5 h-5" />
               </button>
-              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onTasks(account)} className="p-3 rounded-xl hover:bg-amber-100 transition-colors text-amber-600" title="自动评价与每日擦亮">
+              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onTasks(account)} className="p-3 rounded-xl hover:bg-warning-100 transition-colors text-warning-600" title="自动评价与每日擦亮">
                 <CalendarClock className="w-5 h-5" />
               </button>
-              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onToggle(account.id, account.enabled)} className={`p-3 rounded-xl transition-colors ${account.enabled ? 'text-green-600 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-100'}`} title={account.enabled ? '停用账号' : '启用账号'}>
+              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onToggle(account.id, account.enabled)} className={`p-3 rounded-xl transition-colors ${account.enabled ? 'text-success-600 hover:bg-success-50' : 'text-gray-400 hover:bg-gray-100'}`} title={account.enabled ? '停用账号' : '启用账号'}>
                 <Power className="w-5 h-5" />
               </button>
-              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onDelete(account)} disabled={deleting} className="p-3 rounded-xl hover:bg-red-100 transition-colors text-red-500 disabled:cursor-not-allowed disabled:opacity-40" title={deleting ? '删除中…' : `删除账号 ${account.nickname || account.remark || account.id}`}>
+              <button onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onDelete(account)} disabled={deleting} className="p-3 rounded-xl hover:bg-danger-100 transition-colors text-danger-500 disabled:cursor-not-allowed disabled:opacity-40" title={deleting ? '删除中…' : `删除账号 ${account.nickname || account.remark || account.id}`}>
                 {deleting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
               </button>
             </div>

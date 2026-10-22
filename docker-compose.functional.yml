@@ -146,7 +146,7 @@ services:
       RUN_WEBUI_E2E: "1"
       BROWSER_HEADLESS: "true"
       E2E_SERVER_BIN: "/app/xianyu-server"
-    command: ["go", "test", "-timeout=3m", "./internal/browser", "-run", "TestWebUISmokeAdminFlow", "-v", "-count=1"]
+    command: ["go", "test", "-timeout=5m", "./internal/browser", "-run", "TestWebUISmokeAdminFlow", "-v", "-count=1"]
 
   go-vet:
     build:

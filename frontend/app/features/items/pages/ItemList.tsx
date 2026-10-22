@@ -274,7 +274,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
             <button
                 onClick={handleSync}
                 disabled={loading || !selectedAccount}
-                className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-200 disabled:opacity-50"
+                className="ios-btn-primary flex items-center gap-2 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-brand-200 disabled:opacity-50"
             >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 同步商品
@@ -288,14 +288,14 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
             </button>
             <button
               onClick={openPublishModal}
-              className="px-5 py-3 rounded-2xl font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center gap-2 shadow-lg shadow-emerald-100"
+              className="px-5 py-3 rounded-2xl font-bold bg-success-500 text-white hover:bg-success-600 transition-colors flex items-center gap-2 shadow-lg shadow-success-100"
             >
               <PackagePlus className="w-4 h-4" />
               发布商品
             </button>
             <button
               onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void openBatchModal()}
-              className="px-5 py-3 rounded-2xl font-bold bg-brand text-white hover:bg-brand-highlight transition-colors flex items-center gap-2 shadow-lg shadow-blue-100"
+              className="px-5 py-3 rounded-2xl font-bold bg-brand text-white hover:bg-brand-highlight transition-colors flex items-center gap-2 shadow-lg shadow-brand-100"
             >
               <UploadCloud className="w-4 h-4" />
               {recentBatch && ['running', 'canceling'].includes(recentBatch.status) ? '继续批量任务' : '批量铺货'}
@@ -329,7 +329,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       </button>
                       <button
                         onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => handleDelete(item)}
-                        className="p-1.5 bg-white/90 backdrop-blur rounded-lg shadow-md hover:bg-red-100 text-red-500 transition-colors"
+                        className="p-1.5 bg-white/90 backdrop-blur rounded-lg shadow-md hover:bg-danger-100 text-danger-500 transition-colors"
                         title="删除"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -348,13 +348,13 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       </div>
                   </div>
                   <h3 className="font-bold text-gray-900 line-clamp-2 text-xs mb-1.5 h-8 leading-4">{item.item_title}</h3>
-                  <div className="mb-2 inline-flex min-w-0 max-w-full items-center gap-1 self-start rounded-md bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-blue-700" title={accountNickname(item.cookie_id)}>
+                  <div className="mb-2 inline-flex min-w-0 max-w-full items-center gap-1 self-start rounded-md bg-brand-50 px-2 py-1 text-[10px] font-extrabold text-brand-700" title={accountNickname(item.cookie_id)}>
                     <User className="h-3 w-3 shrink-0" />
                     <span className="min-w-0 truncate whitespace-nowrap">{accountNickname(item.cookie_id)}</span>
                   </div>
                   <div className="flex justify-between items-center text-[10px] text-gray-500 mb-2">
                       <span className="bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[80px]">ID: {item.item_id}</span>
-                      <span className={`inline-flex items-center gap-1 font-bold ${hasRule ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <span className={`inline-flex items-center gap-1 font-bold ${hasRule ? 'text-success-600' : 'text-warning-600'}`}>
                         {hasRule ? <CheckCircle2 className="w-3 h-3" /> : <CircleDashed className="w-3 h-3" />}
                         {hasRule ? `${linkedRules.length} 规则` : '未配置'}
                       </span>
@@ -362,7 +362,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                   <div className="space-y-2 mt-auto">
                       <button
                         onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => onConfigureDelivery(item)}
-                        className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 rounded-lg text-[11px] font-extrabold transition-all ${hasRule ? 'bg-gray-900 text-white hover:bg-black' : 'bg-brand text-white hover:bg-brand-highlight shadow-md shadow-blue-100'}`}
+                        className={`w-full flex items-center justify-between gap-1 px-2.5 py-2 rounded-lg text-[11px] font-extrabold transition-all ${hasRule ? 'bg-gray-900 text-white hover:bg-black' : 'bg-brand text-white hover:bg-brand-highlight shadow-md shadow-brand-100'}`}
                       >
                         <span className="flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" />{hasRule ? '查看发货规则' : '关联发货规则'}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -469,7 +469,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
               </button>
             </div>
             <div className="modal-body space-y-5">
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 leading-6">
+              <div className="rounded-2xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-800 leading-6">
                 单规格填写总库存；多规格在组合表逐行填写价格和库存。库存权限不足时会返回明确提示。
               </div>
               <div className="space-y-2">
@@ -499,21 +499,21 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                 <label className="block text-sm font-bold text-gray-700">商品描述</label>
                 <textarea className="w-full ios-input px-4 py-3 rounded-xl h-28 resize-none" placeholder="描述会用于自动识别类目；留空时使用标题" value={publishForm.description} onChange={/* 当前回调处理用户交互或异步状态变化。 */ e => setPublishForm({...publishForm, description: e.target.value})} />
               </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div className="rounded-2xl border border-warning-200 bg-warning-50 p-4 space-y-3">
                 <div>
                   <div className="text-sm font-extrabold text-gray-900">发布类目（可选）</div>
-                  <p className="mt-1 text-xs leading-5 text-amber-800">填写关键词获取准确类目；留空时由闲鱼自动识别，识别不到时默认使用“电子资料”兜底。</p>
+                  <p className="mt-1 text-xs leading-5 text-warning-800">填写关键词获取准确类目；留空时由闲鱼自动识别，识别不到时默认使用“电子资料”兜底。</p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input className="w-full ios-input rounded-xl bg-white px-4 py-3" placeholder="例如：课程资料、电子书" value={publishCategoryKeyword} onChange={/* 当前回调处理用户交互或异步状态变化。 */ e => { setPublishCategoryKeyword(e.target.value); setPublishCategory(null); }} onKeyDown={/* 当前回调处理用户交互或异步状态变化。 */ e => { if (e.key === 'Enter') { e.preventDefault(); void handleRecommendPublishCategory(); } }} />
-                  <button type="button" disabled={publishCategoryLoading || !publishForm.cookie_id || !publishCategoryKeyword.trim()} onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleRecommendPublishCategory()} className="shrink-0 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50">
+                  <button type="button" disabled={publishCategoryLoading || !publishForm.cookie_id || !publishCategoryKeyword.trim()} onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => void handleRecommendPublishCategory()} className="shrink-0 rounded-xl bg-warning-500 px-4 py-3 text-sm font-bold text-white hover:bg-warning-600 disabled:opacity-50">
                     {publishCategoryLoading ? '匹配中...' : '获取类目'}
                   </button>
                 </div>
                 {publishCategory ? (
                   <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm">
                     <div><span className="font-bold text-gray-900">{publishCategory.cat_name}</span><span className="ml-2 font-mono text-xs text-gray-500">{publishCategory.cat_id} · 频道 {publishCategory.channel_cat_id}</span></div>
-                    <button type="button" className="text-xs font-bold text-gray-500 hover:text-red-600" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setPublishCategory(null)}>清除，使用自动识别</button>
+                    <button type="button" className="text-xs font-bold text-gray-500 hover:text-danger-600" onClick={/* 当前回调处理用户交互或异步状态变化。 */ () => setPublishCategory(null)}>清除，使用自动识别</button>
                   </div>
                 ) : <div className="text-xs text-gray-500">当前未指定类目，最终识别失败时会使用电子资料兜底。</div>}
               </div>
@@ -543,14 +543,14 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                   <input className="w-full ios-input px-4 py-3 rounded-xl" placeholder="例如 8.00" value={publishForm.postage} onChange={/* 当前回调处理用户交互或异步状态变化。 */ e => setPublishForm({...publishForm, postage: e.target.value})} />
                 </div>
               )}
-			  <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 space-y-3">
+			  <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 space-y-3">
 				<div className="flex items-center justify-between gap-3">
-				  <div><div className="text-sm font-extrabold text-gray-900">发货地（可选）</div><p className="mt-1 text-xs text-sky-800">虚拟商品无需发货地；发布失败时可再定位并作为补充信息提交。</p></div>
+				  <div><div className="text-sm font-extrabold text-gray-900">发货地（可选）</div><p className="mt-1 text-xs text-brand-800">虚拟商品无需发货地；发布失败时可再定位并作为补充信息提交。</p></div>
 					<div className="flex flex-wrap justify-end gap-2">
 					  <button type="button" disabled={locationLoading || !publishForm.cookie_id} onClick={/* currentLocationClickAction 获取设备当前位置附近的高德发货地。 */ () => void locateForPublish(false)} className="ios-btn-primary flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">
 					    <LocateFixed className="h-4 w-4" />{locationLoading ? '定位中...' : '获取当前位置'}
 					  </button>
-					  <button type="button" disabled={locationLoading || !publishForm.cookie_id} onClick={/* manualLocationClickAction 打开普通发布的高德手动选点弹窗。 */ () => setManualLocationTarget('publish')} className="flex items-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-bold text-sky-700 transition-colors hover:bg-sky-50 disabled:opacity-50">
+					  <button type="button" disabled={locationLoading || !publishForm.cookie_id} onClick={/* manualLocationClickAction 打开普通发布的高德手动选点弹窗。 */ () => setManualLocationTarget('publish')} className="flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-4 py-2 text-sm font-bold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50">
 					    <Search className="h-4 w-4" />手动选择
 					  </button>
 					</div>
@@ -562,7 +562,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
               {ImagesEditor && <ImagesEditor images={publishForm.images} previews={publishImagePreviews} onChange={/* publishImagesChangeAction 将图片追加、删除或排序后的列表写回发布草稿。 */ (images) => setPublishForm(/* previous 保存上一次发布草稿状态。 */ previous => ({ ...previous, images }))} />}
             </div>
             <div className="modal-footer">
-              <button disabled={publishing} onClick={handlePublishItem} className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white px-6 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2">
+              <button disabled={publishing} onClick={handlePublishItem} className="w-full bg-success-500 hover:bg-success-600 disabled:opacity-60 text-white px-6 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2">
                 <PackagePlus className="w-4 h-4" />
                 {publishing ? '正在发布...' : '发布到闲鱼'}
               </button>
@@ -589,7 +589,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
 
               {batchPhase === 'upload' && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 leading-6">
+                  <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4 text-sm text-brand-900 leading-6">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div>
                         <div className="font-extrabold">先下载模板，再按字段填写。</div>
@@ -598,7 +598,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       <button
                         type="button"
                         onClick={downloadPublishTemplate}
-                        className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-extrabold text-white hover:bg-blue-700"
+                        className="shrink-0 rounded-xl bg-brand-600 px-4 py-2 text-sm font-extrabold text-white hover:bg-brand-700"
                       >
                         下载CSV模板
                       </button>
@@ -622,10 +622,10 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                     <p className="text-xs text-gray-500">表格中“账号ID”为空时，会使用这里选择的账号。</p>
                   </div>
 
-                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
+                  <div className="rounded-xl border border-warning-200 bg-warning-50/70 p-4 space-y-3">
                     <div>
                       <div className="text-sm font-extrabold text-gray-900">默认类目 <span className="font-medium text-gray-500">（可为空）</span></div>
-                      <p className="mt-1 text-xs leading-5 text-amber-800">填写后优先使用该类目；留空时由闲鱼根据每件商品自动识别。仍无法识别时，系统最终使用“电子资料”兜底。</p>
+                      <p className="mt-1 text-xs leading-5 text-warning-800">填写后优先使用该类目；留空时由闲鱼根据每件商品自动识别。仍无法识别时，系统最终使用“电子资料”兜底。</p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <label className="relative flex-1">
@@ -655,10 +655,10 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       </button>
                     </div>
                     {batchFallbackCategory.catId ? (
-                      <div className="flex min-h-[46px] items-center justify-between gap-3 border-t border-amber-200 pt-3">
+                      <div className="flex min-h-[46px] items-center justify-between gap-3 border-t border-warning-200 pt-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
-                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-success-600" />
                             <span className="truncate">{batchFallbackCategory.catName}</span>
                           </div>
                           <div className="mt-1 font-mono text-xs text-gray-500">类目 {batchFallbackCategory.catId} · 频道 {batchFallbackCategory.channelCatId}</div>
@@ -675,14 +675,14 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                     ) : null}
                   </div>
 
-				  <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-3">
+				  <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 space-y-3">
 					<div className="flex items-center justify-between gap-3">
-					  <div><div className="text-sm font-extrabold text-gray-900">批次发货地（可选）</div><p className="mt-1 text-xs text-sky-800">虚拟商品可留空；填写后整个批次使用同一个发货地，并随任务保存用于恢复和重试。</p></div>
+					  <div><div className="text-sm font-extrabold text-gray-900">批次发货地（可选）</div><p className="mt-1 text-xs text-brand-800">虚拟商品可留空；填写后整个批次使用同一个发货地，并随任务保存用于恢复和重试。</p></div>
 					<div className="flex flex-wrap justify-end gap-2">
 					  <button type="button" disabled={locationLoading || !selectedAccount} onClick={/* currentBatchLocationClickAction 获取批量发布使用的设备当前位置。 */ () => void locateForPublish(true)} className="ios-btn-primary flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-50">
 						<LocateFixed className="h-4 w-4" />{locationLoading ? '定位中...' : '获取当前位置'}
 					  </button>
-					  <button type="button" disabled={locationLoading || !selectedAccount} onClick={/* manualBatchLocationClickAction 打开批量发布的高德手动选点弹窗。 */ () => setManualLocationTarget('batch')} className="flex items-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-bold text-sky-700 transition-colors hover:bg-sky-50 disabled:opacity-50">
+					  <button type="button" disabled={locationLoading || !selectedAccount} onClick={/* manualBatchLocationClickAction 打开批量发布的高德手动选点弹窗。 */ () => setManualLocationTarget('batch')} className="flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-4 py-2 text-sm font-bold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50">
 						<Search className="h-4 w-4" />手动选择
 					  </button>
 					</div>
@@ -692,16 +692,16 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
 					</select>}
 					  </div>
 
-					  <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-2">
+					  <div className="rounded-xl border border-accent-200 bg-accent-50 p-4 space-y-2">
 						<label className="flex items-center justify-between gap-4" htmlFor="batch-publish-interval">
-						  <span className="min-w-0"><span className="block text-sm font-extrabold text-gray-900">商品发布强制间隔</span><span className="mt-1 block text-xs text-violet-800">图片会提前上传，只有最终发布请求之间至少等待该时间。</span></span>
-						  <span className="flex shrink-0 items-center gap-2"><input id="batch-publish-interval" type="number" min={1} max={3600} step={1} inputMode="numeric" className="ios-input w-24 rounded-xl bg-white px-3 py-2 text-right" value={batchPublishIntervalSeconds} onChange={/* 当前回调处理用户交互或异步状态变化。 */ e => setBatchPublishIntervalSeconds(Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} /><span className="text-sm font-bold text-violet-900">秒</span></span>
+						  <span className="min-w-0"><span className="block text-sm font-extrabold text-gray-900">商品发布强制间隔</span><span className="mt-1 block text-xs text-accent-800">图片会提前上传，只有最终发布请求之间至少等待该时间。</span></span>
+						  <span className="flex shrink-0 items-center gap-2"><input id="batch-publish-interval" type="number" min={1} max={3600} step={1} inputMode="numeric" className="ios-input w-24 rounded-xl bg-white px-3 py-2 text-right" value={batchPublishIntervalSeconds} onChange={/* 当前回调处理用户交互或异步状态变化。 */ e => setBatchPublishIntervalSeconds(Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} /><span className="text-sm font-bold text-accent-900">秒</span></span>
 						</label>
 					  </div>
 
 	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover:border-blue-300 hover:bg-blue-50 transition-colors">
-                      <UploadCloud className="w-9 h-9 text-blue-600 mb-3" />
+                    <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover:border-brand-300 hover:bg-brand-50 transition-colors">
+                      <UploadCloud className="w-9 h-9 text-brand-600 mb-3" />
                       <span className="text-sm font-extrabold text-gray-900">上传商品表格</span>
                       <span className="text-xs text-gray-500 mt-1">{batchFile ? batchFile.name : '支持 .xlsx / .csv / .tsv'}</span>
                       <input
@@ -711,8 +711,8 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                         onChange={/* 当前回调读取本次文件快照并重置原生控件，以便同一路径文件修改后可再次选择。 */ event => setBatchFile(consumeSelectedFile(event.currentTarget))}
                       />
                     </label>
-                    <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover:border-emerald-300 hover:bg-emerald-50 transition-colors">
-                      <UploadCloud className="w-9 h-9 text-emerald-600 mb-3" />
+                    <label className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover:border-success-300 hover:bg-success-50 transition-colors">
+                      <UploadCloud className="w-9 h-9 text-success-600 mb-3" />
                       <span className="text-sm font-extrabold text-gray-900">上传图片 zip（可选）</span>
                       <span className="text-xs text-gray-500 mt-1">{batchImagesZip ? batchImagesZip.name : '表格图片字段使用 zip 内相对路径'}</span>
                       <input
@@ -730,23 +730,23 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       <p className="text-xs text-gray-500 mt-1">照着下面的“什么时候填写”处理即可。预检发现问题时，会指出具体哪一行需要修改。</p>
                     </div>
 
-                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-950">
+                    <div className="rounded-xl border border-brand-100 bg-brand-50 p-4 text-xs text-brand-950">
                       <div className="text-sm font-extrabold">“付款后发送的卡密”怎么填</div>
                       <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
                         <div className="rounded-lg bg-white/80 p-3">
-                          <code className="font-bold text-blue-700">101</code>
+                          <code className="font-bold text-brand-700">101</code>
                           <p className="mt-1 leading-5">从卡密组 101 立即发送 1 份。卡密组 ID 可以在“卡密库存”页面查看。</p>
                         </div>
                         <div className="rounded-lg bg-white/80 p-3">
-                          <code className="font-bold text-blue-700">101:2</code>
+                          <code className="font-bold text-brand-700">101:2</code>
                           <p className="mt-1 leading-5">每购买 1 件，就从卡密组 101 发送 2 份。买家购买 3 件时会发送 6 份。</p>
                         </div>
                         <div className="rounded-lg bg-white/80 p-3">
-                          <code className="font-bold text-blue-700">101:1:0;102:2:3</code>
+                          <code className="font-bold text-brand-700">101:1:0;102:2:3</code>
                           <p className="mt-1 leading-5">先立即发送卡密组 101 的 1 份，再等待 3 秒发送卡密组 102 的 2 份。</p>
                         </div>
                       </div>
-                      <p className="mt-3 leading-5 text-blue-800">
+                      <p className="mt-3 leading-5 text-brand-800">
                         每一组依次写“卡密组 ID : 每件发送几份 : 等待几秒”。份数不写时按 1 份处理，等待时间不写时立即发送。需要发送多种卡密时，用英文分号 <code className="font-bold">;</code> 隔开。
                       </p>
                     </div>
@@ -785,7 +785,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                           ].map(/* 当前回调处理用户交互或异步状态变化。 */ ([name, when, desc]) => (
                             <tr key={name}>
                               <td className="px-3 py-2 font-bold text-gray-900 whitespace-nowrap">{name}</td>
-                              <td className={`px-3 py-2 min-w-[210px] font-bold ${when === '每个商品都要填' ? 'text-red-600' : when === '可以留空' ? 'text-gray-500' : 'text-amber-700'}`}>{when}</td>
+                              <td className={`px-3 py-2 min-w-[210px] font-bold ${when === '每个商品都要填' ? 'text-danger-600' : when === '可以留空' ? 'text-gray-500' : 'text-warning-700'}`}>{when}</td>
                               <td className="px-3 py-2 min-w-[260px]">{desc}</td>
                             </tr>
                           ))}
@@ -803,13 +803,13 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       <div className="text-xs font-bold text-gray-500">总行数</div>
                       <div className="text-2xl font-extrabold text-gray-900 mt-1">{batchPreview.total}</div>
                     </div>
-                    <div className="rounded-2xl bg-emerald-50 p-4 border border-emerald-100">
-                      <div className="text-xs font-bold text-emerald-700">可发布</div>
-                      <div className="text-2xl font-extrabold text-emerald-700 mt-1">{batchPreview.valid}</div>
+                    <div className="rounded-2xl bg-success-50 p-4 border border-success-100">
+                      <div className="text-xs font-bold text-success-700">可发布</div>
+                      <div className="text-2xl font-extrabold text-success-700 mt-1">{batchPreview.valid}</div>
                     </div>
-                    <div className="rounded-2xl bg-red-50 p-4 border border-red-100">
-                      <div className="text-xs font-bold text-red-700">有问题</div>
-                      <div className="text-2xl font-extrabold text-red-700 mt-1">{batchPreview.invalid}</div>
+                    <div className="rounded-2xl bg-danger-50 p-4 border border-danger-100">
+                      <div className="text-xs font-bold text-danger-700">有问题</div>
+                      <div className="text-2xl font-extrabold text-danger-700 mt-1">{batchPreview.invalid}</div>
                     </div>
                   </div>
 
@@ -831,7 +831,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                           <tr key={row.row_no} className="hover:bg-gray-50">
                             <td className="px-4 py-3 font-mono text-xs">{row.row_no}</td>
                             <td className="px-4 py-3">
-                              <span className={`inline-flex px-2 py-1 rounded-lg border text-xs font-extrabold ${row.valid ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                              <span className={`inline-flex px-2 py-1 rounded-lg border text-xs font-extrabold ${row.valid ? 'bg-success-50 text-success-700 border-success-100' : 'bg-danger-50 text-danger-700 border-danger-100'}`}>
                                 {row.valid ? '可发布' : '需修正'}
                               </span>
                             </td>
@@ -842,7 +842,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                               <div className="font-mono text-gray-400">{row.category?.cat_id || '失败后使用电子资料'}</div>
                             </td>
                             <td className="px-4 py-3 text-gray-600">{row.images?.length || 0} 张</td>
-                            <td className="px-4 py-3 text-red-600 text-xs max-w-[280px]">{row.errors?.join('；') || '-'}</td>
+                            <td className="px-4 py-3 text-danger-600 text-xs max-w-[280px]">{row.errors?.join('；') || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -862,17 +862,17 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       <div className="text-xs font-bold text-gray-500">总数</div>
                       <div className="text-xl font-extrabold text-gray-900 mt-1">{batchDetail.total}</div>
                     </div>
-                    <div className="rounded-2xl bg-emerald-50 p-4 border border-emerald-100">
-                      <div className="text-xs font-bold text-emerald-700">成功</div>
-                      <div className="text-xl font-extrabold text-emerald-700 mt-1">{batchDetail.success}</div>
+                    <div className="rounded-2xl bg-success-50 p-4 border border-success-100">
+                      <div className="text-xs font-bold text-success-700">成功</div>
+                      <div className="text-xl font-extrabold text-success-700 mt-1">{batchDetail.success}</div>
                     </div>
-                    <div className="rounded-2xl bg-red-50 p-4 border border-red-100">
-                      <div className="text-xs font-bold text-red-700">失败</div>
-                      <div className="text-xl font-extrabold text-red-700 mt-1">{batchDetail.failed}</div>
+                    <div className="rounded-2xl bg-danger-50 p-4 border border-danger-100">
+                      <div className="text-xs font-bold text-danger-700">失败</div>
+                      <div className="text-xl font-extrabold text-danger-700 mt-1">{batchDetail.failed}</div>
                     </div>
-                    <div className="rounded-2xl bg-blue-50 p-4 border border-blue-100">
-                      <div className="text-xs font-bold text-blue-700">等待</div>
-                      <div className="text-xl font-extrabold text-blue-700 mt-1">{batchDetail.pending}</div>
+                    <div className="rounded-2xl bg-brand-50 p-4 border border-brand-100">
+                      <div className="text-xs font-bold text-brand-700">等待</div>
+                      <div className="text-xl font-extrabold text-brand-700 mt-1">{batchDetail.pending}</div>
                     </div>
                   </div>
 
@@ -903,9 +903,9 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                               <div className="font-mono text-gray-400">{row.category?.cat_id || '失败后使用电子资料'}</div>
                             </td>
                             <td className="px-4 py-3 text-xs font-mono">
-                              {row.item_url ? <a href={row.item_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{row.item_id}</a> : (row.item_id || '-')}
+                              {row.item_url ? <a href={row.item_url} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">{row.item_id}</a> : (row.item_id || '-')}
                             </td>
-                            <td className="px-4 py-3 text-red-600 text-xs max-w-[340px]">{row.error_message || '-'}</td>
+                            <td className="px-4 py-3 text-danger-600 text-xs max-w-[340px]">{row.error_message || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -940,7 +940,7 @@ const ItemList: React.FC<ItemListProps> = ({ onConfigureDelivery, publishImagesE
                       取消任务
                     </button>
                   ) : batchDetail.status === 'canceling' ? (
-                    <button disabled className="flex-1 px-6 py-3.5 rounded-xl bg-amber-100 text-amber-800 font-bold">
+                    <button disabled className="flex-1 px-6 py-3.5 rounded-xl bg-warning-100 text-warning-800 font-bold">
                       正在保存远端结果并安全取消…
                     </button>
                   ) : (

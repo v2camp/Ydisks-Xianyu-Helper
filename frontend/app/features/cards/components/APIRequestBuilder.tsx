@@ -169,7 +169,7 @@ const KeyValueEditor = ({ label, value, placeholder, onChange }: KeyValueEditorP
         <button
           type="button"
           onClick={addRow}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-blue-600 transition-colors hover:bg-blue-50"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-brand-600 transition-colors hover:bg-brand-50"
           title={`添加${label}字段`}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -202,7 +202,7 @@ const KeyValueEditor = ({ label, value, placeholder, onChange }: KeyValueEditorP
               <button
                 type="button"
                 onClick={/* 当前回调删除指定键值编辑行。 */ () => removeRow(index)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-danger-50 hover:text-danger-500"
                 title={`删除${label}第${index + 1}行`}
                 aria-label={`删除${label}第${index + 1}行`}
               >
@@ -248,13 +248,13 @@ export const APIRequestBuilder = ({
 	};
 
   return (
-    <div className="space-y-5 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
+    <div className="space-y-5 rounded-2xl border border-brand-100 bg-brand-50/40 p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-gray-900">API 请求配置</h3>
           <p className="mt-1 text-xs text-gray-500">按 Postman 的请求结构填写，敏感模板只会加密保存在服务端。</p>
         </div>
-		<span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-blue-600 shadow-sm">API</span>
+		<span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-brand-600 shadow-sm">API</span>
 	      </div>
 	      {onTest && (
 		<div className="flex flex-wrap items-center gap-3">
@@ -262,9 +262,9 @@ export const APIRequestBuilder = ({
 			{testState.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
 			测试请求
 		  </button>
-		  {testState.error && <span className="text-sm font-semibold text-red-600">{testState.error}</span>}
+		  {testState.error && <span className="text-sm font-semibold text-danger-600">{testState.error}</span>}
 		  {testState.result && (
-			<div className={`w-full rounded-xl border p-3 text-sm ${testState.result.status === 'success' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+			<div className={`w-full rounded-xl border p-3 text-sm ${testState.result.status === 'success' ? 'border-success-200 bg-success-50' : 'border-danger-200 bg-danger-50'}`}>
 			  <div className="flex flex-wrap gap-x-5 gap-y-1 font-semibold">
 				<span>{testState.result.status === 'success' ? '测试成功' : '测试失败'}</span>
 				<span>HTTP 状态：{testState.result.status_code || '网络错误'}</span>
@@ -301,7 +301,7 @@ export const APIRequestBuilder = ({
         </div>
       </div>
 
-      <div className="space-y-5 border-t border-blue-100 pt-5">
+      <div className="space-y-5 border-t border-brand-100 pt-5">
         <KeyValueEditor label="Headers / 请求头" value={headers} onChange={/* 当前回调保存请求头键值对象。 */ nextValue => onChange('headers', nextValue)} placeholder="Authorization" />
         {headersAction && (
           <select aria-label="请求头处理方式" value={headersAction} onChange={/* 当前回调选择请求头敏感模板处理方式。 */ (event: ChangeEvent<HTMLSelectElement>) => onChange('headersAction', event.target.value)} className="w-full ios-input rounded-xl px-3 py-2 text-sm sm:w-auto">
@@ -342,7 +342,7 @@ export const APIRequestBuilder = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 border-t border-blue-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 border-t border-brand-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-2">
           <label className="block text-sm font-bold text-gray-700">响应提取路径（可选）</label>
           <input value={responsePath} onChange={/* 当前回调更新响应提取路径。 */ (event: ChangeEvent<HTMLInputElement>) => onChange('responsePath', event.target.value)} className="w-full ios-input rounded-xl px-4 py-3 font-mono text-sm" placeholder="data.cards[0].code" />

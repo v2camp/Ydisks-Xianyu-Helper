@@ -102,7 +102,7 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between p-4 bg-sky-50 rounded-xl">
+              <div className="flex items-center justify-between p-4 bg-brand-50 rounded-xl">
                 <div>
                   <div className="font-bold text-gray-900">启用客服 Agent</div>
                   <div className="text-xs text-gray-500">开启后客服 Agent 可自主查询并答复买家；未开启时卖家账号只走既有的规则与 AI 回复通道</div>
@@ -128,7 +128,7 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
                       type="button"
                       aria-pressed={settings.preset === option.value}
                       onClick={/* 选中当前档位并写回草稿。 */ () => updateDraft({ preset: option.value })}
-                      className={`rounded-xl border p-4 text-left transition-colors ${settings.preset === option.value ? 'border-sky-400 bg-sky-50' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`rounded-xl border p-4 text-left transition-colors ${settings.preset === option.value ? 'border-brand-400 bg-brand-50' : 'border-gray-200 hover:border-gray-300'}`}
                     >
                       <span className="block text-sm font-bold text-gray-900">{option.label}</span>
                       <span className="mt-1 block text-xs leading-5 text-gray-600">{option.description}</span>
@@ -136,7 +136,7 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
                   ))}
                 </div>
                 {settings.presets.length === 0 && (
-                  <p className="text-xs text-amber-700">服务端未下发档位名单，暂时无法切换档位，请确认服务端版本与本页面匹配。</p>
+                  <p className="text-xs text-warning-700">服务端未下发档位名单，暂时无法切换档位，请确认服务端版本与本页面匹配。</p>
                 )}
                 <p className="text-xs leading-5 text-gray-500">
                   这里设置的是租户默认档位。单个卖家账号可在账号列表里单独覆盖，未覆盖的账号按此默认生效。

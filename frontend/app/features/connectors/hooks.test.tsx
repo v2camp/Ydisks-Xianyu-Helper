@@ -41,6 +41,9 @@ const smtpFixture: SystemSettings = { smtp_server: 'smtp.example.com', smtp_port
 describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状态。 */ () => {
   beforeEach(/* 当前回调重置通知 API 替身和浏览器确认框。 */ () => {
     vi.clearAllMocks();
+    // 一次性响应若因断言失败未被消费会串到下一个用例，因此每例开始前清空队列。
+    getChannelMock.mockReset();
+    getSmtpMock.mockReset();
     getChannelsMock.mockResolvedValue({ success: true, data: [channelFixture] });
     getChannelMock.mockResolvedValue({ id: 1, name: '测试渠道', type: 'bark', enabled: true });
     getSmtpMock.mockResolvedValue(smtpFixture);
@@ -400,13 +403,13 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     hook.unmount();
   });
 
-  // qq 渠道编辑只回填目标 openid；渠道级凭据一律不进入表单，避免空串被合并语义当成删除。
-  test('编辑 qq 渠道只回填 openid 并沿用已保存的独立凭据', /* qqEditorTest 验证回填与保留凭据的载荷表达。 */ async () => {
+  // 非邮件渠道的回填只写入服务端可回显的配置；已保存的凭据键只回传键名，留空保存即沿用。
+  test('编辑 qq 渠道回填 openid 并沿用已保存的独立凭据', /* qqEditorTest 验证回填与保留凭据的载荷表达。 */ async () => {
     // qqChannel 是编辑场景使用的 qq 渠道摘要。
     const qqChannel: NotificationChannel = { id: 'qq-1', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
     getChannelMock.mockResolvedValueOnce({
       id: 1, name: 'QQ 通知', type: 'qq', enabled: true,
-      user_openid: 'user-openid', group_openid: 'group-openid', has_channel_credentials: true,
+      config: { user_openid: 'user-openid', group_openid: 'group-openid' }, saved_credential_keys: ['app_id', 'app_secret'],
     });
     // hook 是普通用户编辑 qq 渠道的 Hook 渲染结果。
     const hook = renderHook(/* qqHookFactory 创建不读取系统设置的 qq 编辑状态。 */ () => useConnectors(false));
@@ -415,7 +418,8 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     await act(/* qqEditAction 读取脱敏编辑配置并打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
     expect(hook.result.current.form.config).toEqual({ user_openid: 'user-openid', group_openid: 'group-openid' });
     expect(Object.keys(hook.result.current.form.config)).not.toContain('app_id');
-    expect(hook.result.current.hasChannelCredentials).toBe(true);
+    expect(hook.result.current.savedCredentialKeys).toEqual(['app_id', 'app_secret']);
+    expect(hook.result.current.credentialSource).toBeNull();
 
     await act(/* qqKeepAction 未勾选改用连接器凭据时直接保存。 */ async () => hook.result.current.handleSave());
     // payload 是本轮 qq 渠道保存提交的请求体。
@@ -430,36 +434,37 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     getSmtpMock.mockResolvedValueOnce({ 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true });
     // qqChannel 是未保存渠道级凭据的 qq 渠道摘要。
     const qqChannel: NotificationChannel = { id: 'qq-2', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 2, name: 'QQ 通知', type: 'qq', enabled: true, user_openid: 'user-openid', has_channel_credentials: false });
+    getChannelMock.mockResolvedValueOnce({ id: 2, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: [] });
     // hook 是管理员编辑 qq 渠道的 Hook 渲染结果。
     const hook = renderHook(/* readyHookFactory 创建读取系统连接器凭据的管理员状态。 */ () => useConnectors(true));
     await waitFor(/* readyAssertion 等待系统设置读取完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
-    expect(hook.result.current.qqConnectorReady).toBe(true);
 
     await act(/* readyEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    expect(hook.result.current.hasChannelCredentials).toBe(false);
+    // 凭据来源按当前表单类型判定，打开 qq 渠道后才应命中 QQ 机器人连接器。
+    expect(hook.result.current.credentialSource).toEqual({ hiddenKeys: ['app_id', 'app_secret'], connectorName: 'QQ 机器人' });
+    expect(hook.result.current.savedCredentialKeys).toEqual([]);
     await act(/* readySaveAction 保存不含 app 字段的 qq 表单。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).toHaveBeenCalledWith('qq-2', expect.objectContaining({ config: { user_openid: 'user-openid', group_openid: '' } }), expect.anything());
+    expect(updateChannelMock).toHaveBeenCalledWith('qq-2', expect.objectContaining({ config: { user_openid: 'user-openid' } }), expect.anything());
     expect(hook.result.current.toast).toEqual({ type: 'success', text: '已更新' });
     hook.unmount();
   });
 
-  // 勾选「改用连接器凭据」后表单写入空串，服务端按合并语义删除渠道级凭据。
+  // 勾选「改用连接器凭据」后表单只记录清除意图，保存时由该类型的凭据键生成空串。
   test('改用连接器凭据时提交空串以清除渠道级凭据', /* clearCredentialTest 验证显式清除的载荷表达。 */ async () => {
     getSmtpMock.mockResolvedValueOnce({ 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true });
     // qqChannel 是仍保存独立凭据的 qq 渠道摘要。
     const qqChannel: NotificationChannel = { id: 'qq-3', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 3, name: 'QQ 通知', type: 'qq', enabled: true, user_openid: 'user-openid', has_channel_credentials: true });
+    getChannelMock.mockResolvedValueOnce({ id: 3, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: ['app_id', 'app_secret'] });
     // hook 是管理员编辑 qq 渠道的 Hook 渲染结果。
     const hook = renderHook(/* clearHookFactory 创建读取系统连接器凭据的管理员状态。 */ () => useConnectors(true));
     await waitFor(/* clearAssertion 等待系统设置读取完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
 
     await act(/* clearEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    await act(/* clearFormAction 模拟勾选改用连接器凭据后写入的删除标记。 */ () => hook.result.current.setForm(
-      /* clearFormUpdater 在现有配置上写入两个空串凭据键。 */ current => ({ ...current, config: { ...current.config, app_id: '', app_secret: '' } }),
+    await act(/* clearFormAction 模拟勾选改用连接器凭据后写入的清除意图。 */ () => hook.result.current.setForm(
+      /* clearFormUpdater 只切换凭据意图，不改动已回填的配置。 */ current => ({ ...current, credentialAction: 'clear' }),
     ));
-    await act(/* clearSaveAction 保存带有删除标记的 qq 表单。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).toHaveBeenCalledWith('qq-3', expect.objectContaining({ config: { user_openid: 'user-openid', group_openid: '', app_id: '', app_secret: '' } }), expect.anything());
+    await act(/* clearSaveAction 保存带有清除意图的 qq 表单。 */ async () => hook.result.current.handleSave());
+    expect(updateChannelMock).toHaveBeenCalledWith('qq-3', expect.objectContaining({ config: { user_openid: 'user-openid', app_id: '', app_secret: '' } }), expect.anything());
     hook.unmount();
   });
 
@@ -467,16 +472,80 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
   test('连接器未就绪且渠道无凭据时 qq 凭据仍必填', /* missingCredentialTest 验证原有必填行为不被放过。 */ async () => {
     // qqChannel 是缺少渠道级凭据的 qq 渠道摘要。
     const qqChannel: NotificationChannel = { id: 'qq-4', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 4, name: 'QQ 通知', type: 'qq', enabled: true, user_openid: 'user-openid', has_channel_credentials: false });
+    getChannelMock.mockResolvedValueOnce({ id: 4, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: [] });
     // hook 是普通用户编辑 qq 渠道的 Hook 渲染结果。
     const hook = renderHook(/* invalidHookFactory 创建不读取系统设置的 qq 编辑状态。 */ () => useConnectors(false));
     await waitFor(/* invalidAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* invalidEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    expect(hook.result.current.qqConnectorReady).toBe(false);
+    expect(hook.result.current.credentialSource).toBeNull();
     await act(/* invalidSaveAction 提交缺少凭据的 qq 表单。 */ async () => hook.result.current.handleSave());
     expect(updateChannelMock).not.toHaveBeenCalled();
     expect(hook.result.current.toast).toEqual({ type: 'error', text: '请填写 机器人 AppID' });
+    hook.unmount();
+  });
+
+  // bark 编辑必须回填 server_url，且不把已保存的 device_key 写进提交配置，避免空串被合并语义当作删除。
+  test('编辑 bark 渠道回填 server_url 并保留已保存的 device_key', /* barkEditorTest 验证非敏感回显与敏感键保留。 */ async () => {
+    // barkChannel 是编辑场景使用的 bark 渠道摘要。
+    const barkChannel: NotificationChannel = { id: 'bark-1', name: 'Bark', type: 'bark', config: {}, enabled: true, event_types: [] };
+    getChannelMock.mockResolvedValueOnce({
+      id: 5, name: 'Bark', type: 'bark', enabled: true,
+      config: { server_url: 'https://bark.example.com', title: '闲鱼助手' }, saved_credential_keys: ['device_key'],
+    });
+    // hook 是普通用户编辑 bark 渠道的 Hook 渲染结果。
+    const hook = renderHook(/* barkHookFactory 创建不读取系统设置的 bark 编辑状态。 */ () => useConnectors(false));
+    await waitFor(/* barkLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
+
+    await act(/* barkEditAction 打开 bark 渠道表单。 */ async () => hook.result.current.openEdit(barkChannel));
+    expect(hook.result.current.form.config).toEqual({ server_url: 'https://bark.example.com', title: '闲鱼助手' });
+    expect(hook.result.current.savedCredentialKeys).toEqual(['device_key']);
+
+    await act(/* barkSaveAction 直接保存未重填 device_key 的表单。 */ async () => hook.result.current.handleSave());
+    // payload 是本轮 bark 渠道保存提交的请求体。
+    const payload = updateChannelMock.mock.calls.at(-1)?.[1];
+    expect(payload?.config).toEqual({ server_url: 'https://bark.example.com', title: '闲鱼助手' });
+    expect(payload?.config).not.toHaveProperty('device_key');
+    hook.unmount();
+  });
+
+  // 钉钉的 webhook_url 与 secret 都是只回传键名的凭据，编辑表单因此为空但仍可保存并保留原值。
+  test('编辑钉钉渠道不回填凭据且留空保存即保留', /* dingtalkEditorTest 验证全敏感凭据渠道的编辑边界。 */ async () => {
+    // dingtalkChannel 是编辑场景使用的钉钉渠道摘要。
+    const dingtalkChannel: NotificationChannel = { id: 'dingtalk-1', name: '钉钉', type: 'dingtalk', config: {}, enabled: true, event_types: [] };
+    getChannelMock.mockResolvedValueOnce({ id: 6, name: '钉钉', type: 'dingtalk', enabled: true, saved_credential_keys: ['secret', 'webhook_url'] });
+    // hook 是普通用户编辑钉钉渠道的 Hook 渲染结果。
+    const hook = renderHook(/* dingtalkHookFactory 创建不读取系统设置的钉钉编辑状态。 */ () => useConnectors(false));
+    await waitFor(/* dingtalkLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
+
+    await act(/* dingtalkEditAction 打开钉钉渠道表单。 */ async () => hook.result.current.openEdit(dingtalkChannel));
+    expect(hook.result.current.form.config).toEqual({});
+    expect(hook.result.current.savedCredentialKeys).toEqual(['secret', 'webhook_url']);
+
+    await act(/* dingtalkSaveAction 直接保存未重填凭据的表单。 */ async () => hook.result.current.handleSave());
+    // payload 是本轮钉钉渠道保存提交的请求体。
+    const payload = updateChannelMock.mock.calls.at(-1)?.[1];
+    expect(payload?.config).toEqual({});
+    expect(payload?.config).not.toHaveProperty('webhook_url');
+    expect(payload?.config).not.toHaveProperty('secret');
+    hook.unmount();
+  });
+
+  // 渠道类型切换必须丢弃上一类型读到的已保存凭据键，否则可选提示会串到新类型上。
+  test('渠道类型切换后清空上一类型的凭据状态', /* typeSwitchTest 验证类型切换的重置边界。 */ async () => {
+    // dingtalkChannel 是携带已保存凭据键的钉钉渠道摘要。
+    const dingtalkChannel: NotificationChannel = { id: 'dingtalk-2', name: '钉钉', type: 'dingtalk', config: {}, enabled: true, event_types: [] };
+    getChannelMock.mockResolvedValueOnce({ id: 7, name: '钉钉', type: 'dingtalk', enabled: true, saved_credential_keys: ['secret', 'webhook_url'] });
+    // hook 是普通用户编辑钉钉渠道的 Hook 渲染结果。
+    const hook = renderHook(/* switchHookFactory 创建不读取系统设置的编辑状态。 */ () => useConnectors(false));
+    await waitFor(/* switchLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
+    await act(/* switchEditAction 打开钉钉渠道表单。 */ async () => hook.result.current.openEdit(dingtalkChannel));
+    await act(/* switchFormAction 模拟弹窗切换类型后写入清除意图。 */ () => hook.result.current.setForm(
+      /* switchFormUpdater 切到飞书并留下清除意图。 */ current => ({ ...current, type: 'feishu', config: {}, credentialAction: 'clear' }),
+    ));
+    await act(/* resetAction 调用弹窗在类型切换后执行的重置。 */ async () => hook.result.current.resetCredentialState());
+    expect(hook.result.current.savedCredentialKeys).toEqual([]);
+    expect(hook.result.current.form.credentialAction).toBeUndefined();
     hook.unmount();
   });
 });

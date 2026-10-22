@@ -89,7 +89,7 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
   return (
     <div className="ios-card rounded-xl p-6 bg-white space-y-5">
       <div className="flex items-start gap-2">
-        <div className="p-1.5 rounded-lg bg-sky-500 text-white mt-0.5">
+        <div className="p-1.5 rounded-lg bg-brand-500 text-white mt-0.5">
           <Icon className="w-4 h-4" />
         </div>
         <div className="flex-1">
@@ -102,14 +102,14 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
       </div>
 
       {connector.guide && (
-        <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-2">
+        <div className="rounded-xl border border-brand-100 bg-brand-50 p-4 space-y-2">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-bold text-sky-900">{connector.guide.title}</p>
+            <p className="text-xs font-bold text-brand-900">{connector.guide.title}</p>
             <button
               type="button"
               aria-expanded={guideOpen}
               onClick={/* 手动切换引导展开状态，之后不再跟随凭据就绪度变化。 */ () => setGuideOpenOverride(!guideOpen)}
-              className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 shrink-0"
+              className="inline-flex items-center gap-1 text-xs font-bold text-brand-700 hover:text-brand-900 shrink-0"
             >
               {guideOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               {guideOpen ? '收起' : '查看配置步骤'}
@@ -117,7 +117,7 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
           </div>
           {guideOpen && (
             <>
-              <ol className="text-xs leading-5 text-sky-900 list-decimal pl-4 space-y-1">
+              <ol className="text-xs leading-5 text-brand-900 list-decimal pl-4 space-y-1">
                 {connector.guide.steps.map(/* step 是当前引导步骤文案，index 用于生成稳定 key。 */ (step, index) => (
                   <li key={index}>{step}</li>
                 ))}
@@ -127,7 +127,7 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
                   href={connector.guide.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900 underline"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-brand-700 hover:text-brand-900 underline"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   {connector.guide.urlLabel || '前往平台'}
@@ -153,9 +153,9 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
       })}
 
       {connector.notices?.map(/* notice 是当前连接器的一条平台限制提示。 */ (notice, index) => (
-        <div key={index} className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5">
-          <ShieldCheck className="w-4 h-4 mt-0.5 text-amber-600 flex-shrink-0" />
-          <p className="text-xs leading-5 text-amber-800">{notice}</p>
+        <div key={index} className="flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2.5">
+          <ShieldCheck className="w-4 h-4 mt-0.5 text-warning-600 flex-shrink-0" />
+          <p className="text-xs leading-5 text-warning-800">{notice}</p>
         </div>
       ))}
 
@@ -164,7 +164,7 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
         const enabled = settings[capability.toggleKey] === true;
         return (
           <div key={capability.id} className="space-y-4">
-            <label className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 cursor-pointer" htmlFor={`connector-capability-${connector.id}-${capability.id}`}>
+            <label className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 cursor-pointer" htmlFor={`connector-capability-${connector.id}-${capability.id}`}>
               <input
                 id={`connector-capability-${connector.id}-${capability.id}`}
                 type="checkbox"
@@ -174,8 +174,8 @@ export const ConnectorCard: React.FC<ConnectorCardProps> = ({ connector, setting
                 onChange={/* 能力开关变化后写回系统配置草稿。 */ event => onChange({ [capability.toggleKey]: event.target.checked })}
               />
               <span>
-                <span className="block text-sm font-bold text-sky-900">{capability.label}</span>
-                <span className="mt-1 block text-xs leading-5 text-sky-800">{capability.description}</span>
+                <span className="block text-sm font-bold text-brand-900">{capability.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-brand-800">{capability.description}</span>
               </span>
             </label>
 

@@ -79,8 +79,8 @@ func TestGetChannelEditorReturnsEmailRecipient(t *testing.T) {
 	}
 }
 
-// TestGetChannelEditorReturnsQQTargetsAndCredentialPresence 验证编辑接口回读 qq 目标 openid 与凭据存在性，且不回传 AppSecret。
-func TestGetChannelEditorReturnsQQTargetsAndCredentialPresence(t *testing.T) {
+// TestGetChannelEditorReturnsConfigAndSavedCredentialKeys 验证编辑接口回读可回显配置与敏感键名，且不回传任何凭据值。
+func TestGetChannelEditorReturnsConfigAndSavedCredentialKeys(t *testing.T) {
 	// srv、store、cleanup 保存当前测试 HTTP 服务、数据库和资源清理函数。
 	srv, store, cleanup := newTestServer(t)
 	defer cleanup()
@@ -102,13 +102,30 @@ func TestGetChannelEditorReturnsQQTargetsAndCredentialPresence(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("编辑 qq 渠道 status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	// body 保存编辑接口返回的 JSON 文本，用于断言字段存在且不含秘密。
-	body := recorder.Body.String()
-	if !strings.Contains(body, `"user_openid":"fixture-user"`) || !strings.Contains(body, `"group_openid":"fixture-group"`) || !strings.Contains(body, `"has_channel_credentials":true`) {
-		t.Fatalf("qq 编辑响应缺少契约字段: %s", body)
+	// decoded 是解析后的响应，用于断言契约字段而不是匹配字符串字面量。
+	var decoded struct {
+		// Config 是可回显的非敏感配置键值。
+		Config map[string]string `json:"config"`
+		// SavedCredentialKeys 是已保存凭据的键名。
+		SavedCredentialKeys []string `json:"saved_credential_keys"`
 	}
-	if strings.Contains(body, "app_secret") || strings.Contains(body, "fixture-secret") {
+	// decodeErr 保存响应解析错误。
+	if decodeErr := json.Unmarshal(recorder.Body.Bytes(), &decoded); decodeErr != nil {
+		t.Fatalf("解析编辑响应失败: %v", decodeErr)
+	}
+	if decoded.Config["user_openid"] != "fixture-user" || decoded.Config["group_openid"] != "fixture-group" || len(decoded.Config) != 2 {
+		t.Fatalf("可回显配置异常: %+v", decoded.Config)
+	}
+	if len(decoded.SavedCredentialKeys) != 2 || decoded.SavedCredentialKeys[0] != "app_id" || decoded.SavedCredentialKeys[1] != "app_secret" {
+		t.Fatalf("敏感键名异常: %+v", decoded.SavedCredentialKeys)
+	}
+	// body 保存编辑接口返回的 JSON 文本，用于确认凭据值从未出现。
+	body := recorder.Body.String()
+	if strings.Contains(body, "fixture-app") || strings.Contains(body, "fixture-secret") {
 		t.Fatalf("qq 编辑响应泄露渠道级凭据: %s", body)
+	}
+	if strings.Contains(body, "has_channel_credentials") {
+		t.Fatalf("旧契约字段不应继续出现在响应中: %s", body)
 	}
 }
 

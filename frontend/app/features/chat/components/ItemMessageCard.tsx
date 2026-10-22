@@ -52,7 +52,7 @@ export const ItemMessageCard: React.FC<ItemMessageCardProps> = ({ content, outgo
         <div className="min-w-0 flex-1 py-0.5">
           <div className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">{item.title}</div>
           <div className="mt-2 flex items-end justify-between gap-2">
-            <span className="text-base font-black text-amber-500">¥{item.price}</span>
+            <span className="text-base font-black text-brand-600">¥{item.price}</span>
             <ExternalLink className="h-3.5 w-3.5 text-slate-300 transition group-hover:text-slate-600" />
           </div>
         </div>
