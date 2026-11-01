@@ -93,6 +93,8 @@ type Adapter struct {
 	passwordResultMu sync.Mutex
 	// passwordResults 保存正在执行的协议续期结果，后到调用方可等待同一账号的结果。
 	passwordResults map[string]*passwordRenewalResult
+	// itemBackfill 执行单商品回补（读凭证、核验发布人、写本地商品表）；构造期注入，运行中不可替换。
+	itemBackfill *ItemBackfillRepository
 }
 
 // passwordRenewalResult 是同账号并发续期调用共享的完成信号与最终成功状态。
@@ -139,6 +141,8 @@ func newAdapter(store *db.Store, bm *browser.Manager, logger *slog.Logger, order
 		orderDetails:        orderDetails,
 		passwordCoordinator: accountapp.NewCredentialRefreshCoordinator(),
 		passwordResults:     make(map[string]*passwordRenewalResult),
+		// itemBackfill 使用默认 MTOP 客户端；测试可替换该字段注入本地替身。
+		itemBackfill: NewItemBackfillRepository(store, nil, logger),
 	}
 }
 

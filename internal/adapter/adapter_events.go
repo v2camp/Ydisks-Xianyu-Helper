@@ -76,6 +76,15 @@ func (a *Adapter) SaveChatSessionRole(ctx context.Context, accountID, chatID, it
 	return a.chat.UpdateSessionRole(ctx, accountID, chatID, itemID, accountRole, buyerUserID, sellerUserID, roleSource)
 }
 
+// AddDecisionLog 把 AI 决策归因记录写入 ai_decision_log。
+// 它是引擎侧可选留痕端口在适配器边界的实现：只写非敏感归因字段，不读取或输出账号凭证。
+func (a *Adapter) AddDecisionLog(ctx context.Context, rec db.AIDecisionRecord) error {
+	if a == nil || a.store == nil || a.store.AIReply == nil {
+		return errors.New("AI 决策日志仓储未初始化")
+	}
+	return a.store.AIReply.AddDecisionLog(ctx, rec)
+}
+
 // HandleMessageRead 接收平台出站消息已读回执，并把非敏感已读状态更新委托给聊天服务。
 func (a *Adapter) HandleMessageRead(ctx context.Context, event engine.MessageReadEvent) error {
 	if a.chat == nil {

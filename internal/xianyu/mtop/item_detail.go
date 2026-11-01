@@ -22,6 +22,38 @@ type ItemDetailFetcher interface {
 
 var _ ItemDetailFetcher = (*ClientImpl)(nil)
 
+// ItemDetailSnapshot 是单件商品详情的强类型事实快照，供商品回补写入本地商品表。
+// 字段全部来自平台详情响应，不含 Cookie、Token 等凭证；调用方不得把它直接暴露为业务 DTO。
+type ItemDetailSnapshot struct {
+	// ItemID 是请求指定的平台商品标识；取自入参而非响应，避免响应缺字段时写错商品。
+	ItemID string
+	// Title 是商品标题，写入本地 item_info.item_title。
+	Title string
+	// Description 是商品描述全文，写入本地 item_info.item_description。
+	Description string
+	// Price 是平台价格数值文本（不含货币符号），写入本地 item_info.item_price。
+	Price string
+	// PriceText 是带货币前缀的价格展示文本，仅用于扩展详情 JSON。
+	PriceText string
+	// CategoryID 是平台类目标识，写入本地 item_info.item_category。
+	CategoryID string
+	// SellerID 是商品发布人的平台用户标识；调用方必须先核验它与当前账号一致再落库。
+	SellerID string
+	// IsMultiSpec 表示详情是否声明了多规格事实，复用列表同步的多规格探测语义。
+	IsMultiSpec bool
+	// DetailJSON 是写入本地 item_info.item_detail 的精简 JSON 文本，键与列表同步保持一致。
+	DetailJSON string
+}
+
+// ItemDetailSource 是按需查询单件商品详情的可选能力。
+// 它刻意不并入 Client 主接口：既有客户端替身与调用方无需实现新增方法，使用方以类型断言按需获取。
+type ItemDetailSource interface {
+	// FetchItemDetailSnapshot 读取 itemID 的强类型商品详情；ctx 控制取消，cookies 仅用于请求认证。
+	FetchItemDetailSnapshot(ctx context.Context, cookies, itemID string) (ItemDetailSnapshot, error)
+}
+
+var _ ItemDetailSource = (*ClientImpl)(nil)
+
 // DetectItemMultiSpec 查询 itemID 的多规格事实；ctx 控制取消，cookies 不得写入日志，错误沿用平台分类。
 func (c *ClientImpl) DetectItemMultiSpec(ctx context.Context, cookies, itemID string) (bool, error) {
 	// detail、err 保存经过 Token 重试的商品详情和请求错误。
@@ -45,6 +77,17 @@ func (c *ClientImpl) FetchItemPublisher(ctx context.Context, cookies, itemID str
 		return "", errors.New("商品详情缺少发布人身份")
 	}
 	return publisher, nil
+}
+
+// FetchItemDetailSnapshot 读取 itemID 的强类型商品详情，供商品回补写入本地商品表。
+// ctx 控制取消与超时；cookies 仅用于本次请求签名，不写入日志。错误沿用商品详情接口的既有分类。
+func (c *ClientImpl) FetchItemDetailSnapshot(ctx context.Context, cookies, itemID string) (ItemDetailSnapshot, error) {
+	// detail、err 保存经过 Token 重试的商品详情和请求错误；失败时不返回部分事实。
+	detail, err := c.fetchItemDetail(ctx, cookies, itemID)
+	if err != nil {
+		return ItemDetailSnapshot{}, err
+	}
+	return parseItemDetailSnapshot(itemID, detail), nil
 }
 
 // fetchItemDetail 使用 ctx 的取消预算读取 itemID 商品详情，cookies 仅用于签名；返回平台事实或可分类错误。
@@ -187,6 +230,125 @@ func buildItemDetailQuery(timestamp, sign string) string {
 // detectItemMultiSpec 封装detect商品MultiSpec业务协调。
 func detectItemMultiSpec(value any) bool {
 	return detectMultiSpecValue(value, false, 0)
+}
+
+// parseItemDetailSnapshot 把平台详情对象转换为强类型快照；detail 是 fetchItemDetail 返回的 data 对象。
+// 商品标识始终取自请求入参，其余字段按平台常见键名逐级兼容；缺失字段保留零值而不报错。
+func parseItemDetailSnapshot(itemID string, detail map[string]any) ItemDetailSnapshot {
+	// node 是详情中被认定为商品事实的业务对象，优先 itemDO，其次 item/itemInfo，最后退回 data 本身。
+	node := itemDetailNode(detail)
+	// sellerNode 是发布人对象，优先取 data 顶层，其次取商品对象内部。
+	sellerNode, _ := detail["sellerDO"].(map[string]any)
+	if sellerNode == nil {
+		sellerNode, _ = node["sellerDO"].(map[string]any)
+	}
+	// snapshot 是本次解析得到的商品事实，仅包含非敏感业务字段。
+	snapshot := ItemDetailSnapshot{
+		ItemID:      strings.TrimSpace(itemID),
+		Title:       detailFirstText(node, "title", "itemTitle", "subject"),
+		Description: detailFirstText(node, "desc", "description", "itemDesc", "itemDescription"),
+		CategoryID:  detailFirstText(node, "categoryId", "categoryID", "categoryIdStr"),
+		SellerID:    strings.TrimSpace(mtopString(sellerNode["sellerId"])),
+		IsMultiSpec: detectItemMultiSpec(detail),
+	}
+	// 价格优先取 priceInfo 结构，其次取 soldPrice/price 标量；解析结果同时给出纯数值与展示文本。
+	snapshot.Price, snapshot.PriceText = detailPrice(node)
+	snapshot.DetailJSON = buildItemDetailJSON(snapshot)
+	return snapshot
+}
+
+// itemDetailNode 返回详情中承载商品事实的对象；detail 为空时返回空对象，避免调用方重复判空。
+func itemDetailNode(detail map[string]any) map[string]any {
+	// key 表示当前尝试的业务对象键名。
+	for _, key := range []string{"itemDO", "item", "itemInfo"} {
+		if // node 是命中的商品事实对象。
+		node, ok := detail[key].(map[string]any); ok && node != nil {
+			return node
+		}
+	}
+	return detail
+}
+
+// detailFirstText 按顺序读取 node 中第一个非空文本字段，用于兼容平台字段改名。
+func detailFirstText(node map[string]any, keys ...string) string {
+	for // key 表示当前尝试的字段名。
+	_, key := range keys {
+		if // text 是当前字段的文本值；非字符串字段由 mtopString 统一返回空串。
+		text := strings.TrimSpace(mtopString(node[key])); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// detailPrice 从商品事实对象中解析价格，返回纯数值文本和带货币前缀的展示文本。
+// 支持 priceInfo{preText,price} 结构、map 形式的 price 以及 soldPrice/price 标量。
+func detailPrice(node map[string]any) (string, string) {
+	// preText 是货币前缀，仅在价格来自 priceInfo 结构时有值。
+	preText := ""
+	// price 是最终解析出的纯数值价格文本。
+	price := ""
+	if // info 是平台价格信息结构。
+	info, ok := node["priceInfo"].(map[string]any); ok && info != nil {
+		preText = strings.TrimSpace(mtopString(info["preText"]))
+		price = detailPriceValue(info["price"])
+	}
+	if price == "" {
+		if // nested 是部分详情把价格再包一层的结构。
+		nested, ok := node["price"].(map[string]any); ok && nested != nil {
+			preText = strings.TrimSpace(mtopString(nested["preText"]))
+			price = detailPriceValue(nested["price"])
+		}
+	}
+	if price == "" {
+		price = detailPriceValue(node["soldPrice"])
+	}
+	if price == "" {
+		price = detailPriceValue(node["price"])
+	}
+	if price == "" {
+		return "", ""
+	}
+	return price, preText + price
+}
+
+// detailPriceValue 把平台价格值格式化为不含货币符号的文本，保留小数位；非数值返回空串。
+func detailPriceValue(value any) string {
+	switch // typed 是价格字段的原始类型。
+	typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
+}
+
+// buildItemDetailJSON 生成与列表同步一致的扩展详情 JSON，键名沿用 title/price/price_text/category_id/web_url。
+// 编码失败不返回错误：详情 JSON 只服务于展示，不能阻断商品归属落库。
+func buildItemDetailJSON(snapshot ItemDetailSnapshot) string {
+	// payload 是待编码的扩展详情对象，只包含公开商品事实。
+	payload := map[string]any{
+		"title":       snapshot.Title,
+		"price":       snapshot.Price,
+		"price_text":  snapshot.PriceText,
+		"category_id": snapshot.CategoryID,
+		"web_url":     "https://www.goofish.com/item?id=" + snapshot.ItemID,
+		"detail_sync": "item_backfill",
+	}
+	// raw、err 保存编码结果；失败时返回空串，交由 UpsertBasic 的非空覆盖规则保留旧值。
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 // detectMultiSpecValue 封装detectMultiSpec值业务协调。
