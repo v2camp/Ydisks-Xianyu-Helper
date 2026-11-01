@@ -43,11 +43,11 @@
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 | 方案出处 |
 |---|---|---|---|---|
 | A1 | 评测口径修正 | `在树` | 提交 `c9200229`；`commentlint`/门禁全绿。**差**一次真实模型跑分（需容器网络内或 `EVAL_*`） | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
-| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
+| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
 | A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `未开始` | `internal/engine/reply_guard.go` 不存在 | 同上 §12 |
+| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`：`reply_guard.go` + `applyAnswerGuards` 已合入；4 条真实回避话术全部被改写。**差**一次真实模型跑分与线上 `answer_source=policy-guard` 出现 | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
-| A6 | AI 启用态与凭据启动自检 | `未开始` | `internal/heartbeat/*`、`cmd/server/*` 无任何 `AIEnabled` 检查 | 同上 §12 |
+| A6 | AI 启用态与凭据启动自检 | `在树` | 提交 `76542eed`：`engine.AIReadinessProbe` 已登记为生命周期组件，启动即检 + 周期复检。**差**镜像发布；G1（商品归属）依赖具体消息，不在自检范围 | 同上 §12 |
 
 **A2 + A4 是唯一能消掉评测里 9/9 失败组合的解**（A2 让事实进得去，A4 让回避出不来），其余各项不影响这 9 条。
 

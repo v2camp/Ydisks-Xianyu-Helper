@@ -155,9 +155,9 @@
 | A1 | 评测口径修正 | `internal/evalharness`、`cmd/evalexport`、`cmd/evalreplay` | 无 | 逐条展开样本数 60→70；可机检期望 9 条；判定失败计入分母 |
 | A2 | 发货渠道事实化：卡密正文 → `card-channel` | `internal/engine/ai_live_context.go` + `internal/netpan` 卡密解析 | A3 | `grounding_source=card-channel` 占发货类会话 ≥60% |
 | A3 | FAQ 通用话术降权（「以商品详情页说明为准」） | `system_settings.ai_knowledge_config`（配置即时生效） | 无 | 配置版本号变更；不再出现在发货类回复中 |
-| A4 | 生成后确定性校验兜底 | 新增 `internal/engine/reply_guard.go`（生成后、外发前） | A1 | 评测的 9 条规则从「判失败」变「线上拦截」 |
+| A4 | 生成后确定性校验兜底 | `internal/engine/reply_guard.go` + `applyAnswerGuards`（生成后、外发前） | A1 | 回避话术被改写为事实结论，`answer_source` 记 `policy-guard` |
 | A5 | 多意图优先级（refund vs order） | `internal/engine/ai_scope.go:decide` + `ai.go` 内容层 | 无 | 同时命中时只注入 refund 的 FAQ 与事实 |
-| A6 | AI 启用态与凭据启动自检 | 复用 `AIReply.Get` / `Settings.Get`，接入心跳与 `/health` | 无 | 四闸门任一关闭时 `/health` 与巡检同时告警 |
+| A6 | AI 启用态与凭据启动自检 | `engine.AIReadinessProbe` 登记为生命周期组件（复用 `AIReply` / `Settings`） | 无 | 三道可离线判定闸门（账号开关/边界配置/凭据）阻断时，启动日志与周期巡检同时告警 |
 
 A2/A4 的顺序是刻意的：**A2 让事实进得去，A4 让回避出不来**，两者合起来才覆盖实测的 9/9 失败
 （全部是「以商品详情为准 / 我这边也说不准」这类回避话术）。其余各项都不影响这 9 条。
