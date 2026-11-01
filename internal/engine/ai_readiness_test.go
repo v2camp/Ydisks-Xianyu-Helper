@@ -159,6 +159,47 @@ func TestCheckAIReadiness_ReadyWithKeyAndScope(t *testing.T) {
 	}
 }
 
+// TestCheckAIReadiness_ReusesKeyCache 周期自检不得绕过密钥缓存：连续两次自检只写一行审计。
+// 对应「审计口径改为每次真实读取」的语义：第二次自检命中缓存，因此不再新增审计行。
+func TestCheckAIReadiness_ReusesKeyCache(t *testing.T) {
+	// s、cleanup 是测试 store。
+	s, cleanup := newAIStore(t)
+	defer cleanup()
+	// ctx 是测试上下文。
+	ctx := context.Background()
+	// err 是启用行写入失败原因；有启用账号才会触发凭据自检。
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`); err != nil {
+		t.Fatalf("插入启用行: %v", err)
+	}
+	// err 是密钥写入失败原因；缺密钥时自检不会进入解密分支。
+	if err := s.Settings.Set(ctx, "ai_api_key", "sk-readiness"); err != nil {
+		t.Fatalf("写入密钥: %v", err)
+	}
+	// provider 是本用例显式持有的缓存实例，避免与进程级缓存互相影响。
+	provider := NewAIKeyProvider(defaultAIKeyCacheTTL, nil)
+	// before 是首次自检前的审计行数。
+	before := countAuditRows(t, s)
+	// err 是首次自检的查询失败原因；本次必然未命中缓存。
+	if _, err := CheckAIReadinessWithProvider(ctx, s, provider); err != nil {
+		t.Fatalf("首次自检: %v", err)
+	}
+	// afterFirst 是首次自检后的审计行数，必须恰好 +1。
+	afterFirst := countAuditRows(t, s)
+	if afterFirst != before+1 {
+		t.Fatalf("首次自检应写一行审计: before=%d after=%d", before, afterFirst)
+	}
+	// err 是二次自检的查询失败原因；本次应命中缓存。
+	if _, err := CheckAIReadinessWithProvider(ctx, s, provider); err != nil {
+		t.Fatalf("二次自检: %v", err)
+	}
+	// afterSecond 是二次自检后的审计行数，命中缓存后不得再增。
+	afterSecond := countAuditRows(t, s)
+	if afterSecond != afterFirst {
+		t.Fatalf("二次自检不得新增审计: first=%d second=%d", afterFirst, afterSecond)
+	}
+	t.Logf("自检审计行数 before=%d afterFirstCheck=%d afterSecondCheck=%d", before, afterFirst, afterSecond)
+}
+
 // TestAIReadinessProbe_StopsOnCancel 探针必须在 ctx 取消后退出，关闭流程才能 Join。
 func TestAIReadinessProbe_StopsOnCancel(t *testing.T) {
 	// 周期设成下限，避免测试依赖真实等待。
