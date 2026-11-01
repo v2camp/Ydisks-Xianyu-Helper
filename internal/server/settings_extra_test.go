@@ -669,3 +669,31 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 		t.Fatalf("legacy forbidden status=%d body=%s", legacyForbiddenRec.Code, legacyForbiddenRec.Body.String())
 	}
 }
+
+// TestSetSettingValidationErrorReturns400 校验类错误必须回 400 并带上原因，不能伪装成 500。
+//
+// 背景（2026-11-01 生产验证实证）：人工确认模式下线后，写入 ai_reply_review_mode 被应用服务
+// 拒绝，但处理器此前把所有 SetSystem 错误统一映射为 500「保存失败」——调用方看到的是服务端故障，
+// 而不是「这个键已经不能写了」。这条用例把「校验错误 → 400 + 具体原因」钉住。
+func TestSetSettingValidationErrorReturns400(t *testing.T) {
+	// srv、_、cleanup 是带完整路由的测试服务。
+	srv, _, cleanup := newTestServer(t)
+	defer cleanup()
+	// h 是待测路由。
+	h := srv.Router()
+	// cookie 是管理员登录凭证。
+	cookie := loginHelper(t, h)
+
+	// req 是写入已下线键的请求。
+	req := httptest.NewRequest(http.MethodPut, "/system-settings/ai_reply_review_mode", strings.NewReader(`{"value":"true"}`))
+	req.AddCookie(cookie)
+	// rec 是响应记录器。
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("下线键应回 400，got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "已下线") {
+		t.Fatalf("400 响应应带上具体原因，got %s", rec.Body.String())
+	}
+}
