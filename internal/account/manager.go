@@ -27,11 +27,9 @@ const legacyManagerShutdownTimeout = 10 * time.Second
 
 // ManagerOptions 是账号管理器的可选依赖。
 //
-// 收敛为结构体而不是继续追加位置参数：可选依赖已出现第二项，位置参数无法表达
-// 「只注入后一项」；两个字段都为零值时等价于「不注入任何可选依赖」。
+// 收敛为结构体而不是继续追加位置参数：可选依赖已出现多项，位置参数无法表达
+// 「只注入后一项」；字段零值时等价于「不注入该可选依赖」。
 type ManagerOptions struct {
-	// ReviewNotifier 是 AI 回复人工确认通知器；nil 时账号运行时只拦截发送、不发确认通知。
-	ReviewNotifier engine.ReplyReviewNotifier
 	// AIGeneratorFactory 是账号级模型生成器工厂；nil 时全部账号沿用默认单次问答。
 	// 客服 Agent 由组合层经它注入，账号管理器只做透传，不解释生成器语义。
 	AIGeneratorFactory engine.AIGeneratorFactory
@@ -45,13 +43,11 @@ type Manager struct {
 	store   *db.Store
 	handler engine.Handler
 	logger  *slog.Logger
-	// reviewNotifier 是 AI 回复人工确认通知器，可选；nil 时账号运行时只拦截发送、不发确认通知。
-	reviewNotifier engine.ReplyReviewNotifier
 	// aiGeneratorFactory 是账号级模型生成器工厂，可选；nil 时账号运行时沿用默认单次问答。
-	// 构造后不再变更，读取不需要加锁，与 handler、reviewNotifier 同性质。
+	// 构造后不再变更，读取不需要加锁，与 handler 同性质。
 	aiGeneratorFactory engine.AIGeneratorFactory
 	// replyImageDeliveryProvider 在账号启动时解析图片自动回复投递端口，可选；
-	// 构造后不再变更，与 handler、reviewNotifier 同性质，读取不需要加锁。
+	// 构造后不再变更，与 handler 同性质，读取不需要加锁。
 	replyImageDeliveryProvider func() engine.ReplyImageDelivery
 	// globalBudget 是进程级共享的全局日发送预算，由 NewManager 创建一次并注入每个账号闸门。
 	// 归 Manager 持有至进程关停，自身无独立关停路径；锁与生命周期文档见 engine.SendBudget。
@@ -103,16 +99,15 @@ func NewManager(store *db.Store, handler engine.Handler, logger *slog.Logger, op
 		globalBudget.Restore(resolveCtx)
 	}
 	return &Manager{
-		store:                       store,
-		handler:                     handler,
-		logger:                      logger,
-		reviewNotifier:              options.ReviewNotifier,
-		aiGeneratorFactory:          options.AIGeneratorFactory,
-		replyImageDeliveryProvider:  options.ReplyImageDeliveryProvider,
-		globalBudget:                globalBudget,
-		accounts:                    make(map[string]*managedAccount),
-		stopping:                    make(map[string]struct{}),
-		watchdog:                    newAccountWatchdog(),
+		store:                      store,
+		handler:                    handler,
+		logger:                     logger,
+		aiGeneratorFactory:         options.AIGeneratorFactory,
+		replyImageDeliveryProvider: options.ReplyImageDeliveryProvider,
+		globalBudget:               globalBudget,
+		accounts:                   make(map[string]*managedAccount),
+		stopping:                   make(map[string]struct{}),
+		watchdog:                   newAccountWatchdog(),
 	}
 }
 
@@ -193,8 +188,6 @@ func (m *Manager) Start(ctx context.Context, cookieID, cookieValue string) error
 		Store:     m.store,
 		Handler:   m.handler,
 		Logger:    m.logger,
-		// 透传 AI 回复人工确认通知器；未注入时为 nil，账号运行时按无通知降级。
-		ReplyReviewNotifier: m.reviewNotifier,
 		// 透传账号级模型生成器工厂；未注入时为 nil，账号运行时沿用默认单次问答。
 		AIGeneratorFactory: m.aiGeneratorFactory,
 		// 透传图片自动回复投递端口；未注入时为 nil，账号运行时跳过含图片的回复。

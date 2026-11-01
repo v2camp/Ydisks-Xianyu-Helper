@@ -524,7 +524,8 @@ func (s *Service) validateValues(values map[string]string) error {
 }
 
 // validateSystemValue 校验具有运行时语义的普通系统设置，避免非法值落库或切换策略。
-// 校验范围包括布尔开关、非负整数和 MCP 服务列表形状，其余普通键原样放行。
+// 校验范围包括布尔开关、非负整数和 MCP 服务列表形状，其余普通键原样放行；
+// 已下线功能的设置键（如已移除的 AI 回复人工确认开关）在此明确拒绝写入。
 func validateSystemValue(key, value string) error {
 	// trimmed 是去除首尾空白后的待校验值，便于统一判断布尔与数字边界。
 	trimmed := strings.TrimSpace(value)
@@ -560,12 +561,9 @@ func validateSystemValue(key, value string) error {
 			return validationErrorf("%s 仅支持 12、24、48 小时或 0（关闭）", key)
 		}
 	case "ai_reply_review_mode":
-		// 允许的开关取值与 engine.reviewModeEnabled 保持一致；非法值拒绝落库。
-		switch strings.ToLower(trimmed) {
-		case "1", "true", "yes", "on", "enabled", "0", "false", "no", "off", "disabled", "":
-		default:
-			return validationError("ai_reply_review_mode 必须是布尔开关值")
-		}
+		// AI 回复人工确认模式已整体下线，引擎侧已无任何读取方；
+		// 兜底放行会让老前端或脚本误以为开关仍然生效，因此明确拒绝写入并提示功能已移除。
+		return validationError("ai_reply_review_mode 已下线，AI 回复不再经人工确认，该设置键不可写入")
 	case "delivery_content_guard":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
 		if trimmed == "" {

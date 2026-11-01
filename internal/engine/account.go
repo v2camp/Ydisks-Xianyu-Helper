@@ -334,8 +334,6 @@ type Config struct {
 	WSDialer WSDialer
 	// SendGate 可选：覆盖出站发送闸门参数。nil 表示读取环境变量配置；显式传零值表示关闭闸门。
 	SendGate *sendGateConfig
-	// ReplyReviewNotifier 可选：AI 回复人工确认通知器；nil 时确认通知静默跳过，仅拦截发送。
-	ReplyReviewNotifier ReplyReviewNotifier
 	// ReplyImageDelivery 可选：图片自动回复的投递端口；nil 时含图片的回复整体跳过，不退化直发。
 	// 生产实现由组合层经账号管理器懒提供，破解「管理器先于聊天应用服务构造」的装配顺序。
 	ReplyImageDelivery ReplyImageDelivery
@@ -412,7 +410,7 @@ func New(cfg Config) *Account {
 				gens = append(gens, injected)
 			}
 		}
-		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, cfg.ReplyImageDelivery, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger, gens...), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger, cfg.ReplyReviewNotifier)
+		a.reply = NewReplyService(cfg.CookieID, cfg.Store, a, cfg.ReplyImageDelivery, nil, NewAIReplier(cfg.CookieID, cfg.Store, logger, gens...), NewFindStuffReplierFromSettings(settings, cfg.CookieID, logger), logger)
 	}
 	a.messageDispatcher = newMessageDispatcher(messageDispatcherConfig{
 		CookieID:        cfg.CookieID,
