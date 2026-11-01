@@ -67,6 +67,30 @@ func (a *AIReply) IsEnabled(ctx context.Context, cookieID string) (bool, error) 
 	return enabled != 0, err
 }
 
+// ListEnabledCookieIDs 返回启用 AI 回复的账号列表，按账号升序；无启用账号时返回空切片。
+// ai_enabled 以 INTEGER 存储，跨方言都可用「= 1」比较，不依赖驱动对布尔的编码。
+func (a *AIReply) ListEnabledCookieIDs(ctx context.Context) ([]string, error) {
+	// rows 是启用 AI 的账号查询结果集。
+	rows, err := a.DB.QueryContext(ctx, `SELECT cookie_id FROM ai_reply_settings WHERE ai_enabled = 1 ORDER BY cookie_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	// ids 是按账号升序累积的 cookie_id。
+	ids := make([]string, 0, 4)
+	// rows.Next 遍历到结果集结束；扫描失败直接返回错误，避免返回半份清单。
+	for rows.Next() {
+		// id 是当前行读出的 cookie_id。
+		var id string
+		// scanErr 是当前行扫描失败原因；失败时立即返回，不返回半份清单。
+		if scanErr := rows.Scan(&id); scanErr != nil {
+			return nil, scanErr
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // PricingMode 只读取 AI 议价及其真实改价开关，供订单事件选择互斥执行路径。
 func (a *AIReply) PricingMode(ctx context.Context, cookieID string) (bool, bool, error) {
 	// aiEnabled、autoAdjustEnabled 分别是 AI 议价和真实自动改价开关的数据库整数值。
