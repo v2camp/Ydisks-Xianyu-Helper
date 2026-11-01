@@ -14,6 +14,22 @@ import (
 	"xianyu-go/internal/logging"
 )
 
+// writeSettingsWriteError 把设置写入失败映射为对应的 HTTP 状态。
+//
+// 为什么要区分：应用服务对「输入不合法」返回 *settingsapp.ValidationError（如值不在白名单、
+// 键已下线），这类错误是调用方可以自行修正的，必须回 400 并带上具体中文原因；
+// 统一映射成 500「保存失败」会把用户输入问题伪装成服务端故障，让排障从错误方向开始。
+// 其余错误（审计失败、落库失败）才回 500，且不回带内部细节。
+func writeSettingsWriteError(w http.ResponseWriter, err error) {
+	// validationErr 是设置输入校验错误，其 Message 可直接展示给调用方。
+	var validationErr *settingsapp.ValidationError
+	if errors.As(err, &validationErr) && validationErr != nil {
+		writeErr(w, http.StatusBadRequest, validationErr.Message)
+		return
+	}
+	writeErr(w, http.StatusInternalServerError, "保存失败")
+}
+
 // systemSettingSecretChangeRequest 是 HTTP 层接收的敏感设置变更命令。
 type systemSettingSecretChangeRequest struct {
 	// Action 是 retain、replace 或 clear。
@@ -187,7 +203,7 @@ func (s *Server) setSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// err 是普通设置与敏感命令原子保存错误。
 	if err := s.settingsApplication().ApplySystemChanges(r.Context(), sess.UserID, values, secrets); err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存失败")
+		writeSettingsWriteError(w, err)
 		return
 	}
 	// level 是待应用的日志级别；ok 表示请求是否更新日志级别。
@@ -302,7 +318,7 @@ func (s *Server) setSetting(w http.ResponseWriter, r *http.Request) {
 		}
 		// err 是单项敏感设置原子保存或审计错误。
 		if err := s.settingsApplication().SetSystem(r.Context(), sess.UserID, key, req.Value, action); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
+			writeSettingsWriteError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, operationResponse{Success: true})
@@ -327,7 +343,7 @@ func (s *Server) setSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	// err 表示普通设置保存或应用服务校验失败。
 	if err := s.settingsApplication().SetSystem(r.Context(), sess.UserID, key, req.Value, ""); err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存失败")
+		writeSettingsWriteError(w, err)
 		return
 	}
 	if key == "log_level" {
