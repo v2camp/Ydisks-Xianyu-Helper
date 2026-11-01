@@ -77,17 +77,21 @@
 
 ### 1.5 E 组：AI 默认开启与一键关闭（P0，方案见 `docs/customer-service-ai-default-on-plan.md`）
 
+> 部署记录（2026-11-01）：本地部署镜像重建并替换 `ydisks-xianyu-helper-app-1`，运行镜像 ID `7eb796e3`，健康检查通过，部署后无 ERROR 日志。
+> 线上核验：`ai_master_enabled` 缺省无行=开；3 个账号全部生效为开；`ai_reply_review_mode` 线上无行（该功能从未被启用，删除对线上行为零改变），写入现返回 400。
+> 状态说明：`已发布` 指已运行，`已生效` 需真实买家消息进入后由 `ai_decision_log` 佐证，尚未观测到。
+
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
 |---|---|---|---|
-| E1 | 语义反转：无行 = 跟随总闸（默认开），有 0 = 显式关 | `在树` | `02132065`：`Get` 无行返回默认结构（`ai_reply.go`），`ai.go` 闸门改为总闸 + 账号显式值；`ListEnabledCookieIDs` 改 `COALESCE(ai_enabled,1)=1`，`evalharness` 裸 SQL 同步 |
-| E2 | 全局总闸 `ai_master_enabled`（缺省为开，走普通读取不写审计） | `在树` | `02132065`：`ai_master_enabled` 走 `Settings.Get` 普通读，未进敏感白名单（已断言不产生审计行）；缺省为开 |
-| E3 | 契约与 UI：`effective_enabled` + `source`，设置页顶部总闸开关 | `在树` | 后端 `02132065` 已返回 `effective_enabled` / `source`；前端总闸开关待前端提交 |
-| E4 | 意图白名单放开：order → inquiry → consult（spec / usage 待 A2） | `在树` | `b0160659`：`order`/`inquiry`/`consult` 三处 `allowAI=true`，`spec`/`usage` 仍 false；6 处「只标注」断言同批改正 |
-| E5 | 自检与人工确认口径同步 | `在树` | `02132065`：`Ready()` 改为「总闸开 && 无凭据问题」，「无启用行」不再是故障；`ai_reply_review_mode` 随 E6 整键删除，不再需要联动提示 |
-| E6 | 移除人工确认模式（UI + 逻辑 + 契约） | `在树` | `adf80b0d`：`reply_review.go` 与 213 行测试已删，`NewReplyService` 收敛为 8 参，设置校验改为拒写该键。**线上原值仍未核对（O9）** |
+| E1 | 语义反转：无行 = 跟随总闸（默认开），有 0 = 显式关 | `已发布` | `02132065`：`Get` 无行返回默认结构（`ai_reply.go`），`ai.go` 闸门改为总闸 + 账号显式值；`ListEnabledCookieIDs` 改 `COALESCE(ai_enabled,1)=1`，`evalharness` 裸 SQL 同步 |
+| E2 | 全局总闸 `ai_master_enabled`（缺省为开，走普通读取不写审计） | `已发布` | `02132065`：`ai_master_enabled` 走 `Settings.Get` 普通读，未进敏感白名单（已断言不产生审计行）；缺省为开 |
+| E3 | 契约与 UI：`effective_enabled` + `source`，设置页顶部总闸开关 | `已发布` | 后端 `02132065` 已返回 `effective_enabled` / `source`；前端总闸开关待前端提交 |
+| E4 | 意图白名单放开：order → inquiry → consult（spec / usage 待 A2） | `已发布` | `b0160659`：`order`/`inquiry`/`consult` 三处 `allowAI=true`，`spec`/`usage` 仍 false；6 处「只标注」断言同批改正 |
+| E5 | 自检与人工确认口径同步 | `已发布` | `02132065`：`Ready()` 改为「总闸开 && 无凭据问题」，「无启用行」不再是故障；`ai_reply_review_mode` 随 E6 整键删除，不再需要联动提示 |
+| E6 | 移除人工确认模式（UI + 逻辑 + 契约） | `已发布` | `adf80b0d`：`reply_review.go` 与 213 行测试已删，`NewReplyService` 收敛为 8 参，设置校验改为拒写该键。**线上原值仍未核对（O9）** |
 | E7 | AI 密钥 provider（TTL + single-flight + 写时失效） | `未开始` | `globalAIConfig` 每条回复都走 `ReadSensitiveSettingForAccount` → 每条回复一行审计；日 300 条 ≈ 9000 行/月 |
-| E8 | 准入层异步补齐缺失商品（方案 C） | `在树` | `f762c353`：新增 `item_backfill.go`（去重 + 24h 负缓存 + 按账号限流 + single-flight），单商品详情走新窄接口不改 `mtop.Client`，`platform_unresolved` 永久短路已修；原因码 `item-sync-requested` / `item-sync-failed` |
-| E9 | Agent 开关归并到统一开关（保留 preset 配置） | `在树` | `c0008544`：`KeySupportEnabled`、`agent_enabled` 读取、4 个接口 enabled 字段已删；`ResolveSession` 恒 true；并修掉写档位顺带写 `ai_enabled=0` 的隐患 |
+| E8 | 准入层异步补齐缺失商品（方案 C） | `已发布` | `f762c353`：新增 `item_backfill.go`（去重 + 24h 负缓存 + 按账号限流 + single-flight），单商品详情走新窄接口不改 `mtop.Client`，`platform_unresolved` 永久短路已修；原因码 `item-sync-requested` / `item-sync-failed` |
+| E9 | Agent 开关归并到统一开关（保留 preset 配置） | `已发布` | `c0008544`：`KeySupportEnabled`、`agent_enabled` 读取、4 个接口 enabled 字段已删；`ResolveSession` 恒 true；并修掉写档位顺带写 `ai_enabled=0` 的隐患 |
 | E10 | 修掉 `source` 标签对「只配过 Agent 档位」的账号误报为 `account` | `未开始` | 写档位时按 `SkipAIEnabled` 插入写 1，`AIEnabledExplicit` 按列非空判定，故该类账号显示为「账号显式开」而用户从未动过 AI 开关。生效值正确，仅标签失真；彻底修法是把「未提交」写成 NULL 并让两条写入路径统一，需配套测试 |
 
 ### 1.6 待决策（非工程待办，需产品/用户拍板）
