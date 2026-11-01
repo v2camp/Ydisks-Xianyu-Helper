@@ -166,10 +166,10 @@
 | 编号 | 事项 | 架构落点 | 前置 | 验收信号（可机检） | 状态 |
 |---|---|---|---|---|---|
 | A1 | 评测口径修正 | `internal/evalharness`、`cmd/evalexport`、`cmd/evalreplay` | 无 | 逐条展开样本数 60→70；可机检期望 9 条；判定失败计入分母 | 在树（2026-11-01） |
-| A2 | 发货渠道事实化：卡密正文 → `card-channel` | `internal/engine/ai_live_context.go` + 卡密解析 | A3 | `grounding_source=card-channel` 占发货类会话 ≥60% | 未开始 |
+| A2 | 发货渠道事实化：卡密正文 → `card-channel` | `internal/engine/ai_live_context.go` + 卡密解析 | A3 | `grounding_source=card-channel` 占发货类会话 ≥60% | 在树（识别/落库/`card-channel` 分支均已建；缺覆盖率——27 个商品仅 21 个映射到渠道） |
 | A3 | FAQ 通用话术降权（「以商品详情页说明为准」） | `system_settings.ai_knowledge_config`（配置即时生效） | 无 | 配置版本号变更；不再出现在发货类回复中 | 在树（配置已改，待发布确认） |
 | A4 | 生成后确定性校验兜底 | 新增 `internal/engine/reply_guard.go`（生成后、外发前） | A1 | `deriveItemFactExpectation` 的 9 条规则从「评测失败」变「线上拦截」 | 未开始 |
-| A5 | `refund` 与 `fulfillment` 意图互斥 | `internal/engine/ai_scope.go` + `ai.go` 内容层 | 无 | 真实语料「那能退吗」判 `refund` 而非 `fulfillment` | 未开始 |
+| A5 | `refund` 与 `fulfillment` 多意图优先级 | `internal/engine/ai_scope.go:decide`（当前纯 OR，无优先级）+ `ai.go` 内容层 | 无 | 同时命中 refund 与 order 时只注入 refund 的 FAQ 与事实 | 在树（refund 意图已 allowAI 且与 order 分离，2026-10-17 修问题 F；缺多意图优先级） |
 | A6 | AI 启用态与凭据启动自检 + 巡检告警 | 复用 `AIReply.Get` / `Settings.Get`，接入心跳 | 无 | 四闸门任一关闭时 `/health` 与巡检同时告警 | 未开始 |
 
 A2/A4 的顺序是刻意的：**A2 让事实进得去，A4 让回避出不来**，两者合起来才覆盖本轮实测的 9/9 失败
@@ -232,3 +232,20 @@ A2/A4 的顺序是刻意的：**A2 让事实进得去，A4 让回避出不来**�
 
 保持每周一次（周六 18:30）。数据以周为粒度，且当前瓶颈是「发布核验」而不是「发现新问题」——日报只会重复同一批结论，反而稀释信号。
 若 B4（样本导出）落地，可把频率提到每周两次，因为那时每周都有新样本可测。
+
+### 12.7 完成度快照（2026-11-01，逐项 grep 核验）
+
+| 档位 | 项数 | 已生效 | 在树未生效 | 未开始 |
+|---|---|---|---|---|
+| P0 准确性 | 6 | 0 | 3（A1 / A2 / A5） | 3（A3 待发布确认、A4、A6） |
+| P1 通用性 | 4 | 0 | 0 | 4 |
+| P2 热点 | 3 | 0 | 0 | 3 |
+| P3 性能 | 2 | 0 | 0 | 2 |
+| **合计** | **15** | **0** | **3** | **12** |
+
+**结论：没有任何一项走到「已生效」。** 三项「在树」的差异要分清：
+- A1 是本轮新做的，代码已在 main，但还没有一次真实模型跑分验证（缺库或缺 `EVAL_*`）。
+- A2 的机制（`internal/netpan` 识别 → `cards.delivery_channels` → `deliverySourceCard`）早就建好，
+  卡在**覆盖率**：27 个在售商品只有 21 个能映射到渠道，其余落回 `item-text` 弱规则。
+- A5 的 `refund` 意图本身可用（10-17 已修「负向词吞掉退款咨询」的问题 F），
+  但 `decide` 是纯 OR 语义、无优先级，同时命中 refund 与 order 时两份 FAQ 会一起进提示。
