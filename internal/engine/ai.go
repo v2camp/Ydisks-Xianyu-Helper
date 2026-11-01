@@ -157,11 +157,6 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	for _, message := range history {
 		historyTurns = append(historyTurns, ConversationTurn{Role: message.Role, Content: message.Content})
 	}
-	// answerSource 追踪本次答案的真正来源：默认模型产出，命中价格守卫被整段
-	// 替换为策略话术时改写，模型无产出时记为空答案。
-	answerSource := answerSourceLLM
-	// guardReason 记录拦截原因简码；未拦截时为空。
-	guardReason := ""
 	// startedAt 是生成开始时刻，用于计算本次耗时。
 	startedAt := time.Now()
 	// content、err 分别是模型返回的首个候选文本及其调用失败原因。
@@ -177,54 +172,32 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	if err != nil {
 		return nil, err
 	}
-	// reply 用于本次流程后续判断的回复；生成器返回空文本视为模型无可用产出。
+	// reply、markerPrice、markerOK 是模型产出与结构化报价标记；空文本视为无可用产出。
 	reply, markerPrice, markerOK := extractExecutableOffer(content)
 	if reply == "" {
 		// 模型没有产出任何内容：同样必须留痕，
 		// 否则「买家收到空回复」这类问题事后完全无法归因。
-		a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, answerSourceEmpty, guardReason, live, "", time.Since(startedAt))
+		a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, answerSourceEmpty, "", live, "", time.Since(startedAt))
 		return nil, nil
 	}
-	// minimumPrice 用于本次流程后续判断的minimumPrice
-	minimumPrice := minimumAllowedPrice(itemPrice, cfg.MaxDiscountPercent, cfg.MaxDiscountAmount, withinBargainLimit)
-	// quote 是仅在商家开启真实改价且模型结构化报价通过校验时返回的执行提案。
-	var quote *AIPriceQuoteProposal
-	// markerUnsafe 表示结构化报价突破最低价或高于商品标价，必须和正文越界同样拦截。
-	markerUnsafe := markerOK && (markerPrice+0.0001 < minimumPrice || markerPrice > itemPrice+0.0001)
-	if // offered、unsafe 用于本次流程后续判断的offered、unsafe
-	offered, unsafe := unsafeOfferedPrice(reply, minimumPrice); unsafe || markerUnsafe {
-		if markerUnsafe {
-			offered = markerPrice
-		}
-		a.logger.Warn("AI 报价超过折扣边界，使用安全回复", "offered", offered, "minimum", minimumPrice)
-		if minimumPrice >= itemPrice || !withinBargainLimit {
-			// noDiscount 是策略配置的拒绝兜底话术；未配置时沿用内置文案。
-			noDiscount := policy.NoDiscountReply
-			if noDiscount == "" {
-				noDiscount = "抱歉，当前价格已经是最低价，暂时不能再优惠了。"
-			}
-			reply = noDiscount
-			// 答案已被策略话术整段替换，不再是模型产出。
-			answerSource = answerSourceNoDiscount
-			guardReason = "no-discount-scope"
-		} else {
-			// minPrice 是策略配置的最低价话术模板，{amount} 替换为该轮最低报价。
-			minPrice := policy.MinPriceReply
-			if !strings.Contains(minPrice, "{amount}") {
-				minPrice = "可以优惠的最低价格是 {amount} 元，低于这个价格暂时无法成交。"
-			}
-			reply = strings.ReplaceAll(minPrice, "{amount}", fmt.Sprintf("%.2f", minimumPrice))
-			answerSource = answerSourceMinPrice
-			guardReason = "offer-below-minimum"
-			if cfg.AutoAdjustPriceEnabled {
-				quote = &AIPriceQuoteProposal{PriceCents: priceToCents(minimumPrice)}
-			}
-		}
-	} else if cfg.AutoAdjustPriceEnabled && markerOK && markerPrice > 0 && markerPrice+0.0001 < itemPrice && replyContainsOfferedPrice(reply, markerPrice) {
-		quote = &AIPriceQuoteProposal{PriceCents: priceToCents(markerPrice)}
-	}
+	// outcome 是生成后守卫的产出：最终文本、答案来源、拦截原因与改价提案。
+	outcome := a.applyAnswerGuards(answerGuardInput{
+		Reply:              reply,
+		ItemPrice:          itemPrice,
+		MinimumPrice:       minimumAllowedPrice(itemPrice, cfg.MaxDiscountPercent, cfg.MaxDiscountAmount, withinBargainLimit),
+		MarkerPrice:        markerPrice,
+		MarkerOK:           markerOK,
+		WithinBargainLimit: withinBargainLimit,
+		AutoAdjustPrice:    cfg.AutoAdjustPriceEnabled,
+		Policy:             policy,
+		Live:               live,
+		ChatID:             m.ChatID,
+		ItemID:             m.ItemID,
+	})
+	// reply 是守卫之后的最终外发文本。
+	reply = outcome.Reply
 	// 生成归因必须先于对话落库：落库失败会直接返回，届时这条回复的事实来源就丢了。
-	a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, answerSource, guardReason, live, reply, time.Since(startedAt))
+	a.recordGeneration(ctx, m, aiCfg.Model, systemPrompt, outcome.Source, outcome.Reason, live, reply, time.Since(startedAt))
 	if m.ChatID != "" && m.ItemID != "" {
 		if // err 用于本次流程后续判断的err
 		err := a.store.AIReply.AddConversationExchange(ctx, a.cookieID, m.ChatID, m.SenderUserID, m.ItemID,
@@ -234,7 +207,110 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 			return nil, fmt.Errorf("保存 AI 对话失败: %w", err)
 		}
 	}
-	return &ReplyResult{Text: reply, AutoPriceQuote: quote}, nil
+	return &ReplyResult{Text: reply, AutoPriceQuote: outcome.Quote}, nil
+}
+
+// answerGuardInput 是生成后守卫的输入；字段按职责分组，避免调用点出现长参数表。
+type answerGuardInput struct {
+	// Reply 是模型产出的原始文本。
+	Reply string
+	// ItemPrice 是商品标价，用于判定报价是否高于标价。
+	ItemPrice float64
+	// MinimumPrice 是本轮允许的最低报价。
+	MinimumPrice float64
+	// MarkerPrice、MarkerOK 是模型结构化报价标记的值与是否存在。
+	MarkerPrice float64
+	MarkerOK    bool
+	// WithinBargainLimit 表示是否仍在允许砍价的轮次内。
+	WithinBargainLimit bool
+	// AutoAdjustPrice 表示商家是否开启真实改价。
+	AutoAdjustPrice bool
+	// Policy 是策略话术配置（最低价/拒绝兜底文案）。
+	Policy *aiPolicyConfig
+	// Live 是本次注入的事实集合。
+	Live liveKnowledge
+	// ChatID、ItemID 仅用于日志定位，不参与判定。
+	ChatID string
+	ItemID string
+}
+
+// guardedAnswer 是生成后守卫的产出。
+type guardedAnswer struct {
+	// Reply 是最终外发文本。
+	Reply string
+	// Source 是答案来源简码，见 answerSourceLLM 等常量。
+	Source string
+	// Reason 是拦截原因简码；未拦截时为空。
+	Reason string
+	// Quote 是仅在真实改价通过校验时返回的执行提案。
+	Quote *AIPriceQuoteProposal
+}
+
+// applyAnswerGuards 在模型生成之后、外发之前应用两层确定性守卫：
+// 价格守卫（报价越界即整段替换为策略话术）与事实兜底（已有确定事实时不许回避）。
+//
+// 顺序不可颠倒：价格守卫是策略结论，事实兜底是文案纠正；
+// 反过来会让兜底改写覆盖已经生效的价格结论与结构化报价。
+func (a *AIReplierImpl) applyAnswerGuards(in answerGuardInput) guardedAnswer {
+	// out 是逐层守卫后的产出。
+	out := guardedAnswer{Reply: in.Reply, Source: answerSourceLLM}
+	// markerUnsafe 表示结构化报价突破最低价或高于商品标价，必须和正文越界同样拦截。
+	markerUnsafe := in.MarkerOK && (in.MarkerPrice+0.0001 < in.MinimumPrice || in.MarkerPrice > in.ItemPrice+0.0001)
+	// offered、unsafe 是正文中出现的报价与是否越界。
+	offered, unsafe := unsafeOfferedPrice(out.Reply, in.MinimumPrice)
+	if unsafe || markerUnsafe {
+		if markerUnsafe {
+			offered = in.MarkerPrice
+		}
+		a.logger.Warn("AI 报价超过折扣边界，使用安全回复", "offered", offered, "minimum", in.MinimumPrice)
+		if in.MinimumPrice >= in.ItemPrice || !in.WithinBargainLimit {
+			out.Reply = noDiscountReply(in.Policy)
+			out.Source = answerSourceNoDiscount
+			out.Reason = "no-discount-scope"
+		} else {
+			out.Reply = minPriceReply(in.Policy, in.MinimumPrice)
+			out.Source = answerSourceMinPrice
+			out.Reason = "offer-below-minimum"
+			if in.AutoAdjustPrice {
+				out.Quote = &AIPriceQuoteProposal{PriceCents: priceToCents(in.MinimumPrice)}
+			}
+		}
+	} else if in.AutoAdjustPrice && in.MarkerOK && in.MarkerPrice > 0 && in.MarkerPrice+0.0001 < in.ItemPrice && replyContainsOfferedPrice(out.Reply, in.MarkerPrice) {
+		out.Quote = &AIPriceQuoteProposal{PriceCents: priceToCents(in.MarkerPrice)}
+	}
+	// 事实兜底只对「仍是模型原稿且未附带改价提案」的回复生效：
+	// 策略话术是结论、改价提案带结构化报价，两者都不该被文案改写覆盖。
+	if out.Source == answerSourceLLM && out.Quote == nil {
+		// guarded、changed 是兜底后的文本与是否发生改写。
+		if guarded, changed := guardDeflection(out.Reply, in.Live); changed {
+			out.Reply = guarded
+			out.Source = answerSourcePolicyGuard
+			out.Reason = "deflection-guard"
+			a.logger.Info("AI 回复回避了已注入事实，已改写为事实结论", "chat_id", in.ChatID, "item_id", in.ItemID)
+		}
+	}
+	return out
+}
+
+// noDiscountReply 返回拒绝兜底话术：优先策略配置，缺省用内置文案。
+func noDiscountReply(policy *aiPolicyConfig) string {
+	if policy != nil && policy.NoDiscountReply != "" {
+		return policy.NoDiscountReply
+	}
+	return "抱歉，当前价格已经是最低价，暂时不能再优惠了。"
+}
+
+// minPriceReply 返回最低价话术：优先策略模板，模板缺 {amount} 占位时用内置文案。
+func minPriceReply(policy *aiPolicyConfig, minimumPrice float64) string {
+	// template 是策略配置的最低价模板。
+	template := ""
+	if policy != nil {
+		template = policy.MinPriceReply
+	}
+	if !strings.Contains(template, "{amount}") {
+		template = "可以优惠的最低价格是 {amount} 元，低于这个价格暂时无法成交。"
+	}
+	return strings.ReplaceAll(template, "{amount}", fmt.Sprintf("%.2f", minimumPrice))
 }
 
 // recordDecision 记录一次接管决策的归因信息。
@@ -289,6 +365,9 @@ const (
 	answerSourceMinPrice = "policy-min-price"
 	// answerSourceEmpty 表示模型没有产出任何内容。
 	answerSourceEmpty = "empty"
+	// answerSourcePolicyGuard 表示模型有产出但含回避话术，答案已被事实结论改写。
+	// 与价格守卫同理：不单列就会把确定性兜底的产出记成模型能力。
+	answerSourcePolicyGuard = "policy-guard"
 )
 
 // recordGeneration 记录一次生成的归因：谁答的、依据什么。
@@ -298,6 +377,7 @@ const (
 //     模型原稿，不区分就会把策略产出的答案当成模型能力。
 //  2. 「发货是靠事实还是靠文本规则猜的」——看 groundingSource。只有 card-channel
 //     是卡密事实，delivery-config 与 item-text 都仍然是从文本里探测出来的。
+//
 // 埋点失败只记 Debug，绝不影响回复链路。
 func (a *AIReplierImpl) recordGeneration(ctx context.Context, m ChatMessage, model, systemPrompt, answerSource, guardReason string, live liveKnowledge, reply string, latency time.Duration) {
 	// groundingSource 是事实来源简码；动态查询失败时为空，统一归为无。

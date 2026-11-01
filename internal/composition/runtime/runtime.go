@@ -15,6 +15,7 @@ import (
 	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
+	"xianyu-go/internal/engine"
 	"xianyu-go/internal/heartbeat"
 	"xianyu-go/internal/mcp"
 	"xianyu-go/internal/netguard"
@@ -257,6 +258,18 @@ func buildRuntimeLifecycleCoordinator(infrastructure RuntimeInfrastructure, runt
 		// addErr 是进程心跳写者登记失败原因；关闭（nil）时不登记，宿主检查发现空表即「未配置」。
 		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "process-heartbeat", Component: lifecycle.FuncComponent{StartFunc: func(ctx context.Context) error { go heartbeatWriter.Run(ctx); return nil }, CloseFunc: heartbeatWriter.WaitContext}}); addErr != nil {
 			return nil, fmt.Errorf("登记进程心跳写者失败: %w", addErr)
+		}
+	}
+	// aiReadinessProbe 是 AI 启用链路自检探针；周期为 0 时返回 nil 表示显式关闭。
+	// 它把「配置了但没生效」从静默变成启动日志与周期告警：四闸门任一阻断都会在这里暴露。
+	aiReadinessProbe := engine.NewAIReadinessProbe(infrastructure.Store, infrastructure.Logger)
+	if aiReadinessProbe != nil {
+		// addErr 是 AI 自检探针登记失败原因；登记失败时运行时不得继续暴露。
+		if addErr := lifecycleCoordinator.Add(lifecycle.NamedComponent{Name: "ai-readiness", Component: lifecycle.FuncComponent{
+			StartFunc: func(ctx context.Context) error { go aiReadinessProbe.Run(ctx); return nil },
+			CloseFunc: aiReadinessProbe.WaitContext,
+		}}); addErr != nil {
+			return nil, fmt.Errorf("登记 AI 启用自检失败: %w", addErr)
 		}
 	}
 	// backupSource 是卡密与自动化规则的只读投影；备份服务经它读取两份业务资产。
