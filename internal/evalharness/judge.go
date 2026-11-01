@@ -166,6 +166,22 @@ func judgeUserPrompt(exp *Expectation, sample Sample, reply string) string {
 	return b.String()
 }
 
+// judgeUserPromptBlind 是盲评输入：只给买家问题与客服回复，不注入被测模型看到的上下文。
+// 动机：常规判定会把「当初注入的 KnowledgeContext」当成事实依据，若该上下文本身有错
+// （如冲突 FAQ），判定模型会与生成模型共享同一盲区并判为「一致」。盲评切断这条共模路径。
+func judgeUserPromptBlind(exp *Expectation, sample Sample, reply string) string {
+	// b 是判定输入的拼装缓冲。
+	var b strings.Builder
+	fmt.Fprintf(&b, "买家当前问题：%s\n", sample.Snapshot.MessageText)
+	fmt.Fprintf(&b, "\n客服回复：%s", reply)
+	fmt.Fprintf(&b, "\n\n说明：请只依据问题与回复本身判断是否正面作答、是否回避、是否编造；不要假设回复中未出现的信息。")
+	// 场景自带的额外判定要求仍保留：它是人工给的判据，不是被测模型的输入。
+	if exp != nil && strings.TrimSpace(exp.Note) != "" {
+		fmt.Fprintf(&b, "\n额外判定要求：%s", exp.Note)
+	}
+	return b.String()
+}
+
 // judgeResponse 是判定模型返回的结构化结论。
 type judgeResponse struct {
 	// Pass 表示判定模型认为回复达标。
@@ -174,11 +190,21 @@ type judgeResponse struct {
 	Reason string `json:"reason"`
 }
 
-// JudgeByModel 用判定模型评估回复是否恰当。
-// 判定模型无法给出可解析结论时，返回 JudgeFailed 为真的结果，该样本不计入指标分母。
+// JudgeByModel 用判定模型评估回复是否恰当，默认使用「带上下文」的常规判定。
 func JudgeByModel(ctx context.Context, gen GeneratorFunc, cfg ModelConfig, exp *Expectation, sample Sample, reply string) Verdict {
+	return JudgeByModelMode(ctx, gen, cfg, exp, sample, reply, false)
+}
+
+// JudgeByModelMode 用判定模型评估回复是否恰当；blind 为真时走盲评输入。
+// 判定模型无法给出可解析结论时，返回 JudgeFailed 为真的结果；是否计入分母由汇总层决定。
+func JudgeByModelMode(ctx context.Context, gen GeneratorFunc, cfg ModelConfig, exp *Expectation, sample Sample, reply string, blind bool) Verdict {
+	// prompt 是本次判定使用的用户输入。
+	prompt := judgeUserPrompt(exp, sample, reply)
+	if blind {
+		prompt = judgeUserPromptBlind(exp, sample, reply)
+	}
 	// raw、err 是判定模型输出与调用失败原因。
-	raw, err := gen(ctx, cfg, judgeSystemPrompt, nil, judgeUserPrompt(exp, sample, reply))
+	raw, err := gen(ctx, cfg, judgeSystemPrompt, nil, prompt)
 	if err != nil {
 		return Verdict{Pass: false, Layer: layerJudge, Reply: reply, JudgeFailed: true, Reason: "判定模型调用失败: " + err.Error()}
 	}

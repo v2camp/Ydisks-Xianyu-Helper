@@ -30,7 +30,8 @@ type CaseResult struct {
 	Reason string
 	// Reply 是被测模型的回复文本。
 	Reply string
-	// JudgeFailed 表示判定失败，该样本不计入指标分子分母。
+	// JudgeFailed 表示判定失败；汇总时按未通过计入分母，并单独计数供排障。
+	// 旧口径曾把判定失败从分母剔除，会让难样本蒸发、通过率虚高。
 	JudgeFailed bool
 }
 
@@ -90,6 +91,20 @@ type Report struct {
 	Passed int
 	// PassRate 是通过率，区间 0 到 1。
 	PassRate float64
+	// ContentTotal 是内容层（生成 + 判定）样本数，不含纯决策层样本。
+	ContentTotal int
+	// ContentPassed 是内容层通过的样本数。
+	ContentPassed int
+	// ContentPassRate 是内容层通过率；它才反映「答得对不对」，避免被决策层稀释。
+	ContentPassRate float64
+	// DecisionTotal 是决策层（该不该接管）样本数。
+	DecisionTotal int
+	// DecisionPassed 是决策层通过的样本数。
+	DecisionPassed int
+	// DecisionPassRate 是决策层通过率。
+	DecisionPassRate float64
+	// JudgeFailureRate 是判定失败占全部样本的比例；判定失败按失败计入分母，仍单列供排障。
+	JudgeFailureRate float64
 	// ByVerdict 是各事故标签的通过情况。
 	ByVerdict map[string]VerdictStat
 	// ByLayer 是各判定层的命中与通过情况。
@@ -128,20 +143,33 @@ func ComputeReport(cases []CaseResult, baseline *Baseline, model, judgeModel, mo
 	}
 	// caseResult 是当前遍历到的样本结果。
 	for _, caseResult := range cases {
+		// 判定失败不再从分母消失：它计为一条未通过，同时单列计数。
+		// 否则越难的样本越容易让判定模型输出异常，剔除后会把通过率推高（旧口径的失真来源）。
 		if caseResult.JudgeFailed {
 			rep.JudgeFailures++
-			continue
 		}
 		rep.Total++
-		if caseResult.Pass {
+		if caseResult.Pass && !caseResult.JudgeFailed {
 			rep.Passed++
+		}
+		// 分层拆分：决策层单独统计，内容层才代表「答得对不对」。
+		if caseResult.Layer == layerDecision {
+			rep.DecisionTotal++
+			if caseResult.Pass && !caseResult.JudgeFailed {
+				rep.DecisionPassed++
+			}
+		} else {
+			rep.ContentTotal++
+			if caseResult.Pass && !caseResult.JudgeFailed {
+				rep.ContentPassed++
+			}
 		}
 		// verdict 是当前遍历到的事故标签。
 		for _, verdict := range caseResult.Verdicts {
 			// stat 是该标签的累计统计。
 			stat := rep.ByVerdict[verdict]
 			stat.Total++
-			if caseResult.Pass {
+			if caseResult.Pass && !caseResult.JudgeFailed {
 				stat.Passed++
 			}
 			rep.ByVerdict[verdict] = stat
@@ -149,13 +177,20 @@ func ComputeReport(cases []CaseResult, baseline *Baseline, model, judgeModel, mo
 		// layerStat 是判定层的累计统计。
 		layerStat := rep.ByLayer[caseResult.Layer]
 		layerStat.Total++
-		if caseResult.Pass {
+		if caseResult.Pass && !caseResult.JudgeFailed {
 			layerStat.Passed++
 		}
 		rep.ByLayer[caseResult.Layer] = layerStat
 	}
 	if rep.Total > 0 {
 		rep.PassRate = float64(rep.Passed) / float64(rep.Total)
+		rep.JudgeFailureRate = float64(rep.JudgeFailures) / float64(rep.Total)
+	}
+	if rep.ContentTotal > 0 {
+		rep.ContentPassRate = float64(rep.ContentPassed) / float64(rep.ContentTotal)
+	}
+	if rep.DecisionTotal > 0 {
+		rep.DecisionPassRate = float64(rep.DecisionPassed) / float64(rep.DecisionTotal)
 	}
 	rep.evaluateGate(tolerance)
 	return rep
@@ -207,7 +242,7 @@ func (r *Report) evaluateGate(tolerance float64) {
 	}
 	if r.JudgeFailures > 0 {
 		r.GateReasons = append(r.GateReasons, fmt.Sprintf(
-			"告警：%d 条样本判定失败，未计入分母，请检查判定模型输出", r.JudgeFailures))
+			"告警：%d 条样本判定失败，已按未通过计入分母（判定失败率 %.1f%%），请检查判定模型输出", r.JudgeFailures, r.JudgeFailureRate*100))
 	}
 }
 

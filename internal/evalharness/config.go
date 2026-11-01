@@ -25,9 +25,13 @@ const (
 	// defaultOutputDir 是评测报告默认输出目录。
 	defaultOutputDir = "data/evalexport/replay"
 	// defaultSamplesPerCase 是每个样本的默认采样次数。
-	defaultSamplesPerCase = 1
+	// 单次采样无法抑制真实模型噪声，默认取 3 次多数表决，避免同一输入因抖动在通过/失败间跳变。
+	defaultSamplesPerCase = 3
 	// defaultTolerance 是默认的通过率劣化容差，0.05 表示允许下降 5 个百分点。
 	defaultTolerance = 0.05
+	// defaultJudgeBlind 表示默认开启盲评：判定模型只看买家问题与回复，不看被测模型被注入的上下文，
+	// 避免「上下文本身错了，判定模型却按同一份错上下文判一致」的共模盲区。
+	defaultJudgeBlind = true
 )
 
 // Config 是一次发布前评测的运行配置。
@@ -42,6 +46,9 @@ type Config struct {
 	SamplesPerCase int
 	// Tolerance 是允许的通过率劣化容差。
 	Tolerance float64
+	// JudgeBlind 表示是否启用盲评：判定模型不看被测模型被注入的上下文，只按问题与回复本身判优劣。
+	// 盲评能消除「按同一份错上下文判一致」的共模盲区，是本次评测口径修正的核心开关。
+	JudgeBlind bool
 	// Overrides 是命令行覆盖项。
 	Overrides Overrides
 }
@@ -68,6 +75,7 @@ func DefaultConfig() *Config {
 		OutputDir:      defaultOutputDir,
 		SamplesPerCase: defaultSamplesPerCase,
 		Tolerance:      defaultTolerance,
+		JudgeBlind:     defaultJudgeBlind,
 	}
 }
 
@@ -167,6 +175,21 @@ func EnvInt(values map[string]string, fallback int, keys ...string) int {
 		return fallback
 	}
 	return parsed
+}
+
+// EnvBool 读取布尔配置；缺失或非法时返回 fallback。
+// 接受 1/0/true/false/yes/no/on/off（大小写不敏感），其余按 fallback 处理。
+func EnvBool(values map[string]string, fallback bool, keys ...string) bool {
+	// raw 是读到的原始配置值。
+	raw := strings.ToLower(strings.TrimSpace(EnvValue(values, keys...)))
+	switch raw {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 // EnvFloat 读取浮点配置；缺失或非法时返回 fallback。

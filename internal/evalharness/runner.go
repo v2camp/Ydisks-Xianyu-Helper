@@ -17,6 +17,8 @@ type RunOptions struct {
 	DryRun bool
 	// Limit 限制参与回放的样本数；小于等于 0 表示不限制。
 	Limit int
+	// JudgeBlind 表示盲评：判定模型只看问题与回复，不看被测模型被注入的上下文。
+	JudgeBlind bool
 }
 
 // Run 回放全部样本并返回逐条结果。
@@ -39,13 +41,13 @@ func Run(ctx context.Context, samples []Sample, gen GeneratorFunc, genCfg, judge
 	results := make([]CaseResult, 0, count)
 	// sample 是当前遍历到的样本。
 	for _, sample := range samples[:count] {
-		results = append(results, evalOne(ctx, sample, gen, genCfg, judgeCfg, perCase, opts.DryRun))
+		results = append(results, evalOne(ctx, sample, gen, genCfg, judgeCfg, perCase, opts.DryRun, opts.JudgeBlind))
 	}
 	return results
 }
 
-// evalOne 评测单条样本：先结构层，再取回复走规则层或模型层。
-func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judgeCfg ModelConfig, perCase int, dryRun bool) CaseResult {
+// evalOne 评测单条样本：先结构层，再取回复走规则层或模型层；blind 为真时判定走盲评。
+func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judgeCfg ModelConfig, perCase int, dryRun, blind bool) CaseResult {
 	// exp 是该样本的判定期望：人工标注优先，缺失时自动推导。
 	exp := sample.ResolveExpectation()
 	// result 是逐步填充的评测结果。
@@ -106,19 +108,19 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 			verdicts = append(verdicts, Verdict{Layer: layerJudge, JudgeFailed: true, Reason: "被测模型调用失败: " + err.Error()})
 			continue
 		}
-		verdicts = append(verdicts, judgeReply(ctx, exp, sample, reply, gen, judgeCfg))
+		verdicts = append(verdicts, judgeReply(ctx, exp, sample, reply, gen, judgeCfg, blind))
 	}
 	aggregate(&result, verdicts)
 	return result
 }
 
-// judgeReply 对一条回复做判定：规则可判时用规则，否则回落到判定模型。
-func judgeReply(ctx context.Context, exp *Expectation, sample Sample, reply string, gen GeneratorFunc, judgeCfg ModelConfig) Verdict {
+// judgeReply 对一条回复做判定：规则可判时用规则，否则回落到判定模型；blind 控制是否盲评。
+func judgeReply(ctx context.Context, exp *Expectation, sample Sample, reply string, gen GeneratorFunc, judgeCfg ModelConfig, blind bool) Verdict {
 	// verdict、ok 是规则判定结果与规则是否可判。
 	if verdict, ok := DecideByRule(exp, reply); ok {
 		return verdict
 	}
-	return JudgeByModel(ctx, gen, judgeCfg, exp, sample, reply)
+	return JudgeByModelMode(ctx, gen, judgeCfg, exp, sample, reply, blind)
 }
 
 // takeoverReason 说明接管判定与期望的差异，供报告与排障使用。

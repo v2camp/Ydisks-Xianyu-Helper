@@ -224,8 +224,9 @@ func TestComputeReportGateBlocksRegression(t *testing.T) {
 	}
 }
 
-// TestComputeReportJudgeFailureExcluded 判定失败的样本不计入分母。
-func TestComputeReportJudgeFailureExcluded(t *testing.T) {
+// TestComputeReportJudgeFailureCountedAsFail 判定失败的样本按未通过计入分母，并单独统计。
+// 旧口径把判定失败从分母剔除，会让难样本蒸发、通过率虚高，这里锁定修正后的语义。
+func TestComputeReportJudgeFailureCountedAsFail(t *testing.T) {
 	// cases 是 1 条通过、1 条判定失败。
 	cases := []CaseResult{
 		{Chat: "a", Pass: true, Layer: layerRule, Verdicts: []string{"delivery-deflection"}},
@@ -233,11 +234,14 @@ func TestComputeReportJudgeFailureExcluded(t *testing.T) {
 	}
 	// rep 是汇总结果。
 	rep := ComputeReport(cases, nil, "m", "j", "env", 1, 0, 0.05)
-	if rep.Total != 1 || rep.Passed != 1 {
-		t.Fatalf("判定失败不应计入分母: total=%d passed=%d", rep.Total, rep.Passed)
+	if rep.Total != 2 || rep.Passed != 1 {
+		t.Fatalf("判定失败应计入分母且不计通过: total=%d passed=%d", rep.Total, rep.Passed)
 	}
 	if rep.JudgeFailures != 1 {
 		t.Fatalf("应单独统计判定失败数: %d", rep.JudgeFailures)
+	}
+	if rep.JudgeFailureRate <= 0 {
+		t.Fatalf("判定失败率应大于 0: %v", rep.JudgeFailureRate)
 	}
 }
 
@@ -327,5 +331,40 @@ func TestRunDecisionLayerSemantics(t *testing.T) {
 	failResults := Run(context.Background(), []Sample{wrongTakenOver}, nil, ModelConfig{}, ModelConfig{}, RunOptions{})
 	if len(failResults) != 1 || failResults[0].Pass {
 		t.Fatalf("期望不接管但实际接管应判失败: %+v", failResults)
+	}
+}
+
+// TestExpandPerBuyerMessage 多轮会话按每条买家消息展开，且只对原触发消息保留期望。
+func TestExpandPerBuyerMessage(t *testing.T) {
+	// sample 是一条两问一答的会话，最后一条是闲聊。
+	sample := Sample{
+		Chat: "c1",
+		Messages: []Message{
+			{Direction: "incoming", MessageType: "text", Content: "全集共多少集？"},
+			{Direction: "outgoing", MessageType: "text", Content: "说不准"},
+			{Direction: "incoming", MessageType: "text", Content: "已经买了"},
+		},
+		Snapshot:    &Snapshot{MessageText: "已经买了", SystemPrompt: "sys"},
+		Expectation: &Expectation{MustContainAny: []string{"34"}},
+	}
+	// out 是展开结果。
+	out := ExpandPerBuyerMessage(sample)
+	if len(out) != 2 {
+		t.Fatalf("应展开为 2 条: %d", len(out))
+	}
+	if out[0].Snapshot.MessageText != "全集共多少集？" {
+		t.Fatalf("首条应覆盖出错问句: %s", out[0].Snapshot.MessageText)
+	}
+	if out[0].Expectation != nil {
+		t.Fatalf("非原触发消息应清空期望")
+	}
+	if out[1].Snapshot.MessageText != "已经买了" || out[1].Expectation == nil {
+		t.Fatalf("原触发消息应保留期望: %+v", out[1].Snapshot.MessageText)
+	}
+	if len(out[0].Snapshot.History) != 0 {
+		t.Fatalf("首条之前应无历史: %d", len(out[0].Snapshot.History))
+	}
+	if len(out[1].Snapshot.History) != 2 {
+		t.Fatalf("末条之前应有 2 条历史: %d", len(out[1].Snapshot.History))
 	}
 }

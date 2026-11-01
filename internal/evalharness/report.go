@@ -38,6 +38,11 @@ func RenderMarkdown(rep *Report) string {
 	b.WriteString("## 指标\n\n")
 	b.WriteString("| 指标 | 值 |\n|---|---|\n")
 	fmt.Fprintf(&b, "| 通过率 | %.1f%%（%d/%d） |\n", rep.PassRate*100, rep.Passed, rep.Total)
+	fmt.Fprintf(&b, "| 内容层通过率 | %.1f%%（%d/%d） |\n", rep.ContentPassRate*100, rep.ContentPassed, rep.ContentTotal)
+	if rep.DecisionTotal > 0 {
+		fmt.Fprintf(&b, "| 决策层通过率 | %.1f%%（%d/%d） |\n", rep.DecisionPassRate*100, rep.DecisionPassed, rep.DecisionTotal)
+	}
+	fmt.Fprintf(&b, "| 判定失败率 | %.1f%%（%d 条，按未通过计入） |\n", rep.JudgeFailureRate*100, rep.JudgeFailures)
 	if rep.Baseline != nil {
 		fmt.Fprintf(&b, "| 基线通过率 | %.1f%% |\n", rep.Baseline.PassRate*100)
 		fmt.Fprintf(&b, "| 变化 | %+.1f 个百分点 |\n", rep.Delta*100)

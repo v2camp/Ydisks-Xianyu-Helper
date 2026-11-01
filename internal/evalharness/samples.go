@@ -114,6 +114,9 @@ type Sample struct {
 	Source string `json:"source,omitempty"`
 	// ScenarioID 是合成场景的稳定标识；生产样本为空。
 	ScenarioID string `json:"scenario_id,omitempty"`
+	// TriggerIndex 是本次展开对应的买家消息在 Messages 中的下标；0 表示未展开（整会话一条）。
+	// 逐条展开后同一个会话会产生多条样本，靠它区分「测的是哪一句」。
+	TriggerIndex int `json:"trigger_index,omitempty"`
 }
 
 // LoadSamples 从 JSONL 文件读取样本库。
@@ -172,9 +175,20 @@ func (s Sample) ResolveExpectation() *Expectation {
 }
 
 // deriveExpectation 从样本快照推导高置信的判定期望。
-// 仅做一条推导：提示已声明「确定发货渠道」时，要求回复至少给出其中一个渠道。
-// 其余场景返回 nil，交由 LLM judge 判定，避免用不可靠的规则制造假阳性。
+// 先尝试发货渠道（最强、可机检），再尝试商品规格事实（禁止回避）；其余返回 nil 交由 LLM judge。
 func deriveExpectation(s Sample) *Expectation {
+	if s.Snapshot == nil {
+		return nil
+	}
+	// exp 是本次推导出的期望；发货渠道优先，其次才是商品规格事实。
+	if exp := deriveDeliveryExpectation(s); exp != nil {
+		return exp
+	}
+	return deriveItemFactExpectation(s)
+}
+
+// deriveDeliveryExpectation 从「提示已声明确定发货渠道」推导期望；无法确定时返回 nil。
+func deriveDeliveryExpectation(s Sample) *Expectation {
 	if s.Snapshot == nil {
 		return nil
 	}
@@ -204,6 +218,23 @@ func deriveExpectation(s Sample) *Expectation {
 		MustNotContain: []string{"以商品详情为准", "以发货消息为准"},
 		Derived:        true,
 		Note:           "自动推导：提示已声明确定发货渠道，回复必须直答渠道且不得回避",
+	}
+}
+
+// deriveItemFactExpectation 从「提示已给出商品确定规格事实」推导期望。
+// 只断言「不得回避/不得说不准」，不强制包含具体值（规格可能有多条，值不便枚举）。
+func deriveItemFactExpectation(s Sample) *Expectation {
+	if s.Snapshot == nil {
+		return nil
+	}
+	// 该标记由 ai_live_context.go 的 liveItemFactInstruction 注入，出现即代表本次提示带确定规格事实。
+	if !strings.Contains(s.Snapshot.SystemPrompt, "本商品确定事实") {
+		return nil
+	}
+	return &Expectation{
+		MustNotContain: []string{"以商品详情为准", "详情里没标注", "我这边也说不准", "说不准"},
+		Derived:        true,
+		Note:           "自动推导：提示已给出商品确定规格事实，回复不得回避为以详情为准或说不准",
 	}
 }
 
@@ -240,4 +271,70 @@ func ValidateSamples(samples []Sample) (playable []Sample, skipped int, err erro
 		return nil, skipped, errors.New("样本库中没有可回放样本（缺少快照或买家消息）")
 	}
 	return playable, skipped, nil
+}
+
+// ExpandPerBuyerMessage 把一个多轮会话样本按「每条买家文本消息」展开为多条单问样本。
+//
+// 动机：导出时若只取会话最后一条买家消息，真正被人工纠正的那句常被后续闲聊覆盖，
+// 评测就永远测不到故障点。逐条展开能把每个买家问句都变成一条独立样本。
+// 历史按该消息之前的消息重建（买家→user，卖家→assistant），system 提示沿用原快照。
+// 仅对文本消息展开；非原触发消息清空人工期望，避免拿错题目的期望去判。
+func ExpandPerBuyerMessage(sample Sample) []Sample {
+	if sample.Snapshot == nil {
+		return []Sample{sample}
+	}
+	// indices 是买家文本消息在 Messages 中的下标。
+	indices := make([]int, 0, 4)
+	// i、m 是当前遍历到的下标与消息。
+	for i, m := range sample.Messages {
+		if m.Direction == "incoming" && m.MessageType == "text" && strings.TrimSpace(m.Content) != "" {
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) <= 1 {
+		return []Sample{sample}
+	}
+	// out 是展开后的样本列表。
+	out := make([]Sample, 0, len(indices))
+	// idx 是当前展开对应的买家消息下标。
+	for _, idx := range indices {
+		// derived 是复制出的样本，避免修改原样本。
+		derived := sample
+		// snapCopy 是深拷贝的快照，历史切片必须重建而不是共享。
+		snapCopy := *sample.Snapshot
+		snapCopy.MessageText = sample.Messages[idx].Content
+		snapCopy.History = historyBefore(sample.Messages, idx)
+		derived.Snapshot = &snapCopy
+		derived.TriggerIndex = idx
+		// 同一会话展开多条时，用下标后缀保证 Chat 唯一，基线才能逐条对照。
+		derived.Chat = fmt.Sprintf("%s#%d", sample.Chat, idx)
+		// 非原触发消息不再沿用原期望：期望往往是针对原触发问句写的。
+		if snapCopy.MessageText != sample.Snapshot.MessageText {
+			derived.Expectation = nil
+		}
+		out = append(out, derived)
+	}
+	return out
+}
+
+// historyBefore 把 Messages 中位于 idx 之前的文本消息转换为对话历史轮次。
+// 买家消息映射为 user，卖家消息映射为 assistant；非文本消息跳过。
+func historyBefore(messages []Message, idx int) []ConversationTurn {
+	// turns 是按时间正序累积的历史轮次。
+	turns := make([]ConversationTurn, 0, idx)
+	// i、m 是当前遍历到的下标与消息。
+	for i := 0; i < idx && i < len(messages); i++ {
+		// m 是当前消息；非文本或空内容不进入历史。
+		m := messages[i]
+		if m.MessageType != "text" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		// role 是该条消息在历史中的角色。
+		role := "assistant"
+		if m.Direction == "incoming" {
+			role = "user"
+		}
+		turns = append(turns, ConversationTurn{Role: role, Content: m.Content})
+	}
+	return turns
 }

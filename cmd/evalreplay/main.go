@@ -50,6 +50,10 @@ func main() {
 	updateBaseline := flag.Bool("update-baseline", false, "把本次结果记录为新基线")
 	// dryRun 表示不调用模型，仅用样本历史回复自检链路。
 	dryRun := flag.Bool("dry-run", false, "自检模式：不调用模型，用样本历史回复验证判定链路")
+	// perMessage 表示把多轮会话按每条买家消息展开为多条样本，覆盖会话中真正的故障问句。
+	perMessage := flag.Bool("per-message", false, "按每条买家消息展开样本（推荐，覆盖多轮故障点）")
+	// judgeBlind 表示盲评：判定模型不看被测模型被注入的上下文。
+	judgeBlind := flag.Bool("judge-blind", true, "盲评判定（默认开启，消除共模盲区）")
 	flag.Parse()
 
 	os.Exit(run(opts{
@@ -62,6 +66,8 @@ func main() {
 		limit:          *limit,
 		updateBaseline: *updateBaseline,
 		dryRun:         *dryRun,
+		perMessage:     *perMessage,
+		judgeBlind:     *judgeBlind,
 	}))
 }
 
@@ -85,6 +91,10 @@ type opts struct {
 	updateBaseline bool
 	// dryRun 表示自检模式。
 	dryRun bool
+	// perMessage 表示按每条买家消息展开样本。
+	perMessage bool
+	// judgeBlind 表示盲评判定。
+	judgeBlind bool
 }
 
 // run 执行评测主流程并返回退出码。
@@ -106,6 +116,8 @@ func run(o opts) int {
 	cfg := evalharness.DefaultConfig()
 	cfg.SamplesPerCase = evalharness.EnvInt(values, cfg.SamplesPerCase, "EVAL_SAMPLES_PER_CASE")
 	cfg.Tolerance = evalharness.EnvFloat(values, cfg.Tolerance, "EVAL_TOLERANCE")
+	// 盲评开关：命令行默认开启，环境变量可覆盖，便于回归时对照「盲评 vs 非盲评」两种口径。
+	cfg.JudgeBlind = evalharness.EnvBool(values, o.judgeBlind, "EVAL_JUDGE_BLIND")
 	// err 是套用命令行覆盖项时的参数校验失败原因。
 	if err := cfg.ApplyOverrides(evalharness.Overrides{
 		SamplesPath:    o.samplesPath,
@@ -161,19 +173,38 @@ func run(o opts) int {
 		fmt.Printf("%s\n", logsafe.Error(err))
 		return 2
 	}
+	// 按每条买家消息展开：多轮会话里真正出错的问句常被后续闲聊覆盖，
+	// 展开后每个问句各自成样本，避免只测到最后一句（旧口径的失真来源）。
+	if o.perMessage {
+		// expanded 是按买家消息展开后的样本集合。
+		expanded := make([]evalharness.Sample, 0, len(playable)*2)
+		// sample 是展开前的原始多轮样本。
+		for _, sample := range playable {
+			expanded = append(expanded, evalharness.ExpandPerBuyerMessage(sample)...)
+		}
+		playable = expanded
+	}
 
 	// results 是逐条评测结果。
 	results := evalharness.Run(ctx, playable, nil, genCfg, judgeCfg, evalharness.RunOptions{
 		SamplesPerCase: cfg.SamplesPerCase,
 		DryRun:         o.dryRun,
 		Limit:          o.limit,
+		JudgeBlind:     cfg.JudgeBlind,
 	})
 
-	// baseline 是历史基线；首次运行为 nil。
-	baseline, err := evalharness.LoadBaseline(cfg.BaselinePath)
-	if err != nil {
-		fmt.Printf("加载基线失败: %s\n", logsafe.Error(err))
-		return 2
+	// baseline 是历史基线；自检模式固定为 nil。
+	// 自检模式用样本历史回复代替模型生成，绝大多数样本没有可机检期望会判「判定失败」，
+	// 与真实模型基线比较只会产出「通过率暴跌」的假警报，掩盖真正要看的规则层结论。
+	var baseline *evalharness.Baseline
+	if !o.dryRun {
+		// err 是基线文件读取失败原因。
+		var err error
+		baseline, err = evalharness.LoadBaseline(cfg.BaselinePath)
+		if err != nil {
+			fmt.Printf("加载基线失败: %s\n", logsafe.Error(err))
+			return 2
+		}
 	}
 
 	// rep 是汇总后的评测报告。
@@ -197,14 +228,19 @@ func run(o opts) int {
 
 	fmt.Printf("被测模型 %s（来源 %s），判定模型 %s\n", rep.Model, rep.ModelSource, rep.JudgeModel)
 	fmt.Printf("通过率 %.1f%%（%d/%d），跳过 %d，判定失败 %d\n", rep.PassRate*100, rep.Passed, rep.Total, rep.Skipped, rep.JudgeFailures)
-	if rep.GatePassed {
+	if o.dryRun {
+		fmt.Println("门禁：自检模式不参与门禁判定（结果只用于验证链路与可机检规则层）")
+	} else if rep.GatePassed {
 		fmt.Println("门禁：通过")
 	} else {
 		fmt.Println("门禁：未通过")
 	}
-	// reason 是当前遍历到的门禁说明。
-	for _, reason := range rep.GateReasons {
-		fmt.Printf("  - %s\n", reason)
+	// 自检模式不打印基线相关说明，避免把「未找到基线」误读为真实结论。
+	if !o.dryRun {
+		// reason 是当前遍历到的门禁说明文本。
+		for _, reason := range rep.GateReasons {
+			fmt.Printf("  - %s\n", reason)
+		}
 	}
 	fmt.Printf("报告：%s\n指标：%s\n", mdPath, jsonPath)
 

@@ -377,15 +377,54 @@ WHERE cookie_id = ` + placeholder(dialect, 1) + ` AND chat_id = ` + placeholder(
 }
 
 // buildSnapshot 用会话最后一条买家文本消息重建系统提示；失败只记录原因，不中断导出。
-func buildSnapshot(ctx context.Context, store *db.Store, session *exportedSession) {
-	// lastBuyerText 是该会话最后一条买家文本消息，作为重建提示的触发消息。
-	lastBuyerText := ""
-	// item 是当前遍历到的会话消息。
-	for _, item := range session.Messages {
+// selectIncidentBuyerText 选出「最可能触发事故」的买家问句。
+// 优先级：商家否定机器人回复之前的买家问句 > 首次回避话术之前的买家问句 > 最后一条买家问句。
+// 逐条展开样本时（-per-message）不依赖本函数；它只解决「整会话一条样本」时选哪一句。
+func selectIncidentBuyerText(messages []chatMessageRow) string {
+	// lastIncoming 是最近一条买家文本消息内容。
+	lastIncoming := ""
+	// incident 是命中否定/回避标记时锁定的买家问句；一旦命中即不再被后续消息覆盖。
+	incident := ""
+	// item 是当前遍历到的消息。
+	for _, item := range messages {
 		if item.Direction == "incoming" && item.MessageType == "text" && strings.TrimSpace(item.Content) != "" {
-			lastBuyerText = item.Content
+			lastIncoming = item.Content
+			continue
+		}
+		// 只在尚未锁定事故问句时，检查卖家文本是否命中否定或回避标记。
+		if incident != "" || item.Direction != "outgoing" || item.MessageType != "text" {
+			continue
+		}
+		// hit 表示该卖家消息同时命中「否认能力」或「回避」标记之一。
+		hit := containsAnyMarker(item.Content, robotDenialMarkers) || containsAnyMarker(item.Content, deflectionMarkers)
+		if hit && lastIncoming != "" {
+			incident = lastIncoming
 		}
 	}
+	if incident != "" {
+		return incident
+	}
+	return lastIncoming
+}
+
+// containsAnyMarker 判断 text 是否包含 markers 中任一子串。
+func containsAnyMarker(text string, markers []string) bool {
+	// marker 是当前遍历到的标记子串。
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSnapshot 为该会话重建一次提示快照。
+// 触发消息取「事故消息」而非最后一条买家消息：若商家在会话中否定过机器人回复，取该否定之前的买家问句；
+// 否则取首次出现回避话术之前的买家问句；都没有才取最后一条。旧实现固定取最后一条，
+// 会把真正出错的问句覆盖成后续闲聊，导致评测永远测不到故障点。
+func buildSnapshot(ctx context.Context, store *db.Store, session *exportedSession) {
+	// lastBuyerText 是本次选定的触发消息（事故问句优先）。
+	lastBuyerText := selectIncidentBuyerText(session.Messages)
 	if lastBuyerText == "" {
 		session.SnapshotErr = "该会话没有可用的买家文本消息，无法重建提示"
 		return
