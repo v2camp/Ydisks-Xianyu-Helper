@@ -11,6 +11,38 @@ import (
 	"xianyu-go/internal/db"
 )
 
+// TestAgentSupportRepositoryWriteKeepsAIEnabled 验证通过端口写账号级档位不会影响 AI 开关：
+// 账号原本没有设置行，写档位后 AI 生效值必须仍为「跟随总闸（开）」。
+//
+// 这是 E9 的核心边界——档位配置与 AI 开关彻底正交，否则「配一次 Agent 档位」会把账号静默关闭。
+func TestAgentSupportRepositoryWriteKeepsAIEnabled(t *testing.T) {
+	// store、closeStore 是带管理员与归属账号的测试数据库及其释放函数。
+	store, closeStore := newAdapterTestStore(t)
+	defer closeStore()
+	// ctx 是本用例的调用上下文。
+	ctx := context.Background()
+	// admin、adminErr 是账号归属用户行与读取失败原因。
+	admin, adminErr := store.Users.GetByUsername(ctx, "admin")
+	if adminErr != nil || admin == nil {
+		t.Fatalf("读取管理员失败: %v", adminErr)
+	}
+	// preset 是待写入的账号级档位覆盖值。
+	preset := "standard"
+	// writeFound、writeErr 是该次写入的归属判定与失败原因。
+	writeFound, writeErr := NewAgentSupportRepository(store).SetAccountOverride(ctx, admin.ID, "cid", agentadminapp.AccountOverride{Preset: &preset})
+	if writeErr != nil || !writeFound {
+		t.Fatalf("写入账号级档位失败: found=%v err=%v", writeFound, writeErr)
+	}
+	// enabled、enabledErr 是该账号写入档位后的 AI 生效值。
+	enabled, enabledErr := store.AIReply.IsEnabled(ctx, "cid")
+	if enabledErr != nil {
+		t.Fatalf("读取 AI 生效值失败: %v", enabledErr)
+	}
+	if !enabled {
+		t.Fatal("写客服 Agent 档位不得把账号的 AI 静默关闭")
+	}
+}
+
 // TestNewAgentSupportRepositoryRejectsIncompleteStore 验证 Store 或其成员仓储缺失时返回 nil 端口。
 func TestNewAgentSupportRepositoryRejectsIncompleteStore(t *testing.T) {
 	// cases 是两种缺少必需仓储的构造输入。
@@ -52,8 +84,8 @@ func TestAgentSupportRepositoryProjectsTenantAndAccountScope(t *testing.T) {
 		t.Fatal("完整 Store 应构造出客服 Agent 配置端口")
 	}
 
-	// values 是待写入的租户级配置项。
-	values := map[string]string{agentadminapp.KeySupportEnabled: "true", agentadminapp.KeySupportPreset: "standard"}
+	// values 是待写入的租户级配置项；客服 Agent 已不再有独立开关键，只治理档位。
+	values := map[string]string{agentadminapp.KeySupportPreset: "standard"}
 	// setErr 是租户级配置写入失败原因。
 	if setErr := repository.SetTenantValues(ctx, admin.ID, values); setErr != nil {
 		t.Fatalf("写入租户级配置失败: %v", setErr)
@@ -63,14 +95,14 @@ func TestAgentSupportRepositoryProjectsTenantAndAccountScope(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("读取租户级配置失败: %v", readErr)
 	}
-	if stored[agentadminapp.KeySupportEnabled] != "true" || stored[agentadminapp.KeySupportPreset] != "standard" {
+	if stored[agentadminapp.KeySupportPreset] != "standard" {
 		t.Fatalf("租户级配置往返不一致: %+v", stored)
 	}
 
-	// enabled、preset 是待写入的账号级覆盖值。
-	enabled, preset := false, "advanced"
+	// preset 是待写入的账号级档位覆盖值。
+	preset := "advanced"
 	// writeFound、writeErr 是账号级覆盖的归属判定与写入失败原因。
-	writeFound, writeErr := repository.SetAccountOverride(ctx, admin.ID, "cid", agentadminapp.AccountOverride{Enabled: &enabled, Preset: &preset})
+	writeFound, writeErr := repository.SetAccountOverride(ctx, admin.ID, "cid", agentadminapp.AccountOverride{Preset: &preset})
 	if writeErr != nil || !writeFound {
 		t.Fatalf("写入账号级覆盖失败: found=%v err=%v", writeFound, writeErr)
 	}
@@ -79,7 +111,7 @@ func TestAgentSupportRepositoryProjectsTenantAndAccountScope(t *testing.T) {
 	if overrideErr != nil || !overrideFound {
 		t.Fatalf("读取账号级覆盖失败: found=%v err=%v", overrideFound, overrideErr)
 	}
-	if override.Enabled == nil || *override.Enabled || override.Preset == nil || *override.Preset != "advanced" {
+	if override.Preset == nil || *override.Preset != "advanced" {
 		t.Fatalf("账号级覆盖往返不一致: %+v", override)
 	}
 

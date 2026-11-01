@@ -1,19 +1,21 @@
-// Package agentadmin 提供客服 Agent 的配置用例：租户默认与账号级覆盖的读取、
+// Package agentadmin 提供客服 Agent 的配置用例：租户默认档位与账号级档位覆盖的读取、
 // 校验、合并与写入。
 //
-// 该配置只回答两个问题——「这个账号跑不跑客服 Agent」与「跑在哪一档」。平台级定义
-// （有哪些能力、各属哪一档）不在这里，它是 internal/capability 的代码常量，用户不可
-// 增删；本包只负责在租户默认与账号覆盖之间选出最终生效值。
+// 本包只回答一个问题——「这个账号跑在哪一档」。是否运行客服 Agent 不再是本包的配置项：
+// 它已归并到统一的 AI 开关（全局总闸 ai_master_enabled 与账号级显式开关取与），
+// 由回复链路在准入阶段判定，本包既不读取也不再写入任何开关键。
 //
-// 账号级配置与模型凭证同存于 ai_reply_settings，但本包只投影 agent_enabled 与
-// agent_preset 两列：含 api_key 的持久化模型禁止流向调用方（AGENTS.md §1.7）。
-// 档位合法性由 capability.Preset 单点判定，本包不自行列举合法取值。
+// 平台级定义（有哪些能力、各属哪一档）不在这里，它是 internal/capability 的代码常量，
+// 用户不可增删；本包只负责在租户默认与账号覆盖之间选出最终生效档位。
+//
+// 账号级配置与模型凭证同存于 ai_reply_settings，但本包只投影 agent_preset 一列：
+// 含 api_key 的持久化模型禁止流向调用方（AGENTS.md §1.7）。档位合法性由
+// capability.Preset 单点判定，本包不自行列举合法取值。
 package agentadmin
 
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 
 	"xianyu-go/internal/capability"
@@ -30,44 +32,33 @@ var ErrInvalidPreset = errors.New("客服 Agent 档位非法")
 // 两种情形共用同一个错误：区分它们会让调用方接口变成账号枚举器。
 var ErrAccountNotOwned = errors.New("账号不存在或不属于当前租户")
 
-// 租户级客服 Agent 配置在 user_settings 中的键名。
-const (
-	// KeySupportEnabled 是租户级默认开关的键。
-	KeySupportEnabled = "agent.support.enabled"
-	// KeySupportPreset 是租户级默认档位的键。
-	KeySupportPreset = "agent.support.preset"
-)
+// KeySupportPreset 是租户级默认档位在 user_settings 中的键名。
+//
+// 历史遗留：同一命名空间下的 agent.support.enabled 键仍可能残留在库中，本包已停止读写，
+// 待后续迁移清理；它的旧值不参与任何判定——是否运行客服 Agent 已归并到统一 AI 开关。
+const KeySupportPreset = "agent.support.preset"
 
-// TenantConfig 是租户级客服 Agent 默认配置。
+// TenantConfig 是租户级客服 Agent 默认档位配置。
 type TenantConfig struct {
-	// Enabled 表示该租户的账号默认是否运行客服 Agent。
-	Enabled bool
 	// Preset 是账号未覆盖时使用的档位。
 	Preset capability.Preset
 }
 
-// AccountOverride 是账号级覆盖。字段为 nil 表示该维度继承租户默认，
-// 两个字段同时为 nil 表示这个账号完全跟随租户。
+// AccountOverride 是账号级档位覆盖。Preset 为 nil 表示完全继承租户默认。
 //
 // Preset 声明为字符串而不是 capability.Preset，是为了区分「未覆盖」与「覆盖成空值」，
 // 同时把「什么算合法档位」的把关收在写入路径上。
 type AccountOverride struct {
-	// Enabled 非 nil 时覆盖租户开关。
-	Enabled *bool
 	// Preset 非 nil 时覆盖租户档位。
 	Preset *string
 }
 
-// EffectiveConfig 是某账号最终生效的客服 Agent 配置。
+// EffectiveConfig 是某账号最终生效的客服 Agent 档位。
 type EffectiveConfig struct {
 	// CookieID 是配置归属的账号标识。
 	CookieID string
-	// Enabled 是该账号最终生效的开关。
-	Enabled bool
 	// Preset 是该账号最终生效的档位。
 	Preset capability.Preset
-	// AccountEnabled 非 nil 表示开关来自账号级覆盖，nil 表示继承租户默认。
-	AccountEnabled *bool
 	// AccountPreset 非 nil 表示档位来自账号级覆盖，nil 表示继承租户默认。
 	AccountPreset *capability.Preset
 }
@@ -98,7 +89,7 @@ func NewService(repository Repository) *Service {
 	return &Service{repository: repository}
 }
 
-// TenantConfig 返回租户级默认配置；未配置或取值非法时按平台默认收敛，不返回错误。
+// TenantConfig 返回租户级默认档位；未配置或取值非法时按平台默认收敛，不返回错误。
 func (s *Service) TenantConfig(ctx context.Context, userID int64) (TenantConfig, error) {
 	if s == nil || s.repository == nil {
 		return TenantConfig{}, ErrNotConfigured
@@ -109,15 +100,15 @@ func (s *Service) TenantConfig(ctx context.Context, userID int64) (TenantConfig,
 		return TenantConfig{}, err
 	}
 	return TenantConfig{
-		Enabled: parseBoolSetting(values[KeySupportEnabled]),
-		Preset:  normalizePreset(values[KeySupportPreset]),
+		Preset: normalizePreset(values[KeySupportPreset]),
 	}, nil
 }
 
-// UpdateTenantConfig 保存租户级默认配置。
+// UpdateTenantConfig 保存租户级默认档位。
 //
 // 档位非法时整体拒绝，避免把坏值留在库里再靠读取路径兜底：写入路径必须 fail-closed，
 // 否则「配了什么」与「生效什么」会长期不一致。
+// 本方法只写档位键，不再写任何开关键——是否运行由统一 AI 开关决定。
 func (s *Service) UpdateTenantConfig(ctx context.Context, userID int64, config TenantConfig) error {
 	if s == nil || s.repository == nil {
 		return ErrNotConfigured
@@ -126,12 +117,11 @@ func (s *Service) UpdateTenantConfig(ctx context.Context, userID int64, config T
 		return ErrInvalidPreset
 	}
 	return s.repository.SetTenantValues(ctx, userID, map[string]string{
-		KeySupportEnabled: strconv.FormatBool(config.Enabled),
-		KeySupportPreset:  string(config.Preset),
+		KeySupportPreset: string(config.Preset),
 	})
 }
 
-// AccountConfig 返回指定账号最终生效的配置，并标注每一项是账号级覆盖还是继承租户。
+// AccountConfig 返回指定账号最终生效的档位，并标注它来自账号级覆盖还是继承租户。
 //
 // userID 参与归属校验：不属于该租户的账号一律返回 ErrAccountNotOwned，不做任何降级。
 func (s *Service) AccountConfig(ctx context.Context, userID int64, cookieID string) (EffectiveConfig, error) {
@@ -154,7 +144,7 @@ func (s *Service) AccountConfig(ctx context.Context, userID int64, cookieID stri
 	return resolve(cookieID, tenant, override), nil
 }
 
-// UpdateAccountOverride 保存账号级覆盖；两个字段均为 nil 时该账号恢复完全继承租户默认。
+// UpdateAccountOverride 保存账号级档位覆盖；Preset 为 nil 时该账号恢复完全继承租户默认。
 func (s *Service) UpdateAccountOverride(ctx context.Context, userID int64, cookieID string, override AccountOverride) error {
 	if s == nil || s.repository == nil {
 		return ErrNotConfigured
@@ -173,14 +163,10 @@ func (s *Service) UpdateAccountOverride(ctx context.Context, userID int64, cooki
 	return nil
 }
 
-// resolve 以租户默认为底、账号覆盖为顶，合成最终生效配置并保留覆盖来源。
+// resolve 以租户默认为底、账号覆盖为顶，合成最终生效档位并保留覆盖来源。
 func resolve(cookieID string, tenant TenantConfig, override AccountOverride) EffectiveConfig {
-	// out 先取租户默认，再按账号覆盖逐项替换。
-	out := EffectiveConfig{CookieID: cookieID, Enabled: tenant.Enabled, Preset: tenant.Preset}
-	if override.Enabled != nil {
-		out.Enabled = *override.Enabled
-		out.AccountEnabled = override.Enabled
-	}
+	// out 先取租户默认档位，再按账号覆盖替换；「跑不跑」不在本包判定范围内。
+	out := EffectiveConfig{CookieID: cookieID, Preset: tenant.Preset}
 	if override.Preset != nil {
 		// preset 是收敛后的档位；非法值一律回落只读档，账号不能借坏值绕过租户上限。
 		preset := normalizePreset(*override.Preset)
@@ -201,14 +187,4 @@ func normalizePreset(raw string) capability.Preset {
 		return preset
 	}
 	return capability.DefaultPreset
-}
-
-// parseBoolSetting 把 user_settings 原文解析为布尔值；空串与非法文本一律按 false。
-func parseBoolSetting(raw string) bool {
-	// parsed、err 是解析结果与错误；该键只可能由本包写入 strconv 认可的布尔文本。
-	parsed, err := strconv.ParseBool(strings.TrimSpace(raw))
-	if err != nil {
-		return false
-	}
-	return parsed
 }

@@ -29,10 +29,15 @@ type supportAgentSessions struct {
 // 编译期断言：配置解析端口必须满足 Agent 运行时定义的会话解析契约。
 var _ agent.SessionResolver = (*supportAgentSessions)(nil)
 
-// ResolveSession 解析账号当前生效的开关与档位。
+// ResolveSession 解析账号当前生效的档位与作用域。
 //
-// 只有「账号归属不可解析」与「配置读取失败」两类硬失败返回错误；接口未装配、账号未配置
-// 都按未启用返回。两种处置对调用方是同一件事——不带工具答复，因此不需要区分。
+// 第二个返回值恒为 true：客服 Agent 的运行与否已归并到统一 AI 开关（全局总闸与账号级
+// 显式开关取与），由回复链路的准入阶段决定，本端口不再持有一个独立开关。保留该返回值
+// 是为了不动 SessionResolver 的端口形状——改为两返回值会波及全部实现与测试替身，
+// 而「组合层恒 true」已经表达同一结论。
+//
+// 只有「账号归属不可解析」与「配置读取失败」两类硬失败返回错误；接口未装配时返回零值
+// 会话并让 enabled 为 false（没有任何配置可解析，调用方按未启用处理）。
 func (s *supportAgentSessions) ResolveSession(ctx context.Context, cookieID string) (agent.Session, bool, error) {
 	if s == nil || s.ports == nil || s.ownerOf == nil {
 		return agent.Session{}, false, nil
@@ -55,7 +60,7 @@ func (s *supportAgentSessions) ResolveSession(ctx context.Context, cookieID stri
 	}
 	// session 是本账号运行 Agent 时的作用域与档位来源。
 	session := agent.Session{UserID: userID, CookieID: cookieID, Preset: effective.Preset}
-	return session, effective.Enabled, nil
+	return session, true, nil
 }
 
 // buildSupportAgentFactory 装配账号级客服 Agent 生成器工厂。
