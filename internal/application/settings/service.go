@@ -65,8 +65,16 @@ type SecretChange struct {
 type AIReplySettings struct {
 	// CookieID 是设置所属账号的稳定标识。
 	CookieID string
-	// AIEnabled 表示账号 AI 回复是否启用。
+	// AIEnabled 是账号级 AI 回复开关：未显式保存过设置时为跟随全局总闸的默认值 true。
 	AIEnabled bool
+	// AIEnabledExplicit 表示账号是否已显式保存过开关；读路径由是否存在设置行决定，
+	// false 表示开关跟随全局总闸（来源记为 global）。
+	AIEnabledExplicit bool
+	// SkipAIEnabled 表示本次保存不修改账号级开关，保留数据库中的已有值。
+	// HTTP 请求未提交 ai_enabled 时置为 true；默认 false 表示照常写入，保持既有调用方语义。
+	SkipAIEnabled bool
+	// EffectiveEnabled 是把全局总闸与账号开关组合后的生效值，只在读路径由适配器填充。
+	EffectiveEnabled bool
 	// AutoAdjustPriceEnabled 表示是否把有效 AI 报价自动应用到买家新拍订单。
 	AutoAdjustPriceEnabled bool
 	// MaxDiscountPercent 是允许的最大折扣比例。
@@ -155,6 +163,15 @@ type OutboundPolicy interface {
 	SetPublicOnly(publicOnly bool)
 }
 
+// CredentialCacheInvalidator 是敏感凭据读取缓存的失效端口。
+// 由 application 侧声明、基础层实现：敏感设置落库后调用 InvalidateAll，
+// 让「密钥轮换最长等一个 TTL 才生效」变成「写入后立即可见」。
+// 未注入（nil）时写入口行为不变，不因缺少失效器而失败。
+type CredentialCacheInvalidator interface {
+	// InvalidateAll 清空全部已缓存的凭据值；实现必须是幂等且不返回错误的内存操作。
+	InvalidateAll()
+}
+
 // Service 编排设置读取、校验、审计和持久化，不依赖 HTTP 或数据库类型。
 type Service struct {
 	// repository 提供设置持久化与敏感访问审计能力。
@@ -163,6 +180,17 @@ type Service struct {
 	modelClient ModelClient
 	// outboundPolicy 保存运行时 HTTP 策略端口，数据库仓储不直接依赖基础设施实现。
 	outboundPolicy OutboundPolicy
+	// credentialCache 是敏感凭据读取缓存的失效端口；nil 表示未接入缓存，写入口不做失效。
+	credentialCache CredentialCacheInvalidator
+}
+
+// SetCredentialCacheInvalidator 注入敏感凭据缓存失效端口，供组合根装配时调用。
+// 传 nil 表示不启用失效，与未接入缓存时的行为一致；本方法只在启动期调用，不做并发保护。
+func (s *Service) SetCredentialCacheInvalidator(invalidator CredentialCacheInvalidator) {
+	if s == nil {
+		return
+	}
+	s.credentialCache = invalidator
 }
 
 // IsSensitiveSettingKey 判断 HTTP 兼容层中的设置键是否属于敏感白名单。
@@ -241,6 +269,11 @@ func (s *Service) ApplySystemChanges(ctx context.Context, userID int64, values m
 	if err := s.repository.ApplySystemChanges(ctx, values, secrets); err != nil {
 		return err
 	}
+	// keys 已在上面逐项校验为敏感键；只有敏感键变更才失效凭据缓存，
+	// 普通键（如 ai_master_enabled）不得触发失效，避免无谓清空缓存。
+	if len(keys) > 0 {
+		s.invalidateCredentialCache()
+	}
 	s.applyOutboundPolicy(values)
 	return nil
 }
@@ -265,7 +298,13 @@ func (s *Service) SetSystem(ctx context.Context, userID int64, key, value, actio
 		if err := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.write", Resource: "system_settings", Keys: []string{key}}); err != nil {
 			return err
 		}
-		return s.repository.ApplySystemChanges(ctx, nil, map[string]SecretChange{key: change})
+		// err 表示敏感设置落库失败；失败时缓存不失效，避免把未生效的写入当成已生效。
+		if err := s.repository.ApplySystemChanges(ctx, nil, map[string]SecretChange{key: change}); err != nil {
+			return err
+		}
+		// 敏感键写成功即失效凭据缓存：密钥轮换不必等 TTL 到期。
+		s.invalidateCredentialCache()
+		return nil
 	}
 	// err 表示单项普通设置的业务值校验错误。
 	if err := validateSystemValue(key, value); err != nil {
@@ -343,10 +382,23 @@ func (s *Service) UpsertAIReply(ctx context.Context, userID int64, cookieID stri
 	if settings.MaxBargainRounds < 1 || settings.MaxBargainRounds > 10 {
 		return validationError("最大砍价轮次必须在 1 到 10 之间")
 	}
-	if settings.AutoAdjustPriceEnabled && !settings.AIEnabled {
+	// accountAIEnabled 是本次保存后账号级 AI 开关的值，用于两条改价前置校验。
+	// 未提交开关（SkipAIEnabled）时沿用已保存值；账号从未保存过设置时按「跟随全局总闸」视为启用，
+	// 否则默认开启的账号会因为请求未带 ai_enabled 而永远开不了自动改价。
+	accountAIEnabled := settings.AIEnabled
+	if settings.SkipAIEnabled {
+		accountAIEnabled = true
+		// current、currentErr 是账号已保存的 AI 设置；ErrConfigNotFound 表示尚未保存过，按跟随总闸处理。
+		if current, currentErr := s.repository.GetAIReply(ctx, userID, strings.TrimSpace(cookieID)); currentErr == nil {
+			accountAIEnabled = current.AIEnabled
+		} else if !errors.Is(currentErr, ErrConfigNotFound) {
+			return currentErr
+		}
+	}
+	if settings.AutoAdjustPriceEnabled && !accountAIEnabled {
 		return validationError("开启 AI 自动改价前必须先启用 AI 议价")
 	}
-	if settings.AIEnabled {
+	if accountAIEnabled {
 		// conflict 表示当前账号是否已有启用的固定价格规则；conflictErr 是查询错误。
 		conflict, conflictErr := s.repository.HasEnabledAdjustPriceRule(ctx, strings.TrimSpace(cookieID))
 		if conflictErr != nil {
@@ -503,7 +555,8 @@ func (s *Service) validateValues(values map[string]string) error {
 }
 
 // validateSystemValue 校验具有运行时语义的普通系统设置，避免非法值落库或切换策略。
-// 校验范围包括布尔开关、非负整数和 MCP 服务列表形状，其余普通键原样放行。
+// 校验范围包括布尔开关、非负整数和 MCP 服务列表形状，其余普通键原样放行；
+// 已下线功能的设置键（如已移除的 AI 回复人工确认开关）在此明确拒绝写入。
 func validateSystemValue(key, value string) error {
 	// trimmed 是去除首尾空白后的待校验值，便于统一判断布尔与数字边界。
 	trimmed := strings.TrimSpace(value)
@@ -511,6 +564,12 @@ func validateSystemValue(key, value string) error {
 	case "outbound_http_public_only":
 		if !strings.EqualFold(trimmed, "true") && !strings.EqualFold(trimmed, "false") {
 			return validationError("outbound_http_public_only 必须是布尔值")
+		}
+	case "ai_master_enabled":
+		// AI 全局总闸只接受 true/false：空串等价于「未配置」在读取侧已被视为开启，
+		// 若允许空串落库会让「清空开关」与「默认开启」两种意图无法区分。
+		if !strings.EqualFold(trimmed, "true") && !strings.EqualFold(trimmed, "false") {
+			return validationError("ai_master_enabled 必须是布尔值")
 		}
 	case "global_send_daily_limit", "silence_alert_minutes":
 		// n、err 是解析出的非负整数；负数或非法值拒绝落库，避免额度或阈值被悄悄重置或反向配置。
@@ -533,12 +592,9 @@ func validateSystemValue(key, value string) error {
 			return validationErrorf("%s 仅支持 12、24、48 小时或 0（关闭）", key)
 		}
 	case "ai_reply_review_mode":
-		// 允许的开关取值与 engine.reviewModeEnabled 保持一致；非法值拒绝落库。
-		switch strings.ToLower(trimmed) {
-		case "1", "true", "yes", "on", "enabled", "0", "false", "no", "off", "disabled", "":
-		default:
-			return validationError("ai_reply_review_mode 必须是布尔开关值")
-		}
+		// AI 回复人工确认模式已整体下线，引擎侧已无任何读取方；
+		// 兜底放行会让老前端或脚本误以为开关仍然生效，因此明确拒绝写入并提示功能已移除。
+		return validationError("ai_reply_review_mode 已下线，AI 回复不再经人工确认，该设置键不可写入")
 	case "delivery_content_guard":
 		// 空串或纯空白表示清空或未配置，与键不存在同语义，允许落库。
 		if trimmed == "" {
@@ -648,6 +704,15 @@ func validateSystemValue(key, value string) error {
 		}
 	}
 	return nil
+}
+
+// invalidateCredentialCache 在敏感设置落库成功后让凭据读取缓存立即失效。
+// 未注入失效器时为无害空操作；本方法不做 I/O，也不返回错误。
+func (s *Service) invalidateCredentialCache() {
+	if s == nil || s.credentialCache == nil {
+		return
+	}
+	s.credentialCache.InvalidateAll()
 }
 
 // applyOutboundPolicy 在系统设置成功持久化后立即同步运行时策略。

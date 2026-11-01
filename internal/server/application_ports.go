@@ -390,16 +390,17 @@ type MCPAdminPort interface {
 }
 
 // AgentSupportPort 定义客服 Agent 配置接口消费的最小用例能力：
-// 租户级默认与账号级覆盖的读取与保存。
-// 它只处理开关与档位，不暴露能力清单、工具名或模型凭证。
+// 租户级默认档位与账号级档位覆盖的读取与保存。
+// 它只处理档位，不暴露开关键、能力清单、工具名或模型凭证——客服 Agent 是否运行
+// 由统一 AI 开关决定，不在本端口的职责范围内。
 type AgentSupportPort interface {
-	// TenantSettings 返回租户级默认配置；未配置或取值非法时按平台默认收敛。
+	// TenantSettings 返回租户级默认档位；未配置或取值非法时按平台默认收敛。
 	TenantSettings(context.Context, int64) (agentadminapp.TenantConfig, error)
-	// UpdateTenantSettings 保存租户级默认配置；档位非法时返回错误且不落库。
+	// UpdateTenantSettings 保存租户级默认档位；档位非法时返回错误且不落库。
 	UpdateTenantSettings(context.Context, int64, agentadminapp.TenantConfig) error
-	// AccountSettings 返回指定账号最终生效的配置，并标注来源是账号级覆盖还是继承租户。
+	// AccountSettings 返回指定账号最终生效的档位，并标注来源是账号级覆盖还是继承租户。
 	AccountSettings(context.Context, int64, string) (agentadminapp.EffectiveConfig, error)
-	// UpdateAccountOverride 保存账号级覆盖；两个维度均为空表示恢复完全继承。
+	// UpdateAccountOverride 保存账号级档位覆盖；档位为空表示恢复完全继承。
 	UpdateAccountOverride(context.Context, int64, string, agentadminapp.AccountOverride) error
 }
 

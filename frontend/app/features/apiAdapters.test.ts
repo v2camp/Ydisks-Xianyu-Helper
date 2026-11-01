@@ -605,6 +605,23 @@ test('getSystemSettings keeps only sensitive configuration markers', /* 当前�
   expect(settings.smtp_password_configured).toBe(false);
 });
 
+// AI 总闸缺省语义是开启：服务端没写该键时界面必须显示为开，写 false 才是关闭。
+test('getSystemSettings 把缺省 AI 总闸归一为开启', /* aiMasterEnabledDefaultTest 检查总闸缺省回落。 */ async () => {
+  // missingMock 模拟服务端从未写入 ai_master_enabled 的设置快照。
+  const missingMock = vi.fn().mockResolvedValue(jsonResponse({ ai_model: 'qwen-plus' }));
+  stubContractFetch(missingMock);
+  // missingSettings 是缺省总闸下的归一结果。
+  const missingSettings = await getSystemSettings();
+  expect(missingSettings.ai_master_enabled).toBe(true);
+
+  // disabledMock 模拟服务端显式写入字符串 'false' 的设置快照。
+  const disabledMock = vi.fn().mockResolvedValue(jsonResponse({ ai_model: 'qwen-plus', ai_master_enabled: 'false' }));
+  stubContractFetch(disabledMock);
+  // disabledSettings 是显式关闭总闸下的归一结果。
+  const disabledSettings = await getSystemSettings();
+  expect(disabledSettings.ai_master_enabled).toBe(false);
+});
+
 test('logout calls backend session invalidation route', async () => {
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true })); /* fetchMock 表示fetchMock。 */
   stubContractFetch(fetchMock);
@@ -1599,6 +1616,26 @@ const runVersionedSettingsCardNotificationAPITest = async () => {
   expect(fetchMock).toHaveBeenNthCalledWith(24, '/api/v1/notifications/channels/1/test', expect.objectContaining({ method: 'POST' }));
 };
 
+// 账号 AI 设置保存只在用户本次切换过开关时提交 ai_enabled，其余情况省略该字段让后端保留原有语义。
+test('账号 AI 设置保存按是否动过开关决定是否提交 ai_enabled', /* accountAISettingsUpdatePayloadTest 检查开关字段的条件提交。 */ async () => {
+	// untouchedFetchMock 是只改砍价策略时保存请求的 HTTP 替身。
+	const untouchedFetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+	stubContractFetch(untouchedFetchMock);
+	await updateAccountAISettings('acc1', { max_discount_percent: 15, max_bargain_rounds: 5, ai_enabled: true, ai_enabled_touched: false });
+	// untouchedPayload 是只改砍价策略时实际发送的请求体。
+	const untouchedPayload = JSON.parse(String(untouchedFetchMock.mock.calls[0][1].body));
+	expect(untouchedPayload).not.toHaveProperty('ai_enabled');
+	expect(untouchedPayload).toMatchObject({ max_discount_percent: 15, max_bargain_rounds: 5 });
+
+	// touchedFetchMock 是用户切换开关后保存请求的 HTTP 替身。
+	const touchedFetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+	stubContractFetch(touchedFetchMock);
+	await updateAccountAISettings('acc1', { ai_enabled: false, ai_enabled_touched: true });
+	// touchedPayload 是用户切换开关后实际发送的请求体。
+	const touchedPayload = JSON.parse(String(touchedFetchMock.mock.calls[0][1].body));
+	expect(touchedPayload.ai_enabled).toBe(false);
+});
+
 test('settings, card, and notification APIs use versioned compatibility routes', runVersionedSettingsCardNotificationAPITest);
 
 // 聊天和账号任务 API 使用版本化兼容入口。
@@ -1865,11 +1902,10 @@ test('MCP 审计查询透传分页与过滤参数', /* mcpAuditAdapterTest 检�
   expect(requestURL).toContain('success=false');
 });
 
-// 客服 Agent 租户配置读取归一档位名单，并丢弃缺少稳定标识的服务端条目。
+// 客服 Agent 租户配置读取只归一档位名单与默认档位；是否运行由统一 AI 开关决定。
 test('客服 Agent 租户配置读取归一档位名单', /* agentSupportSettingsAdapterTest 检查档位名单归一。 */ async () => {
 	// fetchMock 是客服 Agent 租户配置读取的 HTTP 替身。
 	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
-		enabled: true,
 		preset: 'standard',
 		presets: [
 			{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' },
@@ -1879,54 +1915,49 @@ test('客服 Agent 租户配置读取归一档位名单', /* agentSupportSetting
 	stubContractFetch(fetchMock);
 	// settings 是归一后的客服 Agent 租户配置 UI 模型。
 	const settings = await getAgentSupportSettings();
-	expect(settings.enabled).toBe(true);
 	expect(settings.preset).toBe('standard');
 	expect(settings.presets).toEqual([{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' }]);
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/settings', expect.objectContaining({ method: 'GET', credentials: 'include' }));
 });
 
-// 客服 Agent 租户配置保存按全量替换语义提交开关与档位。
-test('客服 Agent 租户配置保存提交全量开关与档位', /* agentSupportSettingsUpdateAdapterTest 检查保存载荷。 */ async () => {
+// 客服 Agent 租户配置保存只提交档位，开关已归并到统一 AI 开关。
+test('客服 Agent 租户配置保存只提交档位', /* agentSupportSettingsUpdateAdapterTest 检查保存载荷。 */ async () => {
 	// fetchMock 是客服 Agent 租户配置保存的 HTTP 替身。
 	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
 	stubContractFetch(fetchMock);
-	await updateAgentSupportSettings({ enabled: true, preset: 'advanced' });
+	await updateAgentSupportSettings({ preset: 'advanced' });
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/settings', expect.objectContaining({ method: 'PUT', credentials: 'include' }));
 	// payload 是实际发送的租户配置请求体。
 	const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
-	expect(payload).toEqual({ enabled: true, preset: 'advanced' });
+	expect(payload).toEqual({ preset: 'advanced' });
 });
 
-// 账号级客服 Agent 授权读取必须区分「账号未覆盖」与「已覆盖」，两者共用可空字段表达。
+// 账号级客服 Agent 授权读取必须区分「账号未覆盖」与「已覆盖」，两者共用可空档位表达。
 test('账号级客服 Agent 授权读取区分继承与覆盖', /* accountAgentSupportAdapterTest 检查可空覆盖值归一。 */ async () => {
 	// fetchMock 是账号级客服 Agent 授权读取的 HTTP 替身。
 	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
 		cookie_id: 'account-1',
-		enabled: true,
 		preset: 'standard',
-		account_enabled: null,
 		account_preset: 'advanced',
 		presets: [{ value: 'standard', label: '标准', description: '允许生成报价' }],
 	}));
 	stubContractFetch(fetchMock);
 	// support 是归一后的账号级客服 Agent 授权 UI 模型。
 	const support = await getAccountAgentSupport('account-1');
-	expect(support.enabled).toBeNull();
 	expect(support.preset).toBe('advanced');
-	expect(support.effectiveEnabled).toBe(true);
 	expect(support.effectivePreset).toBe('standard');
 	expect(support.presets).toEqual([{ value: 'standard', label: '标准', description: '允许生成报价' }]);
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/accounts/account-1', expect.objectContaining({ method: 'GET', credentials: 'include' }));
 });
 
-// 账号级客服 Agent 授权保存用 null 表达恢复继承，不能退化成 false 或空串。
+// 账号级客服 Agent 授权保存用 null 表达恢复继承，不能退化成空串。
 test('账号级客服 Agent 授权保存用 null 表达恢复继承', /* accountAgentSupportUpdateAdapterTest 检查继承载荷。 */ async () => {
 	// fetchMock 是账号级客服 Agent 授权保存的 HTTP 替身。
 	const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
 	stubContractFetch(fetchMock);
-	await updateAccountAgentSupport('account-1', { enabled: null, preset: 'advanced' });
+	await updateAccountAgentSupport('account-1', { preset: 'advanced' });
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/agent/support/accounts/account-1', expect.objectContaining({ method: 'PUT', credentials: 'include' }));
-	// payload 是实际发送的授权覆盖请求体。
+	// payload 是实际发送的授权覆盖请求体，只含档位。
 	const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
-	expect(payload).toEqual({ enabled: null, preset: 'advanced' });
+	expect(payload).toEqual({ preset: 'advanced' });
 });

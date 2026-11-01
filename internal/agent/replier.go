@@ -14,9 +14,14 @@ import (
 //
 // 适配器本身不做业务判定，只在三种情形之间选路：
 //
-//  1. 账号未启用客服 Agent，或配置不可解析 → 直接走单次问答；
-//  2. 启用且配置可解析 → 运行工具回合循环；
+//  1. 配置不可解析，或会话端口自认不可用 → 直接走单次问答；
+//  2. 配置可解析 → 运行工具回合循环；
 //  3. 循环未能产出最终答复 → 回落到单次问答。
+//
+// 是否运行客服 Agent 不在这里判定：开关已归并到统一 AI 开关，由回复链路的准入阶段
+// 决定本生成器是否被调用；组合层的会话端口在可解析时恒返回 enabled=true。
+// 第 1 条的 enabled 判断保留为防御性约束——任何端口若宣称不可用，都必须被尊重，
+// 不能因为「当前实现恒为 true」就让带工具的循环无条件跑起来。
 //
 // 三条路径的终点都是让买家收到一条回复，而不是静默失败。回落不削弱安全约束——
 // 回复正文最终仍由 engine 的价格守卫与外发护栏校验，且回落路径根本不持有工具。
@@ -77,7 +82,7 @@ func NewReplier(cfg ReplierConfig) (*Replier, error) {
 // Generate 按账号当前生效配置选择「Agent 循环」或「单次问答」，并保证最终一定有一条回复。
 // ctx 与 req 的原样透传保证提示词、历史与模型配置与控制流无关。
 func (r *Replier) Generate(ctx context.Context, req engine.GenerateRequest) (string, error) {
-	// session、enabled、resolveErr 分别是本账号生效的会话配置、启用状态与解析失败原因。
+	// session、enabled、resolveErr 分别是本账号生效的会话配置、端口自认可用性与解析失败原因。
 	session, enabled, resolveErr := r.sessions.ResolveSession(ctx, r.cookieID)
 	if resolveErr != nil {
 		// 配置不可解析时按未启用处理：宁可不带工具答复，也不能凭未知档位运行工具回合。
@@ -85,6 +90,7 @@ func (r *Replier) Generate(ctx context.Context, req engine.GenerateRequest) (str
 		return r.fallback.Generate(ctx, req)
 	}
 	if !enabled {
+		// 端口自认不可用（配置服务或归属解析未装配）时同样回落：零值 Session 会丢掉账号隔离。
 		return r.fallback.Generate(ctx, req)
 	}
 	// content、loopErr 分别是 Agent 循环的答复与失败原因。

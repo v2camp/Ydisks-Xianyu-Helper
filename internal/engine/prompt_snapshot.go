@@ -8,7 +8,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -100,12 +99,10 @@ func (a *AIReplierImpl) ExportPromptSnapshot(ctx context.Context, m ChatMessage)
 	}
 
 	// cfg 是账号级 AI 配置（折扣上限、砍价轮次、自定义业务文案）。
+	// 无显式设置行时返回跟随总闸的默认护栏，因此这里不再有「账号未配置」分支。
 	cfg, err := a.store.AIReply.Get(ctx, a.cookieID)
 	if err != nil {
 		return nil, fmt.Errorf("读取账号 AI 配置失败: %w", err)
-	}
-	if cfg == nil {
-		return nil, errors.New("账号未配置 AI 回复")
 	}
 
 	// scope 是编译后的边界配置，决定该消息是否允许 AI 接管。

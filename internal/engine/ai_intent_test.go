@@ -21,8 +21,8 @@ func TestDefaultScopeDecideBargainTakeover(t *testing.T) {
 		wantHits []string
 	}{
 		{name: "纯砍价放行", text: "60 块能卖吗，能便宜点吗", wantTakeover: true, wantHits: []string{IntentBargain}},
-		{name: "发货咨询只标注不接管", text: "付款后什么时候发货，提取码怎么用", wantTakeover: false, wantHits: []string{IntentOrder, IntentConsult}},
-		{name: "询价只标注不接管", text: "这套资料怎么卖", wantTakeover: false, wantHits: []string{IntentInquiry}},
+		{name: "发货与内容咨询接管", text: "付款后什么时候发货，提取码怎么用", wantTakeover: true, wantHits: []string{IntentOrder, IntentConsult}},
+		{name: "询价接管", text: "这套资料怎么卖", wantTakeover: true, wantHits: []string{IntentInquiry}},
 		{name: "投诉负向短路", text: "这根本不是正品，我要举报你卖假货", wantTakeover: false, wantHits: nil},
 		{name: "砍价叠加投诉仍被拦截", text: "再便宜点，不然我差评举报", wantTakeover: false, wantHits: nil},
 		{name: "零命中", text: "你好在吗", wantTakeover: false, wantHits: nil},
@@ -117,10 +117,10 @@ func TestDefaultScopeCoversSpokenDeliveryAndRefund(t *testing.T) {
 		// wantNegative 是期望是否被负向拦截。
 		wantNegative bool
 	}{
-		{name: "百度口语", text: "百度吗", wantIntent: IntentOrder, wantTakeover: false},
-		{name: "百度云口语", text: "百度云的吗", wantIntent: IntentOrder, wantTakeover: false},
-		{name: "网盘口语", text: "网盘吗", wantIntent: IntentOrder, wantTakeover: false},
-		{name: "要夸克", text: "有夸克的吗", wantIntent: IntentOrder, wantTakeover: false},
+		{name: "百度口语", text: "百度吗", wantIntent: IntentOrder, wantTakeover: true},
+		{name: "百度云口语", text: "百度云的吗", wantIntent: IntentOrder, wantTakeover: true},
+		{name: "网盘口语", text: "网盘吗", wantIntent: IntentOrder, wantTakeover: true},
+		{name: "要夸克", text: "有夸克的吗", wantIntent: IntentOrder, wantTakeover: true},
 		{name: "全剧", text: "全剧吗", wantIntent: IntentStock, wantTakeover: true},
 		{name: "更新完", text: "更新完了吗", wantIntent: IntentStock, wantTakeover: true},
 		{name: "售前退款咨询", text: "那能退吗？", wantIntent: IntentRefund, wantTakeover: true},
@@ -152,11 +152,13 @@ func TestDefaultScopeCoversSpokenDeliveryAndRefund(t *testing.T) {
 
 // TestDefaultScopeDeliveryQuestionKeepsSingleIntent 验证发货方式问句只命中单一意图。
 // 曾因 consult 收录「是什么」导致「发货方式是什么」同时命中 order 与 consult 被误并成 ambiguous。
+// 放开 order 接管后本用例仍守住「单一意图」这一半：多意图归并会让意图标签退化成 ambiguous，
+// 使归因统计无法区分「问渠道」与「问内容」。
 func TestDefaultScopeDeliveryQuestionKeepsSingleIntent(t *testing.T) {
-	// take、hits 是「发货方式是什么」的判定结果。
+	// take、hits 是「发货方式是什么」的判定结果；order 已允许接管，故 take 为 true。
 	take, hits := defaultScope.decide("发货方式是什么")
-	if take {
-		t.Fatal("内置 order 意图不应接管")
+	if !take {
+		t.Fatal("内置 order 意图已放开接管，本条应接管")
 	}
 	if !equalStringSlice(hits, []string{IntentOrder}) {
 		t.Fatalf("发货方式问句应只命中 order，实际 %v", hits)

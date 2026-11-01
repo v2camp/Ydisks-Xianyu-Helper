@@ -65,7 +65,7 @@ export const AI_SETTING_KEYS = new Set([
   'ai_api_url',
   'ai_api_key',
   'ai_model',
-  'ai_reply_review_mode',
+  'ai_master_enabled',
   'ai_scope_config',
   'ai_knowledge_config',
   'ai_policy_config',

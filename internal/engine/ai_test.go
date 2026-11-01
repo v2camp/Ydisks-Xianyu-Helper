@@ -110,7 +110,8 @@ func newAIStore(t *testing.T) (*db.Store, func()) {
 	return s, func() { d.Close() }
 }
 
-// TestAIReply_DisabledReturnsNil AI 未启用 / 无 APIKey 时应返回 nil,nil（降级到下一级）。
+// TestAIReply_DisabledReturnsNil 账号关闭或全局未配 APIKey 时应返回 nil,nil（降级到下一级）。
+// 无设置行不再是「关闭」：它表示跟随全局总闸，因此在缺 APIKey 时才降级。
 func TestAIReply_DisabledReturnsNil(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newAIStore(t)
@@ -120,10 +121,10 @@ func TestAIReply_DisabledReturnsNil(t *testing.T) {
 	// a 用于本次流程后续判断的a
 	a := NewAIReplier("cid", s, nil)
 
-	// 无配置记录 → 未启用 → nil。
+	// 无配置记录 → 跟随总闸视为启用，但全局没有 APIKey → nil。
 	res, err := a.Reply(ctx, chatMsg("能便宜点吗", "item1", "chat1"))
 	if err != nil || res != nil {
-		t.Fatalf("未配置应返回 nil,nil: res=%+v err=%v", res, err)
+		t.Fatalf("无 APIKey 应返回 nil,nil: res=%+v err=%v", res, err)
 	}
 
 	// 配置但 ai_enabled=0 → nil。
@@ -297,8 +298,11 @@ func TestAIReplyBuildsExecutableQuote(t *testing.T) {
 	}
 }
 
-// TestAIReply_NonBargainMessageFallsThrough 封装TestAI回复NonBargain消息FallsThrough业务协调。
-func TestAIReply_NonBargainMessageFallsThrough(t *testing.T) {
+// TestAIReply_ZeroIntentMessageFallsThrough 验证零意图消息不进 AI 层、交默认回复。
+//
+// 原用例用「在吗，什么时候发货」作为「非砍价」样本；2026-11-01 放开 order 接管后，
+// 这句话已属正常接管范围，故改用真正零意图的问候语，才继续守住「零命中不调模型」这条边界。
+func TestAIReply_ZeroIntentMessageFallsThrough(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newAIStore(t)
 	defer cleanup()
@@ -309,9 +313,9 @@ func TestAIReply_NonBargainMessageFallsThrough(t *testing.T) {
 	s.Settings.Set(ctx, "ai_api_url", "http://127.0.0.1:1")
 
 	// res、err 用于本次流程后续判断的res、err
-	res, err := NewAIReplier("cid", s, nil).Reply(ctx, chatMsg("在吗，什么时候发货", "item1", "chat1"))
+	res, err := NewAIReplier("cid", s, nil).Reply(ctx, chatMsg("你好", "item1", "chat1"))
 	if err != nil || res != nil {
-		t.Fatalf("非砍价消息应交给默认回复: res=%+v err=%v", res, err)
+		t.Fatalf("零意图消息应交给默认回复: res=%+v err=%v", res, err)
 	}
 }
 

@@ -131,7 +131,7 @@ func run(root, scenariosPath, outPath, account, itemID string) int {
 	// defaultAccount 是场景未指定账号时使用的账号。
 	defaultAccount := strings.TrimSpace(account)
 	if defaultAccount == "" {
-		defaultAccount, err = firstAIAccount(ctx, database)
+		defaultAccount, err = firstAIAccount(ctx, store)
 		if err != nil {
 			fmt.Printf("解析默认账号失败: %s\n", logsafe.Error(err))
 			return 2
@@ -300,21 +300,22 @@ func writeSamples(path string, samples []evalharness.Sample) error {
 	return nil
 }
 
-// firstAIAccount 取任意一个已启用 AI 回复的账号；只读账号主键，不涉及凭证。
-func firstAIAccount(ctx context.Context, database *sql.DB) (string, error) {
-	// query 取启用 AI 的账号，顺序固定便于复现。
-	query := `SELECT cookie_id FROM ai_reply_settings WHERE ai_enabled = 1 ORDER BY cookie_id LIMIT 1`
-	// cookieID 是查询结果。
-	var cookieID string
-	// err 是查询失败原因。
-	err := database.QueryRowContext(ctx, query).Scan(&cookieID)
-	if errors.Is(err, sql.ErrNoRows) {
+// firstAIAccount 取任意一个账号级启用 AI 回复的账号；只读账号主键，不涉及凭证。
+//
+// 口径复用 db.AIReply.ListEnabledCookieIDs，与 internal/evalharness 的
+// firstAIEnabledAccount 同源：没有 ai_reply_settings 行的账号跟随全局总闸，同样算启用。
+// 这里不再复制裸 SQL —— 旧写法 `WHERE ai_enabled = 1` 是「无行即关闭」时代的判据，
+// 在默认开启的新库上会把全部无行账号判成未启用，直接报「没有启用 AI 回复的账号」。
+func firstAIAccount(ctx context.Context, store *db.Store) (string, error) {
+	// ids 是按账号升序排列的账号级启用清单。
+	ids, err := store.AIReply.ListEnabledCookieIDs(ctx)
+	if err != nil {
+		return "", fmt.Errorf("查询启用 AI 的账号失败: %w", err)
+	}
+	if len(ids) == 0 {
 		return "", errors.New("数据库中没有启用 AI 回复的账号")
 	}
-	if err != nil {
-		return "", err
-	}
-	return cookieID, nil
+	return ids[0], nil
 }
 
 // firstItem 取指定账号下第一个未删除商品；只读商品主键。

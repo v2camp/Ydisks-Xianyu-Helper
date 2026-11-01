@@ -93,6 +93,8 @@ type Adapter struct {
 	passwordResultMu sync.Mutex
 	// passwordResults 保存正在执行的协议续期结果，后到调用方可等待同一账号的结果。
 	passwordResults map[string]*passwordRenewalResult
+	// itemBackfill 执行单商品回补（读凭证、核验发布人、写本地商品表）；构造期注入，运行中不可替换。
+	itemBackfill *ItemBackfillRepository
 }
 
 // passwordRenewalResult 是同账号并发续期调用共享的完成信号与最终成功状态。
@@ -139,6 +141,8 @@ func newAdapter(store *db.Store, bm *browser.Manager, logger *slog.Logger, order
 		orderDetails:        orderDetails,
 		passwordCoordinator: accountapp.NewCredentialRefreshCoordinator(),
 		passwordResults:     make(map[string]*passwordRenewalResult),
+		// itemBackfill 使用默认 MTOP 客户端；测试可替换该字段注入本地替身。
+		itemBackfill: NewItemBackfillRepository(store, nil, logger),
 	}
 }
 
@@ -178,12 +182,11 @@ func NewRuntimeBundle(store *db.Store, bm *browser.Manager, logger *slog.Logger,
 	runtimeAdapter.initialOrderSync = initialOrderSync
 	// chatService 是账号实时消息落库和广播服务，必须先于账号引擎启动完成注入。
 	chatService := chat.New(store)
-	// notifier 是自动化与账号告警共用的通知出口，构造完成后不可替换；
-	// 提前于账号管理器构造，以便随账号工厂穿入 AI 回复人工确认链路。
+	// notifier 是自动化与账号告警共用的通知出口，构造完成后不可替换。
 	notifier := notify.New("", store, logger)
 	// manager 是自动化中心的在线发送器来源，同时在启动期把 Adapter 固定为账号事件处理器。
 	manager := accountmanager.NewManager(store, runtimeAdapter, logger, accountmanager.ManagerOptions{
-		ReviewNotifier: notifier, AIGeneratorFactory: supportAgentFactory,
+		AIGeneratorFactory:         supportAgentFactory,
 		ReplyImageDeliveryProvider: replyImageDelivery,
 	})
 	// automationSenders 为自动化图片卡密注入“临时下载、平台上传、WebSocket 发送”链路，不在本地保存图片。

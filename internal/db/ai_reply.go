@@ -10,6 +10,61 @@ import (
 // ErrAIBargainQuoteAlreadyClaimed 表示同一订单已绑定过 AI 报价，重复事件不得再次执行外部改价。
 var ErrAIBargainQuoteAlreadyClaimed = errors.New("AI 议价报价已被该订单领取")
 
+// aiMasterEnabledKey 是 system_settings 中 AI 全局总闸的键名。
+// 该键是普通键（非敏感），可用 SystemSettings.Get 直接读取而不写 security_audit_logs。
+const aiMasterEnabledKey = "ai_master_enabled"
+
+// aiMasterEnabledOnValues 是全局总闸的开启取值集合（按小写归一后比较）。
+// 空串键对应「键不存在」：无配置时总闸视为开启，保证默认开启的语义不会被误读成关闭。
+var aiMasterEnabledOnValues = map[string]bool{
+	"":        true,
+	"true":    true,
+	"1":       true,
+	"yes":     true,
+	"on":      true,
+	"enabled": true,
+}
+
+// aiReplyDefaultMaxDiscountPercent 是账号尚无 ai_reply_settings 行时的默认最大折扣比例。
+// 取值必须与迁移 00001 的列默认值以及 GET /ai-reply-settings 的历史默认响应保持一致。
+const aiReplyDefaultMaxDiscountPercent = 10
+
+// aiReplyDefaultMaxDiscountAmount 是账号尚无设置行时的默认最大折扣金额（单位：元）。
+const aiReplyDefaultMaxDiscountAmount = 100
+
+// aiReplyDefaultMaxBargainRounds 是账号尚无设置行时的默认最大砍价轮次。
+const aiReplyDefaultMaxBargainRounds = 3
+
+// aiMasterEnabledFromValue 把全局总闸的原始配置值归一为布尔结论。
+// 参数 raw 是 system_settings 原文，允许前后空白与任意大小写；
+// 返回 true 表示总闸开启（含键不存在），false 表示总闸显式关闭。
+// 该函数是纯函数，不做 I/O，可在每条消息的判定路径上反复调用。
+func aiMasterEnabledFromValue(raw string) bool {
+	return aiMasterEnabledOnValues[strings.ToLower(strings.TrimSpace(raw))]
+}
+
+// defaultAIReplySettings 返回账号尚无显式设置行时的默认护栏与「跟随全局总闸」的开关。
+// 参数 cookieID 是调用方正在读取的账号标识，用于填充返回值，避免上层误用其他账号的默认值。
+// 返回值中的 AIEnabled 为 true 表示跟随总闸；AIEnabledExplicit 为 false 表示没有显式行。
+func defaultAIReplySettings(cookieID string) AIReplySettings {
+	return AIReplySettings{
+		// CookieID 与调用方查询的账号一致，便于上层直接回显。
+		CookieID: cookieID,
+		// AIEnabled 为 true：无显式行即跟随全局总闸，总闸开启时视为启用。
+		AIEnabled: true,
+		// AIEnabledExplicit 为 false：数据库中没有该账号的显式开关，展示层据此给出 source=global。
+		AIEnabledExplicit: false,
+		// AutoAdjustPriceEnabled 为 false：真实改价涉及资金，默认必须由账号显式开启。
+		AutoAdjustPriceEnabled: false,
+		// MaxDiscountPercent、MaxDiscountAmount、MaxBargainRounds 使用迁移列的默认护栏。
+		MaxDiscountPercent: aiReplyDefaultMaxDiscountPercent,
+		MaxDiscountAmount:  aiReplyDefaultMaxDiscountAmount,
+		MaxBargainRounds:   aiReplyDefaultMaxBargainRounds,
+		// CustomPrompts 为空：没有显式行时不存在账号自定义提示词。
+		CustomPrompts: "",
+	}
+}
+
 // AIConversationMessage 是一个账号会话中的 AI 对话消息。
 type AIConversationMessage struct {
 	Role         string
@@ -22,8 +77,16 @@ type AIConversationMessage struct {
 // 模型名、API 地址与密钥不在此表：它们统一来自 system_settings 的全局 AI 配置（00003 建立，
 // 由 00063 从本表删除模型列），因此本结构体刻意不含任何模型字段。
 type AIReplySettings struct {
-	CookieID               string `json:"cookie_id"`
-	AIEnabled              bool   `json:"ai_enabled"`
+	CookieID string `json:"cookie_id"`
+	// AIEnabled 是账号级 AI 开关：未显式保存（AIEnabledExplicit 为 false）时恒为 true，表示跟随全局总闸。
+	AIEnabled bool `json:"ai_enabled"`
+	// AIEnabledExplicit 表示账号是否已显式保存过开关。
+	// 读路径由「ai_reply_settings 是否存在该账号行」填充；写路径不使用该字段。
+	AIEnabledExplicit bool `json:"ai_enabled_explicit"`
+	// SkipAIEnabled 表示本次写入不改动 ai_enabled 列，保留数据库中的已有值。
+	// 默认 false 表示照常写入，保证既有调用方（含 MCP 工具）的显式开关语义不变；
+	// 仅「只改砍价护栏、不提交开关」的保存路径应置为 true。
+	SkipAIEnabled          bool   `json:"-"`
 	AutoAdjustPriceEnabled bool   `json:"auto_adjust_price_enabled"`
 	MaxDiscountPercent     int    `json:"max_discount_percent"`
 	MaxDiscountAmount      int    `json:"max_discount_amount"`
@@ -55,23 +118,70 @@ type AIReply struct {
 	Dialect Dialect
 }
 
-// IsEnabled 只读取账号 AI 议价开关，不解密模型密钥或其他敏感字段。
-func (a *AIReply) IsEnabled(ctx context.Context, cookieID string) (bool, error) {
-	// enabled 是数据库保存的 AI 议价开关整数值。
-	var enabled int
-	// err 是开关查询错误；没有配置时按关闭处理。
-	err := a.DB.QueryRowContext(ctx, `SELECT ai_enabled FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(&enabled)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+// MasterEnabled 读取 AI 全局总闸的生效值：总闸未配置或取开启值时返回 true。
+//
+// 并发与敏感性约束：走普通读 SystemSettings.Get（无行返回空串），
+// 不使用 ReadSensitiveSetting/ReadSensitiveSettingForAccount——总闸是布尔开关、不含秘密，
+// 而回复链路会按消息量读取它，审计读会让 security_audit_logs 随之膨胀。
+// 返回的错误只表示数据库查询失败，调用方应显式上抛而不是静默按关闭处理。
+func (a *AIReply) MasterEnabled(ctx context.Context) (bool, error) {
+	if a == nil || a.DB == nil {
+		// 存储未装配时按开启处理：避免把「装配缺失」静默变成全局关闭，导致线上 AI 全部停摆。
+		return true, nil
 	}
-	return enabled != 0, err
+	// settings 是仅用于读取普通键的只读门面；ai_master_enabled 不在敏感白名单，
+	// 因此这里不需要装配密文编解码器。
+	settings := &SystemSettings{DB: a.DB, Dialect: a.Dialect}
+	// raw 是总闸原文；键不存在时为空串，由 aiMasterEnabledFromValue 归一为开启。
+	raw, err := settings.Get(ctx, aiMasterEnabledKey)
+	if err != nil {
+		return false, err
+	}
+	return aiMasterEnabledFromValue(raw), nil
 }
 
-// ListEnabledCookieIDs 返回启用 AI 回复的账号列表，按账号升序；无启用账号时返回空切片。
-// ai_enabled 以 INTEGER 存储，跨方言都可用「= 1」比较，不依赖驱动对布尔的编码。
+// IsEnabled 返回账号 AI 回复的生效值：全局总闸开启，且账号没有被显式关闭。
+//
+// 「生效值」是三条回复通道唯一的运行期口径：无 ai_reply_settings 行表示跟随总闸，
+// 因此无行且总闸开启时必须判定为启用。
+// 返回值只表达结论，不读取模型密钥或其他敏感字段。
+func (a *AIReply) IsEnabled(ctx context.Context, cookieID string) (bool, error) {
+	// master 是全局总闸；关闭时无论账号如何配置都不会生效。
+	master, err := a.MasterEnabled(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !master {
+		return false, nil
+	}
+	// enabled 是账号级开关的整数值；列值为 NULL 时按「跟随总闸」视为 1。
+	var enabled int
+	// err 是开关查询错误；无行表示未显式设置，按跟随总闸视为启用。
+	err = a.DB.QueryRowContext(ctx, `SELECT COALESCE(ai_enabled, 1) FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(&enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return enabled != 0, nil
+}
+
+// ListEnabledCookieIDs 返回账号级启用 AI 的账号列表，按账号升序；无启用账号时返回空切片。
+//
+// 口径：以 cookies 为主表左连设置表，`COALESCE(ai_enabled, 1) = 1` 即「未显式关闭」，
+// 因此没有设置行的账号同样出现在清单里——这正是「默认开启」的落地方式。
+// 本方法只看账号级开关，不含全局总闸；需要判断「AI 是否真的会运行」的调用方
+// 必须另外调用 MasterEnabled 并取与。
+// ai_enabled 以 INTEGER 存储，跨方言都用「= 1」比较，不依赖驱动对布尔的编码。
 func (a *AIReply) ListEnabledCookieIDs(ctx context.Context) ([]string, error) {
-	// rows 是启用 AI 的账号查询结果集。
-	rows, err := a.DB.QueryContext(ctx, `SELECT cookie_id FROM ai_reply_settings WHERE ai_enabled = 1 ORDER BY cookie_id`)
+	// rows 是账号级启用 AI 的账号查询结果集。
+	rows, err := a.DB.QueryContext(ctx, `
+		SELECT c.id
+		  FROM cookies c
+		  LEFT JOIN ai_reply_settings s ON s.cookie_id = c.id
+		 WHERE COALESCE(s.ai_enabled, 1) = 1
+		 ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -91,71 +201,105 @@ func (a *AIReply) ListEnabledCookieIDs(ctx context.Context) ([]string, error) {
 	return ids, rows.Err()
 }
 
-// PricingMode 只读取 AI 议价及其真实改价开关，供订单事件选择互斥执行路径。
+// PricingMode 只读取 AI 议价的生效值及其真实改价开关，供订单事件选择互斥执行路径。
+//
+// 返回的第一个值复用 IsEnabled 的生效口径（总闸 + 账号开关）；
+// 第二个值只在第一个值为真时有意义，无设置行时按关闭处理（真实改价必须显式开启）。
 func (a *AIReply) PricingMode(ctx context.Context, cookieID string) (bool, bool, error) {
-	// aiEnabled、autoAdjustEnabled 分别是 AI 议价和真实自动改价开关的数据库整数值。
-	var aiEnabled, autoAdjustEnabled int
-	// err 是开关查询错误；没有账号级 AI 配置时两个开关均按关闭处理。
-	err := a.DB.QueryRowContext(ctx, `SELECT ai_enabled,auto_adjust_price_enabled FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(&aiEnabled, &autoAdjustEnabled)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, false, nil
+	// effective 是 AI 议价的生效值；未生效时真实改价也不应执行。
+	effective, err := a.IsEnabled(ctx, cookieID)
+	if err != nil || !effective {
+		return false, false, err
 	}
-	return aiEnabled != 0, autoAdjustEnabled != 0, err
+	// autoAdjustEnabled 是真实自动改价开关的整数值；列值为 NULL 时按关闭处理。
+	var autoAdjustEnabled int
+	// err 是开关查询错误；无行表示没有显式设置，自动改价按关闭处理。
+	err = a.DB.QueryRowContext(ctx, `SELECT COALESCE(auto_adjust_price_enabled, 0) FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(&autoAdjustEnabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return true, autoAdjustEnabled != 0, nil
 }
 
 // Get 取某账号 AI 回复配置。模型名、API 地址与密钥一律不在此表读取：
 // 模型配置的权威来源是 system_settings 的全局 AI 配置，本表三列已由 00063 删除。
+//
+// 契约：账号没有显式设置行时返回 defaultAIReplySettings 填充的默认结构而不再返回 ErrNotFound，
+// 并且永不返回 (nil, nil)。这样调用方无需各自处理「无行」分支，也不会把「跟随总闸」
+// 误判成「配置缺失」。AIEnabledExplicit 为 false 表示该值是跟随总闸的默认值。
 func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, error) {
-	// s 用于本次流程后续判断的s
+	// s 是本账号的 AI 设置结果。
 	var s AIReplySettings
-	// enabled 用于本次流程后续判断的启用状态
+	// enabled 是账号级开关整数值；列值为 NULL 时按 1（跟随总闸）读取。
 	var enabled int
-	// autoAdjustEnabled 表示 AI 报价是否允许在订单创建后触发真实改价。
+	// autoAdjustEnabled 表示 AI 报价是否允许在订单创建后触发真实改价；NULL 时按关闭读取。
 	var autoAdjustEnabled int
 	// customPrompts 是账号自定义提示词，数据库允许为空。
 	var customPrompts sql.NullString
-	// err 用于本次流程后续判断的err
+	// err 是配置查询错误；ErrNoRows 表示账号尚未保存显式设置。
 	err := a.DB.QueryRowContext(ctx,
-		`SELECT cookie_id, ai_enabled, auto_adjust_price_enabled,
-		        max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts
-		 FROM ai_reply_settings WHERE cookie_id=?`, cookieID).Scan(
+		`SELECT cookie_id, COALESCE(ai_enabled, 1), COALESCE(auto_adjust_price_enabled, 0),
+		        COALESCE(max_discount_percent, ?), COALESCE(max_discount_amount, ?), COALESCE(max_bargain_rounds, ?),
+		        COALESCE(custom_prompts, '')
+		 FROM ai_reply_settings WHERE cookie_id=?`,
+		aiReplyDefaultMaxDiscountPercent, aiReplyDefaultMaxDiscountAmount, aiReplyDefaultMaxBargainRounds, cookieID).Scan(
 		&s.CookieID, &enabled, &autoAdjustEnabled,
 		&s.MaxDiscountPercent, &s.MaxDiscountAmount, &s.MaxBargainRounds, &customPrompts)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
+			// 无显式行：返回跟随总闸的默认护栏，而不是 ErrNotFound。
+			settings := defaultAIReplySettings(cookieID)
+			return &settings, nil
 		}
 		return nil, err
 	}
 	s.AIEnabled = enabled != 0
+	s.AIEnabledExplicit = true
 	s.AutoAdjustPriceEnabled = autoAdjustEnabled != 0
 	s.CustomPrompts = customPrompts.String
 	return &s, nil
 }
 
-// ListForUser 查询用户账号的 AI 回复配置，不读取或返回 API 密钥。
+// ListForUser 查询用户全部账号的 AI 回复配置，不读取或返回 API 密钥。
+//
+// 以 cookies 为主表左连设置表：没有显式行的账号同样返回一条「跟随总闸」的默认设置，
+// 否则默认开启的账号会从列表接口与 MCP 列表工具里整条消失。
+// 返回顺序按账号标识升序，便于前端稳定渲染。
 func (a *AIReply) ListForUser(ctx context.Context, userID int64) ([]AIReplySettings, error) {
-	// rows、err 用于本次流程后续判断的rows、err
+	// rows、err 是本用户全部账号的设置查询结果集及失败原因。
 	rows, err := a.DB.QueryContext(ctx, `
-		SELECT a.cookie_id, a.ai_enabled, a.auto_adjust_price_enabled, a.max_discount_percent, a.max_discount_amount,
-		       a.max_bargain_rounds, COALESCE(a.custom_prompts, '')
-		  FROM ai_reply_settings a JOIN cookies c ON c.id=a.cookie_id WHERE c.user_id=?`, userID)
+		SELECT c.id,
+		       COALESCE(s.ai_enabled, 1), COALESCE(s.auto_adjust_price_enabled, 0),
+		       COALESCE(s.max_discount_percent, ?), COALESCE(s.max_discount_amount, ?), COALESCE(s.max_bargain_rounds, ?),
+		       COALESCE(s.custom_prompts, ''),
+		       CASE WHEN s.cookie_id IS NULL THEN 0 ELSE 1 END
+		  FROM cookies c
+		  LEFT JOIN ai_reply_settings s ON s.cookie_id = c.id
+		 WHERE c.user_id = ?
+		 ORDER BY c.id`,
+		aiReplyDefaultMaxDiscountPercent, aiReplyDefaultMaxDiscountAmount, aiReplyDefaultMaxBargainRounds, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	// out 用于本次流程后续判断的out
+	// out 是本用户的账号设置列表；无账号时返回 nil 切片，调用方按空列表处理。
 	var out []AIReplySettings
 	for rows.Next() {
-		// item 用于本次流程后续判断的商品
+		// item 是当前行的账号设置。
 		var item AIReplySettings
-		// enabled 用于本次流程后续判断的启用状态
+		// enabled 是账号级开关整数值；autoAdjustEnabled 是真实改价开关整数值。
 		var enabled, autoAdjustEnabled int
-		if // err 用于本次流程后续判断的err
-		err := rows.Scan(&item.CookieID, &enabled, &autoAdjustEnabled, &item.MaxDiscountPercent, &item.MaxDiscountAmount, &item.MaxBargainRounds, &item.CustomPrompts); err != nil {
-			return nil, err
+		// explicit 是该账号是否已有显式行的整数值标记：1 表示有显式开关，0 表示跟随总闸。
+		var explicit int
+		if // scanErr 是当前行扫描失败原因。
+		scanErr := rows.Scan(&item.CookieID, &enabled, &autoAdjustEnabled, &item.MaxDiscountPercent, &item.MaxDiscountAmount, &item.MaxBargainRounds, &item.CustomPrompts, &explicit); scanErr != nil {
+			return nil, scanErr
 		}
 		item.AIEnabled = enabled != 0
+		item.AIEnabledExplicit = explicit != 0
 		item.AutoAdjustPriceEnabled = autoAdjustEnabled != 0
 		out = append(out, item)
 	}
@@ -163,21 +307,40 @@ func (a *AIReply) ListForUser(ctx context.Context, userID int64) ([]AIReplySetti
 }
 
 // UpsertSettings 保存指定账号的 AI 回复开关和砍价约束。
+//
+// 三态约定：settings.SkipAIEnabled 为 true 时本次写入完全不改动 ai_enabled 列
+// （保留数据库中已有的显式值；首次插入时写入 1，即「跟随总闸」在总闸开启下的等价显式值）。
+// 这让「只改砍价护栏」的保存不会把原本启用的账号悄悄写成显式关闭。
+// 布尔列一律经 boolToInt 写入：pgx 的二进制编码会拒绝把 Go bool 写进 int4 列。
 func (a *AIReply) UpsertSettings(ctx context.Context, cookieID string, settings AIReplySettings) error {
-	// err 用于本次流程后续判断的err
+	// insertEnabled 是首次插入行的 ai_enabled 初值。
+	insertEnabled := boolToInt(settings.AIEnabled)
+	if settings.SkipAIEnabled {
+		// 不提交开关时插入 1：没有历史值时，「跟随总闸」在总闸开启下等价于显式启用。
+		insertEnabled = 1
+	}
+	// assignments 是冲突时需要覆盖的列及其 SQL 表达式。
+	assignments := map[string]string{
+		"auto_adjust_price_enabled": "EXCLUDED.auto_adjust_price_enabled",
+		"max_discount_percent":      "EXCLUDED.max_discount_percent",
+		"max_discount_amount":       "EXCLUDED.max_discount_amount",
+		"max_bargain_rounds":        "EXCLUDED.max_bargain_rounds",
+		"custom_prompts":            "EXCLUDED.custom_prompts",
+		"updated_at":                "CURRENT_TIMESTAMP",
+	}
+	if settings.SkipAIEnabled {
+		// ai_enabled=ai_enabled 是两种方言都支持的「保留已有值」写法（右值指向更新前的行）。
+		assignments["ai_enabled"] = "ai_enabled"
+	} else {
+		assignments["ai_enabled"] = "EXCLUDED.ai_enabled"
+	}
+	// err 是配置写入失败原因。
 	_, err := a.DB.ExecContext(ctx,
 		`INSERT INTO ai_reply_settings
 		 (cookie_id, ai_enabled, auto_adjust_price_enabled, max_discount_percent, max_discount_amount,
 		  max_bargain_rounds, custom_prompts, updated_at)
-		 VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`+dialectUpsert(a.Dialect, []string{"cookie_id"}, map[string]string{
-			"ai_enabled":                "EXCLUDED.ai_enabled",
-			"auto_adjust_price_enabled": "EXCLUDED.auto_adjust_price_enabled",
-			"max_discount_percent":      "EXCLUDED.max_discount_percent",
-			"max_discount_amount":       "EXCLUDED.max_discount_amount",
-			"max_bargain_rounds":        "EXCLUDED.max_bargain_rounds",
-			"custom_prompts":            "EXCLUDED.custom_prompts",
-			"updated_at":                "CURRENT_TIMESTAMP",
-		}), cookieID, boolToInt(settings.AIEnabled), boolToInt(settings.AutoAdjustPriceEnabled), settings.MaxDiscountPercent,
+		 VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`+dialectUpsert(a.Dialect, []string{"cookie_id"}, assignments),
+		cookieID, insertEnabled, boolToInt(settings.AutoAdjustPriceEnabled), settings.MaxDiscountPercent,
 		settings.MaxDiscountAmount, settings.MaxBargainRounds, nullableAIString(settings.CustomPrompts))
 	return err
 }
@@ -386,7 +549,12 @@ type AIDecisionRecord struct {
 	ExtraHit bool
 	// IntentLabel 是写入对话历史的意图标签。
 	IntentLabel string
-	// Reason 是判定原因简码：taken / no-intent / negative / extra-negative。
+	// Reason 是判定原因简码，取值与 internal/engine 的 AIReason* 常量一一对应；
+	// db 包不能反向依赖 engine，故此处以字符串清单登记，清单缺项即代表口径漂移：
+	//   - 边界判定：taken(AIReasonTaken) / no-intent(AIReasonNoIntent) /
+	//     negative(AIReasonNegative) / extra-negative(AIReasonExtraNegative)；
+	//   - 闸门提前拦下：master-off(AIReasonMasterOff) / account-off(AIReasonAccountOff)；
+	//   - 商品回补链路：item-sync-requested(AIReasonItemSyncRequested) / item-sync-failed(AIReasonItemSyncFailed)。
 	Reason string
 	// ConfigFingerprint 是判定所用边界配置的指纹。
 	ConfigFingerprint string

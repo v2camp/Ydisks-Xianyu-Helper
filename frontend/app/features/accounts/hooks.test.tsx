@@ -64,7 +64,8 @@ describe('useAccountsData', /* 当前回调处理账号详情、AI 配置和运�
       () => expect(aiHook.result.current.loading).toBe(false),
     );
     expect(aiHook.result.current.accounts).toHaveLength(1);
-    expect(aiHook.result.current.accounts[0].ai_enabled).toBe(false);
+    // AI 设置读取失败时没有账号级条目，按跟随全局总闸展示为开启，而不是回落成关闭。
+    expect(aiHook.result.current.accounts[0].ai_enabled).toBe(true);
     aiHook.unmount();
 
     getDetailsMock.mockRejectedValueOnce(new Error('账号服务失败'));

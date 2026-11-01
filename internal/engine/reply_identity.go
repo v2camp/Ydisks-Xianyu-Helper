@@ -80,9 +80,17 @@ func (d *messageDispatcher) resolveLocalItemOwnership(ctx context.Context, messa
 		return false, true
 	}
 	if !owned {
+		// 商品缺失时异步补齐本地事实：本条仍然不回，回补成败只影响该会话下一次消息能否复判。
+		// 买家角色不触发回补：买家侧商品不属于当前账号库存，避免为他人商品发起平台请求。
+		if session.AccountRole != "buyer" {
+			d.requestItemBackfill(ctx, message)
+		}
 		if session.AccountRole == "seller" || session.AccountRole == "buyer" {
 			return false, true
 		}
+		// platform_unresolved 只表示「本地缺失已尝试过」，不能阻断恢复：
+		// 本地商品归属已在上面先行查询，回补成功后商品进入本地商品库，下一次消息会在 owned 分支
+		// 直接写入卖家角色；是否再次请求平台由回补协调器的去重与负缓存决定，而不是由该标记决定。
 		if session.RoleSource == "platform_unresolved" {
 			return false, true
 		}

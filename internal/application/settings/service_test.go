@@ -681,10 +681,10 @@ func TestValidateSystemValue(t *testing.T) {
 		{name: "静默阈值合法", key: "silence_alert_minutes", value: "90", wantErr: false},
 		{name: "静默阈值关闭", key: "silence_alert_minutes", value: "0", wantErr: false},
 		{name: "静默阈值非法", key: "silence_alert_minutes", value: "x", wantErr: true},
-		{name: "回复确认开启", key: "ai_reply_review_mode", value: "enabled", wantErr: false},
-		{name: "回复确认关闭", key: "ai_reply_review_mode", value: "false", wantErr: false},
-		{name: "回复确认空串", key: "ai_reply_review_mode", value: "", wantErr: false},
-		{name: "回复确认非法", key: "ai_reply_review_mode", value: "maybe", wantErr: true},
+		{name: "回复确认已下线", key: "ai_reply_review_mode", value: "enabled", wantErr: true},
+		{name: "回复确认已下线关闭值同样拒绝", key: "ai_reply_review_mode", value: "false", wantErr: true},
+		{name: "回复确认已下线空串同样拒绝", key: "ai_reply_review_mode", value: "", wantErr: true},
+		{name: "回复确认已下线非法值同样拒绝", key: "ai_reply_review_mode", value: "maybe", wantErr: true},
 		{name: "备份间隔默认档", key: "backup_interval_hours", value: "24", wantErr: false},
 		{name: "备份间隔12小时", key: "backup_interval_hours", value: "12", wantErr: false},
 		{name: "备份间隔48小时", key: "backup_interval_hours", value: "48", wantErr: false},
@@ -693,6 +693,10 @@ func TestValidateSystemValue(t *testing.T) {
 		{name: "备份间隔非法档位", key: "backup_interval_hours", value: "6", wantErr: true},
 		{name: "备份间隔非法文本", key: "backup_interval_hours", value: "每天", wantErr: true},
 		{name: "备份间隔负值", key: "backup_interval_hours", value: "-12", wantErr: true},
+		{name: "AI总闸开启", key: "ai_master_enabled", value: "true", wantErr: false},
+		{name: "AI总闸关闭", key: "ai_master_enabled", value: "FALSE", wantErr: false},
+		{name: "AI总闸空串拒绝", key: "ai_master_enabled", value: "", wantErr: true},
+		{name: "AI总闸非法取值", key: "ai_master_enabled", value: "maybe", wantErr: true},
 		{name: "其它设置放行", key: "theme_color", value: "blue", wantErr: false},
 	}
 	for // tc 表示当前遍历过程中的用例
@@ -890,5 +894,112 @@ func TestValidationErrorText(t *testing.T) {
 	_, testErr := service.TestAIConnection(context.Background(), 7, "", "", "")
 	if testErr == nil {
 		t.Fatal("缺少模型客户端应返回错误")
+	}
+}
+
+// credentialInvalidatorFake 记录凭据缓存失效端口的调用次数。
+type credentialInvalidatorFake struct {
+	// calls 是 InvalidateAll 被调用的次数。
+	calls int
+}
+
+// InvalidateAll 记录一次凭据缓存失效。
+func (f *credentialInvalidatorFake) InvalidateAll() {
+	f.calls++
+}
+
+// TestServiceInvalidatesCredentialCacheOnSensitiveWrite 敏感键写入成功后必须立即失效凭据缓存。
+func TestServiceInvalidatesCredentialCacheOnSensitiveWrite(t *testing.T) {
+	// repository 保存测试设置 Port，ai_api_key 是敏感键。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	// invalidator 记录失效次数。
+	invalidator := &credentialInvalidatorFake{}
+	// service 是接入失效端口后的设置应用服务。
+	service := NewService(repository, nil)
+	service.SetCredentialCacheInvalidator(invalidator)
+	// err 是敏感键写入结果。
+	err := service.ApplySystemChanges(context.Background(), 7, nil,
+		map[string]SecretChange{"ai_api_key": {Action: "replace", Value: "secret"}})
+	if err != nil {
+		t.Fatalf("写入敏感设置: %v", err)
+	}
+	if invalidator.calls != 1 {
+		t.Fatalf("敏感键写入必须失效凭据缓存: calls=%d", invalidator.calls)
+	}
+}
+
+// TestServiceSkipsInvalidationOnPlainWrite 普通键写入不得触发凭据缓存失效。
+func TestServiceSkipsInvalidationOnPlainWrite(t *testing.T) {
+	// repository 保存测试设置 Port。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	// invalidator 记录失效次数。
+	invalidator := &credentialInvalidatorFake{}
+	// service 是接入失效端口后的设置应用服务。
+	service := NewService(repository, nil)
+	service.SetCredentialCacheInvalidator(invalidator)
+	// err 是普通键批量写入结果。
+	if err := service.ApplySystemChanges(context.Background(), 7, map[string]string{"ai_master_enabled": "false"}, nil); err != nil {
+		t.Fatalf("批量写入普通设置: %v", err)
+	}
+	// err 是普通键单项写入结果。
+	if err := service.SetSystem(context.Background(), 7, "theme_color", "blue", ""); err != nil {
+		t.Fatalf("单项写入普通设置: %v", err)
+	}
+	if invalidator.calls != 0 {
+		t.Fatalf("普通键写入不得失效凭据缓存: calls=%d", invalidator.calls)
+	}
+}
+
+// TestServiceSetSystemInvalidatesCredentialCache 单项敏感设置写入同样必须失效凭据缓存。
+func TestServiceSetSystemInvalidatesCredentialCache(t *testing.T) {
+	// repository 保存测试设置 Port。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	// invalidator 记录失效次数。
+	invalidator := &credentialInvalidatorFake{}
+	// service 是接入失效端口后的设置应用服务。
+	service := NewService(repository, nil)
+	service.SetCredentialCacheInvalidator(invalidator)
+	// err 是单项敏感设置写入结果。
+	if err := service.SetSystem(context.Background(), 7, "ai_api_key", "secret", "replace"); err != nil {
+		t.Fatalf("单项写入敏感设置: %v", err)
+	}
+	if invalidator.calls != 1 {
+		t.Fatalf("单项敏感写入必须失效凭据缓存: calls=%d", invalidator.calls)
+	}
+}
+
+// TestServiceDoesNotInvalidateWhenSensitiveWriteFails 落库失败时不得失效缓存，避免把未生效的写入当成已生效。
+func TestServiceDoesNotInvalidateWhenSensitiveWriteFails(t *testing.T) {
+	// repository 配置为写入失败。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}, applyErr: errors.New("写入失败")}
+	// invalidator 记录失效次数。
+	invalidator := &credentialInvalidatorFake{}
+	// service 是接入失效端口后的设置应用服务。
+	service := NewService(repository, nil)
+	service.SetCredentialCacheInvalidator(invalidator)
+	// err 是敏感设置落库结果；配置了 applyErr 时必须失败。
+	if err := service.ApplySystemChanges(context.Background(), 7, nil,
+		map[string]SecretChange{"ai_api_key": {Action: "replace", Value: "secret"}}); err == nil {
+		t.Fatal("落库失败必须返回错误")
+	}
+	if invalidator.calls != 0 {
+		t.Fatalf("落库失败不得失效缓存: calls=%d", invalidator.calls)
+	}
+}
+
+// TestServiceWorksWithoutCredentialInvalidator 未注入失效器时写入口行为不变且不得 panic。
+func TestServiceWorksWithoutCredentialInvalidator(t *testing.T) {
+	// repository 保存测试设置 Port。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	// service 未注入失效器，等价于未接入缓存。
+	service := NewService(repository, nil)
+	// err 是未注入失效器时的批量写入结果；必须照常成功。
+	if err := service.ApplySystemChanges(context.Background(), 7, nil,
+		map[string]SecretChange{"ai_api_key": {Action: "clear"}}); err != nil {
+		t.Fatalf("未注入失效器时写入应成功: %v", err)
+	}
+	// err 是未注入失效器时的单项写入结果；必须照常成功。
+	if err := service.SetSystem(context.Background(), 7, "ai_api_key", "", "clear"); err != nil {
+		t.Fatalf("未注入失效器时单项写入应成功: %v", err)
 	}
 }

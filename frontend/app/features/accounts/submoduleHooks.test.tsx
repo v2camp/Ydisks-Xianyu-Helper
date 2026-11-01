@@ -70,11 +70,9 @@ const accountFixture = { id: 'account-1', enabled: true, value: 'old-cookie', re
 const editFormFixture: AccountEditForm = { remark: '新备注', cookie: 'new-cookie', auto_confirm: true, auto_consign: false, auto_bargain: true, bargain_soothe_template: '', pause_duration: 60, username: 'user@example.com', login_password: 'new-password', show_browser: true, showLoginPassword: false, clear_password: false };
 // aiFixture 是账号 AI 设置的服务端配置。
 const aiFixture: AIReplySettings = { ai_enabled: true, auto_adjust_price_enabled: true, max_discount_percent: 20, max_discount_amount: 50, max_bargain_rounds: 2, custom_prompts: '请礼貌回复' };
-// agentSupportFixture 是账号级客服 Agent 授权的服务端配置，两个覆盖值为空表示继承租户默认。
+// agentSupportFixture 是账号级客服 Agent 授权的服务端配置，档位覆盖值为空表示继承租户默认。
 const agentSupportFixture: AccountAgentSupport = {
-  enabled: null,
   preset: null,
-  effectiveEnabled: true,
   effectivePreset: 'readonly',
   presets: [{ value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' }],
 };
@@ -141,12 +139,14 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       // aiAction 打开 AI 设置弹窗并加载账号配置。
       async () => hook.result.current.openAIModal(accountFixture),
     );
-    expect(hook.result.current.aiSettings).toEqual(aiFixture);
+    // 草稿额外携带 ai_enabled_touched/ai_enabled_source，业务字段与原断言保持一致。
+    expect(hook.result.current.aiSettings).toMatchObject(aiFixture);
     await act(
       // saveAIAction 保存 AI 设置并关闭弹窗。
       async () => hook.result.current.handleSaveAISettings(),
     );
-    expect(updateAIMock).toHaveBeenCalledWith('account-1', aiFixture);
+    // 未动开关时草稿带 ai_enabled_touched=false，adapter 据此省略 ai_enabled。
+    expect(updateAIMock).toHaveBeenCalledWith('account-1', expect.objectContaining({ ...aiFixture, ai_enabled_touched: false }));
     await act(
       // pauseAction 重新暂停账号并刷新列表。
       async () => hook.result.current.handleRestartPause(),
@@ -193,6 +193,64 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     hook.unmount();
   });
 
+  test('账号 AI 开关展示生效值，且只有用户切换过才标记提交', /* 当前回调验证「跟随总闸」不会被误写成账号显式值。 */ async () => {
+    // setEditingAccount 是编辑账号状态替身。
+    const setEditingAccount = vi.fn();
+    // setActiveModal 是编辑弹窗状态替身。
+    const setActiveModal = vi.fn();
+    // setEditForm 是编辑表单状态替身。
+    const setEditForm = vi.fn();
+    // loadAccounts 是保存成功后的账号列表刷新替身。
+    const loadAccounts = vi.fn().mockResolvedValue(undefined);
+    accountAIMock.mockResolvedValue({
+      ai_enabled: true,
+      effective_enabled: true,
+      source: 'global',
+      auto_adjust_price_enabled: false,
+      max_discount_percent: 10,
+      max_discount_amount: 100,
+      max_bargain_rounds: 3,
+      custom_prompts: '',
+    } as never);
+    // hook 是 AI 开关语义场景的子模块 Hook 渲染结果。
+    const hook = renderHook(
+      // aiSwitchHookFactory 创建 AI 开关语义场景的子模块 Hook。
+      () => useAccountSubmodules({ editingAccount: accountFixture, setEditingAccount, setActiveModal, editForm: editFormFixture, setEditForm, loadAccounts }),
+    );
+
+    await act(
+      // openAction 打开 AI 弹窗读取账号配置。
+      async () => hook.result.current.openAIModal(accountFixture),
+    );
+    // 没有账号级覆盖时展示的是生效值，来源仍是 global，touched 保持 false。
+    expect(hook.result.current.aiSettings).toMatchObject({ ai_enabled: true, ai_enabled_touched: false, ai_enabled_source: 'global' });
+
+    act(
+      // strategyChangeAction 只改砍价轮次，不触碰开关。
+      () => hook.result.current.setAiSettings(/* current 是当前草稿，仅替换砍价轮次。 */ current => ({ ...current, max_bargain_rounds: 5 })),
+    );
+    await act(
+      // untouchedSaveAction 保存只改策略的草稿。
+      async () => hook.result.current.handleSaveAISettings(),
+    );
+    expect(updateAIMock).toHaveBeenLastCalledWith('account-1', expect.objectContaining({ ai_enabled_touched: false, max_bargain_rounds: 5 }));
+
+    await act(
+      // reopenAction 重新打开弹窗，模拟用户随后切换开关。
+      async () => hook.result.current.openAIModal(accountFixture),
+    );
+    act(
+      // switchChangeAction 模拟用户亲手关闭本账号开关。
+      () => hook.result.current.setAiSettings(/* current 是当前草稿，仅替换开关值与改动标记。 */ current => ({ ...current, ai_enabled: false, ai_enabled_touched: true })),
+    );
+    await act(
+      // touchedSaveAction 保存用户动过开关的草稿。
+      async () => hook.result.current.handleSaveAISettings(),
+    );
+    expect(updateAIMock).toHaveBeenLastCalledWith('account-1', expect.objectContaining({ ai_enabled: false, ai_enabled_touched: true }));
+    hook.unmount();
+  });
+
   test('客服 Agent 授权只在改动过时才随保存提交', /* 当前回调验证未改动的授权不会产生无意义的写入。 */ async () => {
     // setEditingAccount 是编辑账号状态替身。
     const setEditingAccount = vi.fn();
@@ -220,7 +278,8 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       async () => hook.result.current.handleSaveAISettings(),
     );
     expect(updateAgentSupportMock).not.toHaveBeenCalled();
-    expect(updateAIMock).toHaveBeenCalledWith('account-1', aiFixture);
+    // 未动开关时草稿带 ai_enabled_touched=false，adapter 据此省略 ai_enabled。
+    expect(updateAIMock).toHaveBeenCalledWith('account-1', expect.objectContaining({ ...aiFixture, ai_enabled_touched: false }));
 
     await act(
       // reopenAction 重新打开弹窗并改动授权。
@@ -235,7 +294,7 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       // dirtySaveAction 改动后保存，先提交授权再提交 AI 设置。
       async () => hook.result.current.handleSaveAISettings(),
     );
-    expect(updateAgentSupportMock).toHaveBeenCalledWith('account-1', { enabled: null, preset: 'advanced' });
+    expect(updateAgentSupportMock).toHaveBeenCalledWith('account-1', { preset: 'advanced' });
     // lastAISaveOrder 是第二次 AI 设置提交的调用序号，用于断言授权先于 AI 设置提交。
     const lastAISaveOrder = updateAIMock.mock.invocationCallOrder[updateAIMock.mock.invocationCallOrder.length - 1];
     expect(updateAgentSupportMock.mock.invocationCallOrder[0]).toBeLessThan(lastAISaveOrder);
@@ -262,7 +321,7 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     );
     act(
       // agentChangeAction 改动启用覆盖，使保存会提交授权。
-      () => hook.result.current.updateAgentSupport({ enabled: true }),
+      () => hook.result.current.updateAgentSupport({ preset: 'advanced' }),
     );
     updateAgentSupportMock.mockRejectedValueOnce(new Error('档位取值非法'));
     await act(
@@ -270,7 +329,7 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       async () => hook.result.current.handleSaveAISettings(),
     );
     expect(updateAIMock).not.toHaveBeenCalled();
-    expect(hook.result.current.agentSupport).toMatchObject({ enabled: true });
+    expect(hook.result.current.agentSupport).toMatchObject({ preset: 'advanced' });
   });
 
   test('密码登录成功后刷新账号，取消动作可以终止会话', /* 当前回调验证密码登录轮询和取消路径。 */ async () => {
@@ -486,7 +545,8 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       // defaultAIAction 读取缺少字段的 AI 设置并应用默认值。
       async () => hook.result.current.openAIModal(accountFixture),
     );
-    expect(hook.result.current.aiSettings).toMatchObject({ ai_enabled: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
+    // 服务端没有给出开关与来源时按跟随全局总闸（开）处理，不能回落成关闭。
+    expect(hook.result.current.aiSettings).toMatchObject({ ai_enabled: true, ai_enabled_touched: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
 
     passwordLoginMock.mockResolvedValueOnce({ success: true, session_id: 'session-failed', status: 'processing', message: '处理中' });
     passwordStatusMock.mockResolvedValueOnce({ status: 'failed', message: '密码登录失败' });

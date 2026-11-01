@@ -95,15 +95,12 @@ func newTestService() (*Service, *fakeRepository) {
 	return NewService(repo), repo
 }
 
-// boolPtr 返回布尔值的地址，用于构造显式覆盖的开关。
-func boolPtr(value bool) *bool { return &value }
-
 // stringPtr 返回字符串的地址，用于构造显式覆盖的档位。
 func stringPtr(value string) *string { return &value }
 
-// TestTenantConfigDefaultsToDisabledReadonly 验证未配置的租户收敛为
-// 「关闭 + 只读档」，即平台默认，不给新租户任何隐含权限。
-func TestTenantConfigDefaultsToDisabledReadonly(t *testing.T) {
+// TestTenantConfigDefaultsToReadonly 验证未配置的租户收敛为只读档，即平台默认，
+// 不给新租户任何隐含权限。租户级配置已不含开关键：是否运行由统一 AI 开关决定。
+func TestTenantConfigDefaultsToReadonly(t *testing.T) {
 	// service 是只需读取断言、不需要检查落库的配置服务。
 	service, _ := newTestService()
 	// config、err 是未配置租户的默认配置读取结果与错误。
@@ -111,29 +108,25 @@ func TestTenantConfigDefaultsToDisabledReadonly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读取租户默认失败: %v", err)
 	}
-	if config.Enabled {
-		t.Fatal("未配置时租户默认开关必须为关闭")
-	}
 	if config.Preset != capability.PresetReadonly {
 		t.Fatalf("未配置时租户默认档位=%q，期望只读档", config.Preset)
 	}
 }
 
-// TestTenantConfigReadsConfiguredValues 验证已配置的租户开关与档位被原样读出。
-func TestTenantConfigReadsConfiguredValues(t *testing.T) {
+// TestTenantConfigReadsConfiguredPreset 验证已配置的租户档位被原样读出。
+func TestTenantConfigReadsConfiguredPreset(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  string(capability.PresetStandard),
+		KeySupportPreset: string(capability.PresetStandard),
 	}
 	// config、err 是已配置租户的默认配置读取结果与错误。
 	config, err := service.TenantConfig(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("读取租户默认失败: %v", err)
 	}
-	if !config.Enabled || config.Preset != capability.PresetStandard {
-		t.Fatalf("租户默认 enabled=%v preset=%q，期望开启与标准档", config.Enabled, config.Preset)
+	if config.Preset != capability.PresetStandard {
+		t.Fatalf("租户默认 preset=%q，期望标准档", config.Preset)
 	}
 }
 
@@ -143,8 +136,7 @@ func TestTenantConfigFallsBackOnIllegalPreset(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  "unlimited",
+		KeySupportPreset: "unlimited",
 	}
 	// config、err 是非法档位租户的默认配置读取结果与错误。
 	config, err := service.TenantConfig(context.Background(), 1)
@@ -154,43 +146,53 @@ func TestTenantConfigFallsBackOnIllegalPreset(t *testing.T) {
 	if config.Preset != capability.PresetReadonly {
 		t.Fatalf("非法档位必须回落到只读档，实际 %q", config.Preset)
 	}
-	if !config.Enabled {
-		t.Fatal("非法档位不应连带否决已开启的开关")
-	}
 }
 
-// TestTenantConfigTreatsIllegalBooleanAsDisabled 验证开关原文非法时按关闭处理，
-// 避免出现「看不懂的值等于开启」这类危险约定。
-func TestTenantConfigTreatsIllegalBooleanAsDisabled(t *testing.T) {
+// TestTenantConfigIgnoresLegacyEnabledKey 验证库中残留的 agent.support.enabled 键
+// 不再参与任何判定：读取忽略它，写入也不会改写它。
+//
+// 这条用例守住「开关已归并到统一 AI 开关」的边界：旧键若仍能被读出并影响行为，
+// 两套开关就会重新出现，用户会看到两个互相矛盾的开关。
+func TestTenantConfigIgnoresLegacyEnabledKey(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
-	repo.tenant[1] = map[string]string{KeySupportEnabled: "maybe"}
-	// config、err 是非法开关租户的默认配置读取结果与错误。
+	// legacyEnabledKey 是历史遗留的租户级开关键原文，仅用于确认其被彻底忽略。
+	const legacyEnabledKey = "agent.support.enabled"
+	repo.tenant[1] = map[string]string{legacyEnabledKey: "true", KeySupportPreset: string(capability.PresetStandard)}
+	// config、err 是含遗留键的租户默认配置读取结果与错误。
 	config, err := service.TenantConfig(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("读取租户默认失败: %v", err)
 	}
-	if config.Enabled {
-		t.Fatal("非法开关原文必须按关闭处理")
+	if config.Preset != capability.PresetStandard {
+		t.Fatalf("遗留开关键不得影响档位解析，实际 %q", config.Preset)
+	}
+	// updateErr 是保存租户档位的结果。
+	if updateErr := service.UpdateTenantConfig(context.Background(), 1, TenantConfig{Preset: capability.PresetAdvanced}); updateErr != nil {
+		t.Fatalf("保存租户默认失败: %v", updateErr)
+	}
+	if repo.tenant[1][legacyEnabledKey] != "true" {
+		t.Fatalf("保存档位不得改写遗留开关键，实际 %q", repo.tenant[1][legacyEnabledKey])
 	}
 }
 
-// TestUpdateTenantConfigPersistsBothKeys 验证租户级保存会同时写入开关与档位两项。
-func TestUpdateTenantConfigPersistsBothKeys(t *testing.T) {
+// TestUpdateTenantConfigPersistsPresetOnly 验证租户级保存只写入档位一项，
+// 不产生任何开关键写入。
+func TestUpdateTenantConfigPersistsPresetOnly(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	// err 是租户级配置保存错误。
-	err := service.UpdateTenantConfig(context.Background(), 1, TenantConfig{Enabled: true, Preset: capability.PresetAdvanced})
+	err := service.UpdateTenantConfig(context.Background(), 1, TenantConfig{Preset: capability.PresetAdvanced})
 	if err != nil {
 		t.Fatalf("保存租户默认失败: %v", err)
 	}
 	// stored 是本次写入后的租户设置。
 	stored := repo.tenant[1]
-	if stored[KeySupportEnabled] != "true" {
-		t.Fatalf("租户开关落库值=%q，期望 true", stored[KeySupportEnabled])
-	}
 	if stored[KeySupportPreset] != string(capability.PresetAdvanced) {
 		t.Fatalf("租户档位落库值=%q，期望高级档", stored[KeySupportPreset])
+	}
+	if len(stored) != 1 {
+		t.Fatalf("租户级保存只应写入档位一项，实际 %+v", stored)
 	}
 }
 
@@ -200,7 +202,7 @@ func TestUpdateTenantConfigRejectsIllegalPreset(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	// err 是非法档位的写入错误，必须是 ErrInvalidPreset。
-	err := service.UpdateTenantConfig(context.Background(), 1, TenantConfig{Enabled: true, Preset: "root"})
+	err := service.UpdateTenantConfig(context.Background(), 1, TenantConfig{Preset: "root"})
 	if !errors.Is(err, ErrInvalidPreset) {
 		t.Fatalf("非法档位写入错误=%v，期望 ErrInvalidPreset", err)
 	}
@@ -209,58 +211,55 @@ func TestUpdateTenantConfigRejectsIllegalPreset(t *testing.T) {
 	}
 }
 
-// TestAccountConfigInheritsTenantDefault 验证账号没有覆盖时完全继承租户默认，
-// 并且两项都标注为「非账号级」。
+// TestAccountConfigInheritsTenantDefault 验证账号没有覆盖时完全继承租户默认档位，
+// 并标注为「非账号级」。
 func TestAccountConfigInheritsTenantDefault(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  string(capability.PresetStandard),
+		KeySupportPreset: string(capability.PresetStandard),
 	}
 	// config、err 是该账号的生效配置与解析错误。
 	config, err := service.AccountConfig(context.Background(), 1, "cookie-a")
 	if err != nil {
 		t.Fatalf("解析账号配置失败: %v", err)
 	}
-	if config.CookieID != "cookie-a" || !config.Enabled || config.Preset != capability.PresetStandard {
-		t.Fatalf("继承结果=%+v，期望账号 a 开启且为标准档", config)
+	if config.CookieID != "cookie-a" || config.Preset != capability.PresetStandard {
+		t.Fatalf("继承结果=%+v，期望账号 a 为标准档", config)
 	}
-	if config.AccountEnabled != nil || config.AccountPreset != nil {
+	if config.AccountPreset != nil {
 		t.Fatal("继承租户默认时不得标注为账号级覆盖")
 	}
 }
 
-// TestAccountConfigAppliesAccountOverride 验证账号级覆盖优先于租户默认。
+// TestAccountConfigAppliesAccountOverride 验证账号级档位覆盖优先于租户默认。
 func TestAccountConfigAppliesAccountOverride(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  string(capability.PresetStandard),
+		KeySupportPreset: string(capability.PresetStandard),
 	}
-	repo.accounts["cookie-a"] = AccountOverride{Enabled: boolPtr(false), Preset: stringPtr(string(capability.PresetReadonly))}
+	repo.accounts["cookie-a"] = AccountOverride{Preset: stringPtr(string(capability.PresetReadonly))}
 	// config、err 是该账号的生效配置与解析错误。
 	config, err := service.AccountConfig(context.Background(), 1, "cookie-a")
 	if err != nil {
 		t.Fatalf("解析账号配置失败: %v", err)
 	}
-	if config.Enabled || config.Preset != capability.PresetReadonly {
-		t.Fatalf("账号级覆盖结果=%+v，期望关闭且只读档", config)
+	if config.Preset != capability.PresetReadonly {
+		t.Fatalf("账号级覆盖结果=%+v，期望只读档", config)
 	}
-	if config.AccountEnabled == nil || config.AccountPreset == nil {
+	if config.AccountPreset == nil {
 		t.Fatal("账号级覆盖必须标注来源")
 	}
 }
 
-// TestAccountConfigKeepsUncoveredDimension 验证账号只覆盖一个维度时，
-// 另一个维度仍然继承租户默认。
+// TestAccountConfigKeepsUncoveredDimension 验证账号只覆盖档位时，未被覆盖的部分
+// 仍然继承租户默认。
 func TestAccountConfigKeepsUncoveredDimension(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  string(capability.PresetStandard),
+		KeySupportPreset: string(capability.PresetStandard),
 	}
 	repo.accounts["cookie-b"] = AccountOverride{Preset: stringPtr(string(capability.PresetAdvanced))}
 	// config、err 是该账号的生效配置与解析错误。
@@ -268,13 +267,10 @@ func TestAccountConfigKeepsUncoveredDimension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析账号配置失败: %v", err)
 	}
-	if !config.Enabled {
-		t.Fatal("账号未覆盖开关时必须继承租户的开启状态")
-	}
 	if config.Preset != capability.PresetAdvanced {
 		t.Fatalf("账号覆盖档位=%q，期望高级档", config.Preset)
 	}
-	if config.AccountEnabled != nil || config.AccountPreset == nil {
+	if config.AccountPreset == nil {
 		t.Fatal("来源标注必须与覆盖范围一致")
 	}
 }
@@ -330,7 +326,7 @@ func TestUpdateAccountOverrideRejectsForeignAccount(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
 	// err 是跨租户账号的写入错误，必须是 ErrAccountNotOwned。
-	err := service.UpdateAccountOverride(context.Background(), 1, "cookie-foreign", AccountOverride{Enabled: boolPtr(true)})
+	err := service.UpdateAccountOverride(context.Background(), 1, "cookie-foreign", AccountOverride{Preset: stringPtr(string(capability.PresetAdvanced))})
 	if !errors.Is(err, ErrAccountNotOwned) {
 		t.Fatalf("跨租户写入错误=%v，期望 ErrAccountNotOwned", err)
 	}
@@ -339,11 +335,11 @@ func TestUpdateAccountOverrideRejectsForeignAccount(t *testing.T) {
 	}
 }
 
-// TestUpdateAccountOverrideClearsToInherit 验证两个字段都为空表示恢复完全继承。
+// TestUpdateAccountOverrideClearsToInherit 验证把档位覆盖置空表示恢复继承租户默认。
 func TestUpdateAccountOverrideClearsToInherit(t *testing.T) {
 	// service、repo 是配置服务与预置归属关系的替身仓储。
 	service, repo := newTestService()
-	repo.accounts["cookie-a"] = AccountOverride{Enabled: boolPtr(true), Preset: stringPtr(string(capability.PresetAdvanced))}
+	repo.accounts["cookie-a"] = AccountOverride{Preset: stringPtr(string(capability.PresetAdvanced))}
 	// err 是恢复继承的写入错误。
 	err := service.UpdateAccountOverride(context.Background(), 1, "cookie-a", AccountOverride{})
 	if err != nil {
@@ -351,19 +347,18 @@ func TestUpdateAccountOverrideClearsToInherit(t *testing.T) {
 	}
 	// stored 是恢复继承后的账号覆盖记录。
 	stored := repo.accounts["cookie-a"]
-	if stored.Enabled != nil || stored.Preset != nil {
-		t.Fatalf("恢复继承后覆盖记录=%+v，期望两个维度均为空", stored)
+	if stored.Preset != nil {
+		t.Fatalf("恢复继承后覆盖记录=%+v，期望档位为空", stored)
 	}
 	repo.tenant[1] = map[string]string{
-		KeySupportEnabled: "true",
-		KeySupportPreset:  string(capability.PresetStandard),
+		KeySupportPreset: string(capability.PresetStandard),
 	}
 	// config、configErr 是恢复继承后的生效配置与解析错误。
 	config, configErr := service.AccountConfig(context.Background(), 1, "cookie-a")
 	if configErr != nil {
 		t.Fatalf("解析账号配置失败: %v", configErr)
 	}
-	if !config.Enabled || config.Preset != capability.PresetStandard {
+	if config.Preset != capability.PresetStandard {
 		t.Fatalf("恢复继承后应回到租户默认，实际 %+v", config)
 	}
 }

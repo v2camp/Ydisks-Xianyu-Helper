@@ -20,7 +20,7 @@ export interface AgentCenterProps {
 /** dependencyState 把尚未到达的依赖态统一显示为「读取中」，绝不先闪出「未配置」。 */
 const dependencyState = (state: DependencyState | undefined): DependencyState => state ?? 'loading';
 
-/** AgentCenter 按「谁决定调用能力」归拢三类 Agent 的入口，并直接配置租户级客服 Agent 的默认开关与档位。 */
+/** AgentCenter 按「谁决定调用能力」归拢三类 Agent 的入口，并直接配置租户级客服 Agent 的默认档位。 */
 const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
   // center 是本页的配置草稿、保存状态与依赖状态。
   const {
@@ -88,7 +88,7 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
           icon={Bot}
           tone="brand"
           title="客服端 Agent"
-          description="无人监督、作用域锁定单个账号；能力由档位统一约束"
+          description="无人监督、作用域锁定单个账号；是否运行随 AI 总闸统一生效，这里只配置能力档位"
         />
         <div className="ios-card rounded-xl p-6 bg-white space-y-5">
           {!settings ? (
@@ -102,21 +102,12 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between p-4 bg-brand-50 rounded-xl">
-                <div>
-                  <div className="font-bold text-gray-900">启用客服 Agent</div>
-                  <div className="text-xs text-gray-500">开启后客服 Agent 可自主查询并答复买家；未开启时卖家账号只走既有的规则与 AI 回复通道</div>
+              <div className="rounded-xl bg-brand-50 p-4">
+                <div className="font-bold text-gray-900">Agent 随 AI 统一开关生效</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  客服 Agent 不再有独立开关：AI 总闸与账号 AI 开关的组合结果，同时决定 AI 回复与客服 Agent 是否运行。
+                  需要整体停用时关闭 AI 设置页的「AI 总闸」即可。
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={settings.enabled}
-                  aria-label="启用客服 Agent"
-                  onClick={/* 切换租户默认开关草稿。 */ () => updateDraft({ enabled: !settings.enabled })}
-                  className={`w-14 h-8 rounded-full transition-colors duration-300 relative flex-shrink-0 ${settings.enabled ? 'bg-brand' : 'bg-gray-300'}`}
-                >
-                  <span className={`absolute left-1 top-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-300 ${settings.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                </button>
               </div>
 
               <div className="space-y-3">
@@ -183,7 +174,7 @@ const AgentCenter: React.FC<AgentCenterProps> = ({ onNavigate }) => {
 
               <SaveBar
                 state={saveBarState}
-                onSave={/* 提交租户默认开关与档位。 */ () => void submit()}
+                onSave={/* 提交租户默认档位。 */ () => void submit()}
                 label="保存"
                 scopeLabel="保存客服 Agent 配置"
                 successMessage={saveMessage?.type === 'success' ? saveMessage.text : '客服 Agent 配置已保存'}

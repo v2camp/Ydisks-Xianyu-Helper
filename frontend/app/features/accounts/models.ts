@@ -46,7 +46,7 @@ export interface AccountDetail {
   /** 运行状态快照的更新时间。 */
   runtime_updated_at?: string;
   // AI设置
-  /** 是否启用账号 AI 回复。 */
+  /** 账号 AI 回复当前是否实际生效（全局总闸与账号开关的组合结果），不是账号单方开关值。 */
   ai_enabled?: boolean;
   /** 是否把 AI 有效报价自动应用到待付款订单。 */
   auto_adjust_price_enabled?: boolean;
@@ -138,10 +138,17 @@ export interface AccountItemOption {
 	message?: string;
 }
 
+/** AI 开关来源：global 表示账号跟随全局总闸，account 表示账号显式设置过开关。 */
+export type AIReplySource = 'global' | 'account';
+
 /** 由当前 feature adapter 归一后的 AIReplySettings UI 模型；不直接暴露 HTTP DTO。 */
 export interface AIReplySettings {
-  /** 是否启用账号 AI 回复。 */
+  /** AI 回复当前是否实际生效（生效值）；界面开关展示这个值，不代表账号已显式保存的值。 */
   ai_enabled: boolean;
+  /** 用户本次是否亲手切换过开关；保存时只有为 true 才会提交 ai_enabled，否则继续跟随全局总闸。 */
+  ai_enabled_touched?: boolean;
+  /** 服务端给出的开关来源；account 表示账号已被单独覆盖，用于界面提示「本账号已单独关闭」。 */
+  ai_enabled_source?: AIReplySource;
   /** 是否自动执行 AI 报价对应的真实订单改价。 */
   auto_adjust_price_enabled: boolean;
   /** 最大折扣比例。 */
@@ -305,8 +312,12 @@ export interface PauseDurationResponse {
 export interface AIReplySettingsResponse {
   /** 账号稳定标识；默认配置响应可能省略。 */
   cookie_id?: string;
-  /** AI 回复是否启用。 */
+  /** 账号显式保存的 AI 开关值；账号跟随全局总闸时取默认值 true，语义需结合 source 判断。 */
   ai_enabled: boolean;
+  /** 全局总闸与账号开关组合后的生效值；只有为 true 时 AI 才会实际回复。 */
+  effective_enabled?: boolean;
+  /** 开关来源：global 表示跟随全局总闸，account 表示账号显式设置。 */
+  source?: AIReplySource;
   /** 有效 AI 报价是否会自动触发真实订单改价。 */
   auto_adjust_price_enabled: boolean;
   /** 最大折扣比例。 */
@@ -505,18 +516,14 @@ export interface AccountAgentPresetOption {
   description: string;
 }
 
-/** 账号级客服 Agent 覆盖值；两个字段各自可空，null 一律表示继承租户默认。 */
+/** 账号级客服 Agent 覆盖值；档位可为空，null 表示继承租户默认。Agent 是否运行统一由 AI 生效值决定。 */
 export interface AccountAgentOverride {
-  /** 账号级启用覆盖；null 表示继承租户默认开关。 */
-  enabled: boolean | null;
   /** 账号级档位覆盖；null 表示继承租户默认档位。 */
   preset: string | null;
 }
 
-/** 账号级客服 Agent 授权 UI 模型：覆盖值、服务端解析出的生效值与可选档位名单。 */
+/** 账号级客服 Agent 授权 UI 模型：档位覆盖值、服务端解析出的生效档位与可选档位名单。 */
 export interface AccountAgentSupport extends AccountAgentOverride {
-  /** 账号当前生效开关，由服务端按「账号覆盖 ?? 租户默认」解析。 */
-  effectiveEnabled: boolean;
   /** 账号当前生效档位，账号未覆盖时即租户默认档位。 */
   effectivePreset: string;
   /** 服务端下发的可选档位名单，顺序即展示顺序。 */

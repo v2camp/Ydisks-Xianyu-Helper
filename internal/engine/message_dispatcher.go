@@ -40,6 +40,8 @@ type messageDispatcher struct {
 	beginTask func() (context.Context, func(), bool)
 	// recordMessage 更新账号最近收消息时间。
 	recordMessage func(time.Time)
+	// itemBackfill 协调单商品异步回补的去重、失败负缓存与按账号限流；构造期创建，不启动后台 goroutine。
+	itemBackfill *itemBackfillCoordinator
 }
 
 // messageDispatcherConfig 描述消息分发组件所需的窄依赖。
@@ -111,6 +113,7 @@ func newMessageDispatcher(config messageDispatcherConfig) messageDispatcher {
 		logger:          logger,
 		beginTask:       beginTask,
 		recordMessage:   recordMessage,
+		itemBackfill:    newItemBackfillCoordinator(itemBackfillConfig{}),
 	}
 }
 

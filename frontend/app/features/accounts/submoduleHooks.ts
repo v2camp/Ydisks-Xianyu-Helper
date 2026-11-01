@@ -2,7 +2,7 @@ import { useCallback,useEffect,useRef,useState,type Dispatch,type SetStateAction
 import type { AccountAgentOverride,AccountAgentSupport,AccountDetail,AIReplySettings,NotificationChannel } from './api';
 import { shouldSaveNotificationBindings } from './accountBindings';
 import { cancelPasswordLogin,checkPasswordLoginStatus,getAccountAISettings,getAccountAgentSupport,getAccountBindings,getLongLoginSettings,getNotificationChannels,passwordLogin,setLongLoginSettings,updateAccountAISettings,updateAccountAgentSupport,updateAccountPauseDuration,updateAccountSettings } from './api';
-import { buildAccountLoginInfoUpdate,isCurrentAccountRequest,passwordLoginViewFromStatus,shouldUpdateAccountPause } from './state';
+import { buildAccountLoginInfoUpdate,isCurrentAccountRequest,passwordLoginViewFromStatus,resolveAccountAIEnabled,shouldUpdateAccountPause } from './state';
 import type { AccountEditForm,LongLoginState,PasswordLoginView } from './types';
 
 /** AccountList 当前编辑弹窗类型。 */
@@ -40,8 +40,8 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   const [bindingsDirty, setBindingsDirty] = useState(false);
   // bindingsLoadError 保存通知绑定加载错误。
   const [bindingsLoadError, setBindingsLoadError] = useState('');
-  // aiSettings 保存账号 AI 编辑草稿。
-  const [aiSettings, setAiSettings] = useState<AIReplySettings>({ ai_enabled: false, auto_adjust_price_enabled: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
+  // aiSettings 保存账号 AI 编辑草稿；ai_enabled 是生效值，ai_enabled_touched 表示用户本次是否亲手切换过开关。
+  const [aiSettings, setAiSettings] = useState<AIReplySettings>({ ai_enabled: true, ai_enabled_touched: false, auto_adjust_price_enabled: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
   // agentSupport 保存账号级客服 Agent 授权草稿；读取失败时为 null。
   const [agentSupport, setAgentSupport] = useState<AccountAgentSupport | null>(null);
   // agentDirty 表示管理员是否改动过账号级客服 Agent 授权，未改动时不产生写入。
@@ -176,7 +176,17 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
         getAccountAgentSupport(account.id, { signal: controller.signal }).catch(/* 当前回调把客服 Agent 授权读取失败收敛为空值。 */ () => null),
       ]);
       if (!isCurrentAccountRequest(sequence, aiSequence.current, account.id, account.id)) return;
-      setAiSettings({ ai_enabled: settings.ai_enabled ?? false, auto_adjust_price_enabled: settings.auto_adjust_price_enabled ?? false, max_discount_percent: settings.max_discount_percent ?? 10, max_discount_amount: settings.max_discount_amount ?? 100, max_bargain_rounds: settings.max_bargain_rounds ?? 3, custom_prompts: settings.custom_prompts ?? '' });
+      // 开关展示生效值；ai_enabled_touched 保持 false，用户不动开关时保存不会写 ai_enabled。
+      setAiSettings({
+        ai_enabled: resolveAccountAIEnabled(settings),
+        ai_enabled_touched: false,
+        ai_enabled_source: settings.source === 'account' ? 'account' : 'global',
+        auto_adjust_price_enabled: settings.auto_adjust_price_enabled ?? false,
+        max_discount_percent: settings.max_discount_percent ?? 10,
+        max_discount_amount: settings.max_discount_amount ?? 100,
+        max_bargain_rounds: settings.max_bargain_rounds ?? 3,
+        custom_prompts: settings.custom_prompts ?? '',
+      });
       setAgentSupport(capability);
       setAgentDirty(false);
     } catch (/* error 保存 AI 设置读取请求的失败原因，过期请求不会更新当前界面。 */ error) {
@@ -193,10 +203,11 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
     if (!editingAccount || saving) return;
     setSaving(true);
     try {
-      // 先提交客服 Agent 授权：它失败时整个保存中止，避免出现「AI 策略已改、能力授权没改」的半途状态。
+      // 先提交客服 Agent 档位覆盖：它失败时整个保存中止，避免出现「AI 策略已改、档位没改」的半途状态。
       if (agentSupport && agentDirty) {
-        await updateAccountAgentSupport(editingAccount.id, { enabled: agentSupport.enabled, preset: agentSupport.preset });
+        await updateAccountAgentSupport(editingAccount.id, { preset: agentSupport.preset });
       }
+      // ai_enabled 由 adapter 按 ai_enabled_touched 决定是否提交，未改动开关时继续沿用原有语义。
       await updateAccountAISettings(editingAccount.id, aiSettings);
       setAgentSupport(null);
       setAgentDirty(false);

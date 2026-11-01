@@ -6,9 +6,10 @@ import (
 	"testing"
 )
 
-// TestMultiDB_ListEnabledCookieIDs 三方言下都必须只返回启用行并按账号升序。
-// 该查询是 AI 启用链路自检的唯一数据来源：`ai_enabled = 1` 的写法若在某个方言上失效，
+// TestMultiDB_ListEnabledCookieIDs 三方言下都必须排除显式关闭的账号并按账号升序。
+// 该查询是 AI 启用链路自检的唯一数据来源：`COALESCE(ai_enabled, 1) = 1` 的写法若在某个方言上失效，
 // 自检会静默判定「没有账号启用 AI」，所以必须在两种方言上都锁定。
+// 「无设置行」的默认启用口径见 ai_master_switch_test.go。
 func TestMultiDB_ListEnabledCookieIDs(t *testing.T) {
 	// target 是独立迁移后的方言数据库，清理由该目标子测试负责。
 	for _, target := range allTestTargets(t) {

@@ -56,14 +56,17 @@ type Message struct {
 
 // SessionResolver 按账号解析客服 Agent 当前生效的会话配置。
 //
-// 端口由本包定义、由组合层投影实现：它回答「这个账号现在跑不跑、跑在哪一档」，
-// 运行时只消费结论，不解释配置来源。
+// 端口由本包定义、由组合层投影实现：它回答「这个账号跑在哪一档」，不再回答「跑不跑」。
+// 是否运行客服 Agent 已归并到统一 AI 开关，由回复链路的准入阶段判定；当前唯一的实现
+// （组合层的 supportAgentSessions）在可解析时恒返回 enabled=true，仅依赖缺失等硬失败
+// 才返回 false。三元返回值保留是为了不扩散改动到全部实现与测试替身。
 //
-// 解析发生在每次补全之前而不是账号启动时：管理界面的开关与档位是即时生效的配置项，
-// 若必须重启账号才能被观察到，那个开关就会在无声中失效。
+// 解析发生在每次补全之前而不是账号启动时：管理界面的档位是即时生效的配置项，
+// 若必须重启账号才能被观察到，那个配置就会在无声中失效。
 type SessionResolver interface {
 	// ResolveSession 返回账号当前生效的会话配置。
-	// enabled 为 false 表示不运行 Agent；err 非空表示配置不可解析，调用方必须按未启用处理。
+	// enabled 为 false 表示本端口自认不可用（依赖缺失等），调用方必须按未启用处理；
+	// err 非空表示配置不可解析，调用方同样必须按未启用处理。
 	ResolveSession(ctx context.Context, cookieID string) (session Session, enabled bool, err error)
 }
 

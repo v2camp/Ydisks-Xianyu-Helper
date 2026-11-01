@@ -5,16 +5,21 @@ import AgentCenter from './AgentCenter';
 import { getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,updateAgentSupportSettings } from '../api';
 import type { AgentSupportSettings,MCPAuditPage,MCPServiceStatus,SystemSettings } from '../models';
 
-vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网；MCP 卡片、客服 Agent 与依赖读取共用同一适配层。 */ () => ({
-  getAgentSupportSettings: vi.fn(),
-  updateAgentSupportSettings: vi.fn(),
-  getMCPServiceStatus: vi.fn(),
-  getMCPAudit: vi.fn(),
-  getSystemSettings: vi.fn(),
-  updateMCPServiceSettings: vi.fn(),
-  generateMCPToken: vi.fn(),
-  revokeMCPToken: vi.fn(),
-}));
+vi.mock('../api', /* mockSettingsApi 用可断言的替身替换设置适配层，避免测试触网；MCP 卡片、客服 Agent 与依赖读取共用同一适配层。 */ async (importOriginal) => {
+  // actual 是真实适配层，只保留纯函数判定，所有请求入口都替换为替身。
+  const actual = await importOriginal<typeof import('../api')>();
+  return {
+    ...actual,
+    getAgentSupportSettings: vi.fn(),
+    updateAgentSupportSettings: vi.fn(),
+    getMCPServiceStatus: vi.fn(),
+    getMCPAudit: vi.fn(),
+    getSystemSettings: vi.fn(),
+    updateMCPServiceSettings: vi.fn(),
+    generateMCPToken: vi.fn(),
+    revokeMCPToken: vi.fn(),
+  };
+});
 
 // agentSupportSettingsMock 是租户级客服 Agent 配置读取的替身。
 const agentSupportSettingsMock = vi.mocked(getAgentSupportSettings);
@@ -56,7 +61,6 @@ afterEach(/* 当前回调隔离每个用例创建的 DOM。 */ () => cleanup());
 
 beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响应。 */ () => {
   agentSupportSettingsMock.mockResolvedValue({
-    enabled: false,
     preset: 'readonly',
     presets: [
       { value: 'readonly', label: '只读', description: '只查询与答复，不产生对外动作' },
@@ -73,7 +77,6 @@ beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响
 describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与租户级客服 Agent 授权往返。 */ () => {
   test('档位名单来自服务端下发而不写死在前端', /* 当前测试验证内核新增档位后界面自动跟随。 */ async () => {
     agentSupportSettingsMock.mockResolvedValue({
-      enabled: true,
       preset: 'experimental',
       presets: [
         { value: 'readonly', label: '只读', description: '只查询与答复' },
@@ -86,29 +89,30 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     expect(presetButton.getAttribute('aria-pressed')).toBe('true');
   });
 
-  test('保存提交开关与档位的全量载荷', /* 当前测试验证保存语义是替换而不是字段级部分更新。 */ async () => {
+  test('保存只提交档位，不再携带独立开关', /* 当前测试验证 Agent 开关已归并到统一 AI 开关，保存载荷只剩档位。 */ async () => {
     render(<AgentCenter />);
-    // enabledSwitch 是租户默认开关，初始跟随服务端返回的关闭状态。
-    const enabledSwitch = await screen.findByLabelText('启用客服 Agent');
-    expect(enabledSwitch.getAttribute('aria-checked')).toBe('false');
-    fireEvent.click(enabledSwitch);
+    // 页面上已没有客服 Agent 独立开关，只保留随 AI 统一生效的说明。
+    expect(screen.queryByLabelText('启用客服 Agent')).toBeNull();
+    await screen.findByText('Agent 随 AI 统一开关生效');
     fireEvent.click(screen.getByRole('button', { name: /高级/ }));
     fireEvent.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(/* 当前回调等待保存请求携带完整的开关与档位载荷。 */ () => expect(agentSupportSettingsUpdateMock).toHaveBeenCalledWith({ enabled: true, preset: 'advanced' }));
+    await waitFor(/* 当前回调等待保存请求只携带档位。 */ () => expect(agentSupportSettingsUpdateMock).toHaveBeenCalledWith({ preset: 'advanced' }));
     expect(await screen.findByText('客服 Agent 配置已保存')).toBeTruthy();
   });
 
   test('保存失败时保留草稿并给出错误提示', /* 当前测试验证失败不会静默丢弃管理员的选择。 */ async () => {
     agentSupportSettingsUpdateMock.mockRejectedValue(new Error('档位取值非法'));
     render(<AgentCenter />);
-    await screen.findByLabelText('启用客服 Agent');
+    await screen.findByText('Agent 随 AI 统一开关生效');
+    fireEvent.click(screen.getByRole('button', { name: /高级/ }));
     fireEvent.click(screen.getByRole('button', { name: /保存/ }));
     expect(await screen.findByText('档位取值非法')).toBeTruthy();
-    expect((screen.getByLabelText('启用客服 Agent') as HTMLElement).getAttribute('aria-checked')).toBe('false');
+    // 失败后草稿保留：高级档仍是选中态，管理员不必重新点一次。
+    expect(screen.getByRole('button', { name: /高级/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   test('服务端未下发档位名单时给出可解释的提示', /* 当前测试验证空名单不会退化成静默不可用。 */ async () => {
-    agentSupportSettingsMock.mockResolvedValue({ enabled: false, preset: '', presets: [] });
+    agentSupportSettingsMock.mockResolvedValue({ preset: '', presets: [] });
     render(<AgentCenter />);
     expect(await screen.findByText(/服务端未下发档位名单/)).toBeTruthy();
   });
@@ -161,13 +165,13 @@ describe('AgentCenter', /* 当前测试组验证三类 Agent 的入口归拢与�
     const refreshButton = screen.getAllByRole('button', { name: '刷新' })[0] as HTMLButtonElement;
     fireEvent.click(refreshButton);
     await waitFor(/* 当前回调等待按钮进入禁用态。 */ () => expect(refreshButton.disabled).toBe(true));
-    resolveSettings({ enabled: false, preset: 'readonly', presets: [] });
+    resolveSettings({ preset: 'readonly', presets: [] });
     await waitFor(/* 当前回调等待请求结束、按钮恢复可用。 */ () => expect(refreshButton.disabled).toBe(false));
   });
 
   test('运营 Agent 只给只读指引并指明配置位置', /* 当前测试验证配置项留在 QQ 连接器卡片这一归属约定。 */ async () => {
     render(<AgentCenter />);
-    await screen.findByLabelText('启用客服 Agent');
+    await screen.findByText('Agent 随 AI 统一开关生效');
     expect(screen.getByText(/QQ 机器人连接器卡片/)).toBeTruthy();
     expect(screen.getByText(/本页不对该 Agent 提供配置项/)).toBeTruthy();
   });

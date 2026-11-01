@@ -253,6 +253,10 @@ func TestSettingsCardsNotificationsBatchContracts(t *testing.T) {
 	if !aiGetResponse.AIEnabled || !aiGetResponse.AutoAdjustPriceEnabled || aiGetResponse.MaxDiscountPercent != 12 {
 		t.Fatalf("ai get response=%+v", aiGetResponse)
 	}
+	// 显式提交过开关的账号必须标记来源为 account，且生效值跟随全局总闸（未配置即开启）。
+	if aiGetResponse.Source != aiReplySourceAccount || !aiGetResponse.EffectiveEnabled {
+		t.Fatalf("ai get source/effective=%+v", aiGetResponse)
+	}
 
 	// cardReq 是创建文本卡券组的请求。
 	cardReq := httptest.NewRequest(http.MethodPost, "/api/v1/cards", strings.NewReader(`{"name":"契约卡","type":"text","text_content":"CARD","enabled":true}`))

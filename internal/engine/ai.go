@@ -37,6 +37,9 @@ type AIReplierImpl struct {
 	logger   *slog.Logger
 	// gen 是模型生成接缝；默认实现为单次 chat completions，客服 Agent Loop 可替换它。
 	gen AIGenerator
+	// keyProvider 是模型密钥的带 TTL 缓存；nil 时回落到进程级共享实例。
+	// 它只缓存密钥字符串，不改变闸门判定，也不影响审计的 fail-closed 语义。
+	keyProvider *AIKeyProvider
 }
 
 // NewAIReplier 构造。
@@ -56,15 +59,39 @@ func NewAIReplier(cookieID string, store *db.Store, logger *slog.Logger, gens ..
 		store:    store,
 		logger:   logger.With("account", cookieID, "subsys", "ai"),
 		gen:      gen,
+		// keyProvider 复用进程级共享缓存：同一进程内所有账号共用一个实例，设置写入才能统一失效。
+		keyProvider: DefaultAIKeyProvider(),
 	}
 }
 
 // Reply 实现 AIReplier 接口。
+//
+// 闸门口径：生效值 = 全局总闸 && 账号开关；账号没有 ai_reply_settings 行时视为跟随总闸（默认开启）。
+// 闸门关闭也要写 ai_decision_log：只有区分 master-off 与 account-off，
+// 才能回答「这条消息为什么没有 AI 回复」。
 func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult, error) {
-	// cfg、err 用于本次流程后续判断的cfg、err
+	// cfg 是账号级 AI 配置；无显式行时返回跟随总闸的默认护栏，永不返回 nil。
 	cfg, err := a.store.AIReply.Get(ctx, a.cookieID)
-	if err != nil || cfg == nil || !cfg.AIEnabled {
-		return nil, nil // 未启用 AI
+	if err != nil {
+		return nil, err
+	}
+	// master 是全局总闸；与账号开关分开读取，便于归因区分关闭来源。
+	master, err := a.store.AIReply.MasterEnabled(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// gateReason 是本次被闸门提前拦下的原因简码；空串表示未被闸门拦下。
+	// 取值来自 ai_reason.go 的常量，保证 reason 只有一处权威定义。
+	gateReason := ""
+	switch {
+	case !master:
+		gateReason = AIReasonMasterOff
+	case !cfg.AIEnabled:
+		gateReason = AIReasonAccountOff
+	}
+	if gateReason != "" {
+		a.recordDecision(ctx, m, "", nil, false, false, false, "", gateReason)
+		return nil, nil
 	}
 	// scope 是编译后的 AI 边界（意图白名单 + 负向组合词），未配置时回落内置砍价范围。
 	scope, err := a.loadScope(ctx)
@@ -92,7 +119,7 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 	}
 	// 接管与不接管都必须留痕：否则评测发现回复不合格时，
 	// 无法回答「这条消息当时为什么被放行或拦下」。
-	a.recordDecision(ctx, m, scope.fingerprint, hitIDs, negHit, extraHit, takeover && !extraHit, userIntent)
+	a.recordDecision(ctx, m, scope.fingerprint, hitIDs, negHit, extraHit, takeover && !extraHit, userIntent, "")
 	if !takeover || extraHit {
 		return nil, nil
 	}
@@ -317,22 +344,26 @@ func minPriceReply(policy *aiPolicyConfig, minimumPrice float64) string {
 // 埋点失败只记 Debug，绝不影响回复链路；不接管的消息同样留痕，
 // 否则「为什么这条没被接管」永远无法回答。
 // fingerprint 是判定所用边界配置的指纹，用于区分模型波动与配置变更。
-func (a *AIReplierImpl) recordDecision(ctx context.Context, m ChatMessage, fingerprint string, hitIDs []string, negHit, extraHit, takeover bool, intentLabel string) {
+// gateReason 是闸门提前拦下的原因简码（AIReasonMasterOff / AIReasonAccountOff）；空串表示本次走正常的边界判定。
+func (a *AIReplierImpl) recordDecision(ctx context.Context, m ChatMessage, fingerprint string, hitIDs []string, negHit, extraHit, takeover bool, intentLabel, gateReason string) {
 	// preview 是买家消息的截断预览，仅供人读定位，不承担审计作用。
 	preview := m.Text
 	// runes 是按字符计数的切片，避免中文被按字节截断成乱码。
 	if runes := []rune(preview); len(runes) > 60 {
 		preview = string(runes[:60]) + "…"
 	}
-	// reason 是判定原因简码，供聚合统计使用。
-	reason := "taken"
-	switch {
-	case extraHit:
-		reason = "extra-negative"
-	case negHit:
-		reason = "negative"
-	case !takeover:
-		reason = "no-intent"
+	// reason 是判定原因简码，供聚合统计使用；闸门拦下时直接采用调用方给出的原因。
+	reason := gateReason
+	if reason == "" {
+		reason = AIReasonTaken
+		switch {
+		case extraHit:
+			reason = AIReasonExtraNegative
+		case negHit:
+			reason = AIReasonNegative
+		case !takeover:
+			reason = AIReasonNoIntent
+		}
 	}
 	// err 是归因写入失败原因；失败只记 Debug。
 	err := a.store.AIReply.AddDecisionLog(ctx, db.AIDecisionRecord{
@@ -462,10 +493,13 @@ func (a *AIReplierImpl) loadComplaintKeywords(ctx context.Context) ([]*regexp.Re
 	return ParseComplaintKeywords(raw, a.logger), nil
 }
 
-// globalAIConfig 封装globalAI配置业务协调。
+// globalAIConfig 读取一次 AI 回复所需的模型配置。
+// 密钥走带 TTL 的 provider：命中缓存不产生新的 security_audit_logs 行，
+// 未命中仍由 ReadSensitiveSetting 做 fail-closed 审计（审计写失败即拒绝读取）。
 func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, error) {
-	// apiKey、err 用于本次流程后续判断的apiKey、err
-	apiKey, err := a.store.ReadSensitiveSettingForAccount(ctx, a.cookieID, "ai_api_key", "settings.use", "ai_reply")
+	// apiKey、err 是解密后的全局模型密钥；provider 为 nil 时回落进程级共享实例。
+	// 该值只交给模型客户端，禁止写入日志与错误信息。
+	apiKey, err := a.aiKeyProvider().Get(ctx, a.store, a.cookieID, "ai_api_key", "settings.use", "ai_reply")
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +533,14 @@ func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, er
 		BaseURL: baseURL,
 		Model:   model,
 	}, nil
+}
+
+// aiKeyProvider 返回本实例使用的密钥缓存；未显式装配时回落进程级共享实例，保证永不为 nil。
+func (a *AIReplierImpl) aiKeyProvider() *AIKeyProvider {
+	if a.keyProvider != nil {
+		return a.keyProvider
+	}
+	return DefaultAIKeyProvider()
 }
 
 // itemInfo 取商品标题/价格/描述。

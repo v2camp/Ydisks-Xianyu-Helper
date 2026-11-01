@@ -22,13 +22,13 @@ func TestRecordDecisionLogsBothOutcomes(t *testing.T) {
 
 	// 被接管的消息：命中发货意图，未命中负向词。
 	a.recordDecision(ctx, ChatMessage{ChatID: "chat-taken", Text: "有度盘的吗"},
-		"fp-1", []string{IntentOrder}, false, false, true, IntentOrder)
+		"fp-1", []string{IntentOrder}, false, false, true, IntentOrder, "")
 	// 被负向词拦下的消息：这条过去完全没有痕迹。
 	a.recordDecision(ctx, ChatMessage{ChatID: "chat-blocked", Text: "我要退款"},
-		"fp-1", nil, true, false, false, IntentComplaint)
+		"fp-1", nil, true, false, false, IntentComplaint, "")
 	// 被扩展词拦下的消息。
 	a.recordDecision(ctx, ChatMessage{ChatID: "chat-extra", Text: "加个微信"},
-		"fp-1", nil, false, true, false, IntentComplaint)
+		"fp-1", nil, false, true, false, IntentComplaint, "")
 
 	// total 是归因记录总条数。
 	var total int
@@ -85,7 +85,7 @@ func TestRecordDecisionStoresFingerprintAndIntent(t *testing.T) {
 	ctx := context.Background()
 
 	a.recordDecision(ctx, ChatMessage{ChatID: "chat-fp", Text: "怎么发货"},
-		"fp-abc", []string{IntentOrder, IntentStock}, false, false, true, IntentOrder)
+		"fp-abc", []string{IntentOrder, IntentStock}, false, false, true, IntentOrder, "")
 
 	// fingerprint、intents、label 是该条记录的指纹、命中意图与标签。
 	var fingerprint, intents, label string

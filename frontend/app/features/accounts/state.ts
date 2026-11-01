@@ -1,5 +1,5 @@
 import type { AccountDetail } from './api';
-import type { PasswordLoginStatusResponse } from './api';
+import type { AIReplySettingsResponse,PasswordLoginStatusResponse } from './api';
 import type { AccountEditForm,PasswordLoginView } from './types';
 
 // AccountLoginEditFields 描述账号编辑表单中参与登录信息比较的字段。
@@ -83,4 +83,12 @@ export const passwordLoginViewFromStatus = (result: PasswordLoginStatusResponse)
     message: result.error || result.message || '密码登录失败，请检查账号信息后重试',
     qrCodeUrl: '',
   };
+};
+
+// resolveAccountAIEnabled 解析账号 AI 生效值：优先取服务端给出的生效值，其次取账号显式值；两者都缺失时按跟随全局总闸（开）处理。
+export const resolveAccountAIEnabled = (settings?: Partial<Pick<AIReplySettingsResponse, 'effective_enabled' | 'ai_enabled'>>): boolean => {
+  if (!settings) return true;
+  if (typeof settings.effective_enabled === 'boolean') return settings.effective_enabled;
+  if (typeof settings.ai_enabled === 'boolean') return settings.ai_enabled;
+  return true;
 };

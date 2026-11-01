@@ -87,6 +87,9 @@ func TestNewSupportAgentSessionsRequiresDependencies(t *testing.T) {
 }
 
 // TestSupportAgentSessionsResolvesAccountPreset 验证账号级覆盖优先于租户默认，并带上归属信息。
+//
+// enabled 恒为 true：客服 Agent 是否运行已归并到统一 AI 开关，本端口只解析档位。
+// 唯一的例外是端口自认不可用（依赖缺失），见 TestSupportAgentSessionsReturnsDisabledWhenConfigServiceMissing。
 func TestSupportAgentSessionsResolvesAccountPreset(t *testing.T) {
 	// records 是当前待验证的生效配置场景。
 	records := []struct {
@@ -96,54 +99,43 @@ func TestSupportAgentSessionsResolvesAccountPreset(t *testing.T) {
 		repository agentadminapp.Repository
 		// wantPreset 是该场景期望生效的档位。
 		wantPreset capability.Preset
-		// wantEnabled 是该场景期望的启用状态。
-		wantEnabled bool
 	}{
 		{
 			name: "租户默认开启只读档",
 			repository: &stubAgentConfigRepository{
-				tenantValues: map[string]string{agentadminapp.KeySupportEnabled: "true", agentadminapp.KeySupportPreset: "readonly"},
+				tenantValues: map[string]string{agentadminapp.KeySupportPreset: "readonly"},
 				found:        true,
 			},
-			wantPreset: capability.PresetReadonly, wantEnabled: true,
-		},
-		{
-			name: "账号覆盖为关闭",
-			repository: &stubAgentConfigRepository{
-				tenantValues: map[string]string{agentadminapp.KeySupportEnabled: "true"},
-				override:     agentadminapp.AccountOverride{Enabled: boolPointer(false)},
-				found:        true,
-			},
-			wantPreset: capability.PresetReadonly, wantEnabled: false,
+			wantPreset: capability.PresetReadonly,
 		},
 		{
 			name: "账号覆盖为高档位",
 			repository: &stubAgentConfigRepository{
-				tenantValues: map[string]string{agentadminapp.KeySupportEnabled: "true", agentadminapp.KeySupportPreset: "readonly"},
+				tenantValues: map[string]string{agentadminapp.KeySupportPreset: "readonly"},
 				override:     agentadminapp.AccountOverride{Preset: stringPointer("advanced")},
 				found:        true,
 			},
-			wantPreset: capability.PresetAdvanced, wantEnabled: true,
+			wantPreset: capability.PresetAdvanced,
 		},
 		{
 			name: "库中档位非法时回落只读档",
 			repository: &stubAgentConfigRepository{
-				tenantValues: map[string]string{agentadminapp.KeySupportEnabled: "true", agentadminapp.KeySupportPreset: "unlimited"},
+				tenantValues: map[string]string{agentadminapp.KeySupportPreset: "unlimited"},
 				found:        true,
 			},
-			wantPreset: capability.PresetReadonly, wantEnabled: true,
+			wantPreset: capability.PresetReadonly,
 		},
 	}
 	// current 是当前待验证的场景。
 	for _, current := range records {
 		// sessions 是当前场景的解析端口。
 		sessions := sessionsWithRepository(current.repository)
-		// session、enabled、err 分别是解析结果、启用状态与失败原因。
+		// session、enabled、err 分别是解析结果、端口可用性与失败原因。
 		session, enabled, err := sessions.ResolveSession(context.Background(), "cid-1")
 		if err != nil {
 			t.Fatalf("场景[%s]解析失败: %v", current.name, err)
 		}
-		if enabled != current.wantEnabled || session.Preset != current.wantPreset {
+		if !enabled || session.Preset != current.wantPreset {
 			t.Fatalf("场景[%s]解析结果不符: enabled=%v preset=%s", current.name, enabled, session.Preset)
 		}
 		if session.UserID != 42 || session.CookieID != "cid-1" {
@@ -246,9 +238,6 @@ func TestSupportAgentFactoryReturnsGeneratorWhenDependenciesComplete(t *testing.
 		t.Fatalf("依赖齐备时应为账号产出客服 Agent 生成器: isReplier=%v", isReplier)
 	}
 }
-
-// boolPointer 返回指向给定布尔值的指针，用于表达「账号级覆盖了开关」。
-func boolPointer(value bool) *bool { return &value }
 
 // stringPointer 返回指向给定字符串的指针，用于表达「账号级覆盖了档位」。
 func stringPointer(value string) *string { return &value }

@@ -20,45 +20,37 @@ type agentPresetResponse struct {
 	Description string `json:"description"`
 }
 
-// agentSupportSettingsResponse 是租户级客服 Agent 默认配置响应 DTO。
+// agentSupportSettingsResponse 是租户级客服 Agent 默认档位响应 DTO。
+//
+// 不含任何开关键：客服 Agent 是否运行由统一 AI 开关决定，本接口只治理档位。
 type agentSupportSettingsResponse struct {
-	// Enabled 表示该租户的账号默认是否运行客服 Agent。
-	Enabled bool `json:"enabled"`
 	// Preset 是账号未覆盖时使用的档位。
 	Preset string `json:"preset"`
 	// Presets 是平台级档位定义，随配置下发使界面无需硬编码档位名单。
 	Presets []agentPresetResponse `json:"presets"`
 }
 
-// agentSupportSettingsUpdateRequest 是租户级默认配置的更新请求 DTO。
+// agentSupportSettingsUpdateRequest 是租户级默认档位的更新请求 DTO。
 type agentSupportSettingsUpdateRequest struct {
-	// Enabled 是更新后的默认开关。
-	Enabled bool `json:"enabled"`
 	// Preset 是更新后的默认档位，必须是平台定义的档位标识。
 	Preset string `json:"preset"`
 }
 
-// agentSupportAccountResponse 是账号级生效配置响应 DTO，并把覆盖来源一并告知界面。
+// agentSupportAccountResponse 是账号级生效档位响应 DTO，并把覆盖来源一并告知界面。
 type agentSupportAccountResponse struct {
 	// CookieID 是配置归属账号。
 	CookieID string `json:"cookie_id"`
-	// Enabled 是该账号最终生效的开关。
-	Enabled bool `json:"enabled"`
 	// Preset 是该账号最终生效的档位。
 	Preset string `json:"preset"`
-	// AccountEnabled 非空表示开关来自账号级覆盖，null 表示继承租户默认。
-	AccountEnabled *bool `json:"account_enabled"`
 	// AccountPreset 非空表示档位来自账号级覆盖，null 表示继承租户默认。
 	AccountPreset *string `json:"account_preset"`
 	// Presets 是平台级档位定义。
 	Presets []agentPresetResponse `json:"presets"`
 }
 
-// agentSupportAccountUpdateRequest 是账号级覆盖的更新请求 DTO。
-// 字段为 null 表示该维度恢复继承租户默认，两个字段都为 null 即完全跟随租户。
+// agentSupportAccountUpdateRequest 是账号级档位覆盖的更新请求 DTO。
+// Preset 为 null 表示该维度恢复继承租户默认。
 type agentSupportAccountUpdateRequest struct {
-	// Enabled 为 null 时该账号的开关恢复继承租户默认。
-	Enabled *bool `json:"enabled"`
 	// Preset 为 null 时该账号的档位恢复继承租户默认。
 	Preset *string `json:"preset"`
 }
@@ -78,7 +70,7 @@ func (s *Server) mountVersionedAgentSupportRoutes(r chi.Router) {
 	})
 }
 
-// agentSupportSettings 返回租户级客服 Agent 默认配置与平台级档位定义。
+// agentSupportSettings 返回租户级客服 Agent 默认档位与平台级档位定义。
 func (s *Server) agentSupportSettings(w http.ResponseWriter, r *http.Request) {
 	// sess 是当前请求的认证会话。
 	sess := auth.SessionFromContext(r.Context())
@@ -89,11 +81,11 @@ func (s *Server) agentSupportSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, agentSupportSettingsResponse{
-		Enabled: config.Enabled, Preset: string(config.Preset), Presets: agentPresetResponses(),
+		Preset: string(config.Preset), Presets: agentPresetResponses(),
 	})
 }
 
-// updateAgentSupportSettings 保存租户级客服 Agent 默认配置。
+// updateAgentSupportSettings 保存租户级客服 Agent 默认档位。
 func (s *Server) updateAgentSupportSettings(w http.ResponseWriter, r *http.Request) {
 	// sess 是当前请求的认证会话。
 	sess := auth.SessionFromContext(r.Context())
@@ -106,7 +98,7 @@ func (s *Server) updateAgentSupportSettings(w http.ResponseWriter, r *http.Reque
 	}
 	// updateErr 是租户级默认配置保存错误。
 	updateErr := s.agentSupportApplication().UpdateTenantSettings(r.Context(), sess.UserID, agentadminapp.TenantConfig{
-		Enabled: payload.Enabled, Preset: agentadminapp.PresetValue(payload.Preset),
+		Preset: agentadminapp.PresetValue(payload.Preset),
 	})
 	if updateErr != nil {
 		writeAgentSupportError(w, updateErr, "保存客服 Agent 默认配置失败")
@@ -115,7 +107,7 @@ func (s *Server) updateAgentSupportSettings(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, operationResponse{Success: true})
 }
 
-// agentSupportAccount 返回指定账号最终生效的客服 Agent 配置与覆盖来源。
+// agentSupportAccount 返回指定账号最终生效的客服 Agent 档位与覆盖来源。
 func (s *Server) agentSupportAccount(w http.ResponseWriter, r *http.Request) {
 	// sess 是当前请求的认证会话。
 	sess := auth.SessionFromContext(r.Context())
@@ -130,13 +122,13 @@ func (s *Server) agentSupportAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, agentSupportAccountResponseFromConfig(config))
 }
 
-// updateAgentSupportAccount 保存账号级客服 Agent 覆盖。
+// updateAgentSupportAccount 保存账号级客服 Agent 档位覆盖。
 func (s *Server) updateAgentSupportAccount(w http.ResponseWriter, r *http.Request) {
 	// sess 是当前请求的认证会话。
 	sess := auth.SessionFromContext(r.Context())
 	// cookieID 是路径中的账号标识。
 	cookieID := chi.URLParam(r, "cookie_id")
-	// payload 是本次更新请求 DTO；字段为 null 表示该维度恢复继承。
+	// payload 是本次更新请求 DTO；Preset 为 null 表示该维度恢复继承。
 	var payload agentSupportAccountUpdateRequest
 	// err 是请求体 JSON 解析错误。
 	if err := decodeJSON(r, &payload); err != nil {
@@ -145,7 +137,7 @@ func (s *Server) updateAgentSupportAccount(w http.ResponseWriter, r *http.Reques
 	}
 	// updateErr 是账号级覆盖保存错误。
 	updateErr := s.agentSupportApplication().UpdateAccountOverride(r.Context(), sess.UserID, cookieID, agentadminapp.AccountOverride{
-		Enabled: payload.Enabled, Preset: payload.Preset,
+		Preset: payload.Preset,
 	})
 	if updateErr != nil {
 		writeAgentSupportError(w, updateErr, "保存客服 Agent 账号配置失败")
@@ -164,9 +156,9 @@ func agentSupportAccountResponseFromConfig(config agentadminapp.EffectiveConfig)
 		accountPreset = &presetValue
 	}
 	return agentSupportAccountResponse{
-		CookieID: config.CookieID, Enabled: config.Enabled, Preset: string(config.Preset),
-		AccountEnabled: config.AccountEnabled, AccountPreset: accountPreset,
-		Presets: agentPresetResponses(),
+		CookieID: config.CookieID, Preset: string(config.Preset),
+		AccountPreset: accountPreset,
+		Presets:       agentPresetResponses(),
 	}
 }
 

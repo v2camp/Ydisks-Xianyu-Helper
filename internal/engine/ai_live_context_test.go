@@ -348,10 +348,10 @@ func TestBuiltinOrderWordsExpanded(t *testing.T) {
 	samples := []string{"怎么发", "什么时候发", "多久发", "发货方式是什么", "什么网盘"}
 	// sample 表示当前遍历到的问法。
 	for _, sample := range samples {
-		// take、hits 是判定结果。
+		// take、hits 是判定结果；order 已放开接管，故每条都必须判为接管。
 		take, hits := scope.decide(sample)
-		if take {
-			t.Fatalf("order 意图不应接管: %q", sample)
+		if !take {
+			t.Fatalf("order 意图已放开接管: %q", sample)
 		}
 		if len(hits) != 1 || hits[0] != IntentOrder {
 			t.Fatalf("%q 应命中 order: hits=%v", sample, hits)

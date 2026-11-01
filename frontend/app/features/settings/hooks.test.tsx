@@ -28,7 +28,7 @@ const updateSettingsMock = vi.mocked(updateSystemSettings);
 const verifySessionMock = vi.mocked(verifySession);
 
 // settingsFixture 是覆盖 AI、验证码和日志字段的系统配置。
-const settingsFixture: SystemSettings = { ai_api_url: 'https://ai.example.com', ai_api_key: 'secret', ai_model: '', ai_reply_review_mode: true, 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]', 'captcha.remote_service_url': 'https://captcha.example.com', log_level: 'info', global_send_daily_limit: 5 };
+const settingsFixture: SystemSettings = { ai_api_url: 'https://ai.example.com', ai_api_key: 'secret', ai_model: '', ai_master_enabled: true, 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]', 'captcha.remote_service_url': 'https://captcha.example.com', log_level: 'info', global_send_daily_limit: 5 };
 // noopReload 是设置凭据成功后定时重载页面的浏览器行为替身。
 const noopReload = vi.fn();
 // renderSystemSettingsHook 是 system 保存范围的设置 Hook 渲染回调，只保存系统白名单字段。
@@ -90,7 +90,7 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     expect(payload.ai_api_url).toBeUndefined();
     expect(payload.ai_api_key).toBeUndefined();
     expect(payload.ai_model).toBeUndefined();
-    expect(payload.ai_reply_review_mode).toBeUndefined();
+    expect(payload.ai_master_enabled).toBeUndefined();
     expect(payload['mcp.servers']).toBeUndefined();
     expect(window.alert).toHaveBeenCalledWith('系统配置已保存');
   });
@@ -110,6 +110,8 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     const payload = updateSettingsMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload.ai_api_url).toBe('https://ai.example.com');
     expect(payload['mcp.servers']).toBe(settingsFixture['mcp.servers']);
+    // 总闸属于 AI 白名单，AI 页保存时必须随载荷一起提交，否则改动会被静默丢弃。
+    expect(payload.ai_master_enabled).toBe(true);
     expect(payload.log_level).toBeUndefined();
     expect(payload.global_send_daily_limit).toBeUndefined();
     expect(payload['captcha.remote_service_url']).toBeUndefined();

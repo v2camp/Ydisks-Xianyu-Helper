@@ -166,6 +166,11 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 	if transportErr != nil {
 		return Runtime{}, fmt.Errorf("构造 transport 应用服务失败: %w", transportErr)
 	}
+	// 敏感设置写入后让 AI 密钥缓存立即失效：application 只声明窄接口，engine 侧实现，
+	// 由组合根把两边接起来，避免应用层反向依赖引擎实现。
+	if transportApplications.Settings != nil {
+		transportApplications.Settings.SetCredentialCacheInvalidator(engine.DefaultAIKeyProvider())
+	}
 	// updateRunningCookie 将平台返回的新 Cookie 同步到运行时；值不记录到日志。
 	updateRunningCookie := func(ctx context.Context, accountID, value string) {
 		if services == nil {

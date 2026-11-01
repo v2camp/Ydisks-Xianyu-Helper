@@ -83,35 +83,27 @@ type ReplyService struct {
 	plugin PluginReplier
 	sender MessageSender
 	logger *slog.Logger
-	// reviewNotifier 是 AI 回复人工确认通知器，可选；nil 时只拦截发送、不发确认通知。
-	reviewNotifier ReplyReviewNotifier
 	// imageDelivery 是图片回复的投递端口，可选；nil 时含图片的回复整体跳过，避免退化为无尺寸直发。
 	imageDelivery ReplyImageDelivery
 }
 
 // NewReplyService 构造；plugin 可为 nil（跳过插件层）；
-// imageDelivery 为图片回复投递端口，nil 时含图片的回复不发送；
-// 末尾变参可选注入 AI 回复人工确认通知器，保持旧调用方兼容。
+// imageDelivery 为图片回复投递端口，nil 时含图片的回复不发送。
+// AI 回复产出后不再有人工确认环节，发送前的唯一闸门是 Handle 内的 applyReplySafety。
 func NewReplyService(cookieID string, store *db.Store, sender MessageSender, imageDelivery ReplyImageDelivery,
-	api APIReplier, ai AIReplier, plugin PluginReplier, logger *slog.Logger, reviewNotifiers ...ReplyReviewNotifier) *ReplyService {
+	api APIReplier, ai AIReplier, plugin PluginReplier, logger *slog.Logger) *ReplyService {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	// reviewNotifier 是首个变参通知器；最多取一个，传 nil 等价于未注入。
-	var reviewNotifier ReplyReviewNotifier
-	if len(reviewNotifiers) > 0 {
-		reviewNotifier = reviewNotifiers[0]
-	}
 	return &ReplyService{
-		cookieID:       cookieID,
-		store:          store,
-		api:            api,
-		ai:             ai,
-		plugin:         plugin,
-		sender:         sender,
-		logger:         logger.With("account", cookieID, "subsys", "reply"),
-		reviewNotifier: reviewNotifier,
-		imageDelivery:  imageDelivery,
+		cookieID:      cookieID,
+		store:         store,
+		api:           api,
+		ai:            ai,
+		plugin:        plugin,
+		sender:        sender,
+		logger:        logger.With("account", cookieID, "subsys", "reply"),
+		imageDelivery: imageDelivery,
 	}
 }
 
@@ -137,11 +129,8 @@ func (r *ReplyService) Handle(ctx context.Context, m ChatMessage) error {
 		r.logger.Error("自动回复图片投递端口未装配，跳过本次回复", "chat_id", m.ChatID)
 		return nil
 	}
-	// AI 回复人工确认闸门：review 模式开启时 AI 生成的回复不自动发送，
-	// 改为通知卖家人工确认；AutoPriceQuote 绑定发生在发送成功之后，拦截时自然跳过。
-	if r.interceptAIReplyForReview(ctx, res, m) {
-		return nil
-	}
+	// AI 回复人工确认模式已下线：AI 产出经上面的 applyReplySafety 校验后直接外发，
+	// 不再有「拦截后通知卖家」的分支；若日后需要重新引入，必须在此处重新评估与安全闸门的先后关系。
 	// record 用于本次流程后续判断的record
 	record := db.DefaultReplyRecord{}
 	if res.ReplyOnce && m.ChatID != "" {

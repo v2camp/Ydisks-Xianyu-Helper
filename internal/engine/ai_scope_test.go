@@ -45,7 +45,7 @@ func scopeStore(t *testing.T, scopeJSON, knowledgeJSON, policyJSON string) (*db.
 	return s, func() { d.Close() }
 }
 
-// TestLoadScopeFallback 未配置边界时回落内置：砍价接管，非砍价不接管。
+// TestLoadScopeFallback 未配置边界时回落内置：砍价与询价均接管，负向词仍拦截。
 func TestLoadScopeFallback(t *testing.T) {
 	// s、cleanup 是空配置的测试 store。
 	s, cleanup := scopeStore(t, "", "", "")
@@ -62,10 +62,10 @@ func TestLoadScopeFallback(t *testing.T) {
 	if !take || len(hits) != 1 || hits[0] != IntentBargain {
 		t.Fatalf("砍价应接管: take=%v hits=%v", take, hits)
 	}
-	// 询价文本不应接管（但参与命中标注）。
+	// 询价文本应接管：内置 inquiry 已放开（价格由价格守卫兜底）。
 	take, hits = scope.decide("多少钱")
-	if take {
-		t.Fatalf("询价不应接管: hits=%v", hits)
+	if !take {
+		t.Fatalf("询价应接管: hits=%v", hits)
 	}
 	if len(hits) != 1 || hits[0] != IntentInquiry {
 		t.Fatalf("询价应被标注为 inquiry: hits=%v", hits)
