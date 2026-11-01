@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"xianyu-go/internal/db"
+	"xianyu-go/internal/engine"
 )
 
 // 评测采样温度常量。
@@ -110,7 +111,8 @@ func readModelConfigFromDB(ctx context.Context, store *db.Store) (ModelConfig, e
 		return ModelConfig{}, err
 	}
 	// apiKey、err 是解密后的接口密钥；仅用于发起请求，禁止落盘。
-	apiKey, err := store.ReadSensitiveSettingForAccount(ctx, cookieID, "ai_api_key", "settings.use", "ai_reply")
+	// 走引擎的密钥缓存：评测常在同一进程反复构建模型配置，命中缓存不再逐次写审计。
+	apiKey, err := engine.DefaultAIKeyProvider().Get(ctx, store, cookieID, "ai_api_key", "settings.use", "ai_reply")
 	if err != nil {
 		return ModelConfig{}, fmt.Errorf("读取数据库模型密钥失败: %w", err)
 	}

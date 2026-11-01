@@ -163,6 +163,15 @@ type OutboundPolicy interface {
 	SetPublicOnly(publicOnly bool)
 }
 
+// CredentialCacheInvalidator 是敏感凭据读取缓存的失效端口。
+// 由 application 侧声明、基础层实现：敏感设置落库后调用 InvalidateAll，
+// 让「密钥轮换最长等一个 TTL 才生效」变成「写入后立即可见」。
+// 未注入（nil）时写入口行为不变，不因缺少失效器而失败。
+type CredentialCacheInvalidator interface {
+	// InvalidateAll 清空全部已缓存的凭据值；实现必须是幂等且不返回错误的内存操作。
+	InvalidateAll()
+}
+
 // Service 编排设置读取、校验、审计和持久化，不依赖 HTTP 或数据库类型。
 type Service struct {
 	// repository 提供设置持久化与敏感访问审计能力。
@@ -171,6 +180,17 @@ type Service struct {
 	modelClient ModelClient
 	// outboundPolicy 保存运行时 HTTP 策略端口，数据库仓储不直接依赖基础设施实现。
 	outboundPolicy OutboundPolicy
+	// credentialCache 是敏感凭据读取缓存的失效端口；nil 表示未接入缓存，写入口不做失效。
+	credentialCache CredentialCacheInvalidator
+}
+
+// SetCredentialCacheInvalidator 注入敏感凭据缓存失效端口，供组合根装配时调用。
+// 传 nil 表示不启用失效，与未接入缓存时的行为一致；本方法只在启动期调用，不做并发保护。
+func (s *Service) SetCredentialCacheInvalidator(invalidator CredentialCacheInvalidator) {
+	if s == nil {
+		return
+	}
+	s.credentialCache = invalidator
 }
 
 // IsSensitiveSettingKey 判断 HTTP 兼容层中的设置键是否属于敏感白名单。
@@ -249,6 +269,11 @@ func (s *Service) ApplySystemChanges(ctx context.Context, userID int64, values m
 	if err := s.repository.ApplySystemChanges(ctx, values, secrets); err != nil {
 		return err
 	}
+	// keys 已在上面逐项校验为敏感键；只有敏感键变更才失效凭据缓存，
+	// 普通键（如 ai_master_enabled）不得触发失效，避免无谓清空缓存。
+	if len(keys) > 0 {
+		s.invalidateCredentialCache()
+	}
 	s.applyOutboundPolicy(values)
 	return nil
 }
@@ -273,7 +298,13 @@ func (s *Service) SetSystem(ctx context.Context, userID int64, key, value, actio
 		if err := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.write", Resource: "system_settings", Keys: []string{key}}); err != nil {
 			return err
 		}
-		return s.repository.ApplySystemChanges(ctx, nil, map[string]SecretChange{key: change})
+		// err 表示敏感设置落库失败；失败时缓存不失效，避免把未生效的写入当成已生效。
+		if err := s.repository.ApplySystemChanges(ctx, nil, map[string]SecretChange{key: change}); err != nil {
+			return err
+		}
+		// 敏感键写成功即失效凭据缓存：密钥轮换不必等 TTL 到期。
+		s.invalidateCredentialCache()
+		return nil
 	}
 	// err 表示单项普通设置的业务值校验错误。
 	if err := validateSystemValue(key, value); err != nil {
@@ -673,6 +704,15 @@ func validateSystemValue(key, value string) error {
 		}
 	}
 	return nil
+}
+
+// invalidateCredentialCache 在敏感设置落库成功后让凭据读取缓存立即失效。
+// 未注入失效器时为无害空操作；本方法不做 I/O，也不返回错误。
+func (s *Service) invalidateCredentialCache() {
+	if s == nil || s.credentialCache == nil {
+		return
+	}
+	s.credentialCache.InvalidateAll()
 }
 
 // applyOutboundPolicy 在系统设置成功持久化后立即同步运行时策略。

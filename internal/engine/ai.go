@@ -37,6 +37,9 @@ type AIReplierImpl struct {
 	logger   *slog.Logger
 	// gen 是模型生成接缝；默认实现为单次 chat completions，客服 Agent Loop 可替换它。
 	gen AIGenerator
+	// keyProvider 是模型密钥的带 TTL 缓存；nil 时回落到进程级共享实例。
+	// 它只缓存密钥字符串，不改变闸门判定，也不影响审计的 fail-closed 语义。
+	keyProvider *AIKeyProvider
 }
 
 // NewAIReplier 构造。
@@ -56,6 +59,8 @@ func NewAIReplier(cookieID string, store *db.Store, logger *slog.Logger, gens ..
 		store:    store,
 		logger:   logger.With("account", cookieID, "subsys", "ai"),
 		gen:      gen,
+		// keyProvider 复用进程级共享缓存：同一进程内所有账号共用一个实例，设置写入才能统一失效。
+		keyProvider: DefaultAIKeyProvider(),
 	}
 }
 
@@ -488,10 +493,13 @@ func (a *AIReplierImpl) loadComplaintKeywords(ctx context.Context) ([]*regexp.Re
 	return ParseComplaintKeywords(raw, a.logger), nil
 }
 
-// globalAIConfig 封装globalAI配置业务协调。
+// globalAIConfig 读取一次 AI 回复所需的模型配置。
+// 密钥走带 TTL 的 provider：命中缓存不产生新的 security_audit_logs 行，
+// 未命中仍由 ReadSensitiveSetting 做 fail-closed 审计（审计写失败即拒绝读取）。
 func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, error) {
-	// apiKey、err 用于本次流程后续判断的apiKey、err
-	apiKey, err := a.store.ReadSensitiveSettingForAccount(ctx, a.cookieID, "ai_api_key", "settings.use", "ai_reply")
+	// apiKey、err 是解密后的全局模型密钥；provider 为 nil 时回落进程级共享实例。
+	// 该值只交给模型客户端，禁止写入日志与错误信息。
+	apiKey, err := a.aiKeyProvider().Get(ctx, a.store, a.cookieID, "ai_api_key", "settings.use", "ai_reply")
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +533,14 @@ func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, er
 		BaseURL: baseURL,
 		Model:   model,
 	}, nil
+}
+
+// aiKeyProvider 返回本实例使用的密钥缓存；未显式装配时回落进程级共享实例，保证永不为 nil。
+func (a *AIReplierImpl) aiKeyProvider() *AIKeyProvider {
+	if a.keyProvider != nil {
+		return a.keyProvider
+	}
+	return DefaultAIKeyProvider()
 }
 
 // itemInfo 取商品标题/价格/描述。
