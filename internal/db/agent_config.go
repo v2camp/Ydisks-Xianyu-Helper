@@ -83,14 +83,15 @@ func (a *AIReply) SetAgentConfig(ctx context.Context, userID int64, cookieID str
 	// err 是账号级配置 upsert 错误。
 	//
 	// SQL 形状的两条约束不可省，口径与 UpsertSettings 的三态约定保持一致：
-	//  1. INSERT 列表里显式写 ai_enabled=1。省略该列会落到表定义的 DEFAULT 0
-	//     （00001 建表 sqlite 为 FALSE、postgres 为 0），在「无行即跟随总闸」的语义下
-	//     等于把默认开启的账号静默写成显式关闭。
+	//  1. INSERT 列表里显式写 ai_enabled=NULL，不能用 DEFAULT。省略该列会落到 DEFAULT 0
+	//     （00001 建表 sqlite 为 FALSE、postgres 为 0），在「无行即开启」的语义下等于把
+	//     默认开启的账号静默写成显式关闭。写 NULL 而不是 1：本通路从未表达过开关意愿，
+	//     写成 1 会让 source 报成「账号显式设置」，与事实不符。
 	//  2. 冲突时只更新 agent_preset 与 updated_at，绝不更新 ai_enabled：0 或 1 都属于
 	//     AI 设置通路的表态，本通路无权改写，否则用户「关掉 AI」的决定会随一次档位保存失效。
 	_, err = a.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings
 		(cookie_id, ai_enabled, agent_preset, updated_at)
-		VALUES (?,1,?,CURRENT_TIMESTAMP)`+dialectUpsert(a.Dialect, []string{"cookie_id"}, map[string]string{
+		VALUES (?,NULL,?,CURRENT_TIMESTAMP)`+dialectUpsert(a.Dialect, []string{"cookie_id"}, map[string]string{
 		"agent_preset": "EXCLUDED.agent_preset",
 		"updated_at":   "CURRENT_TIMESTAMP",
 	}), cookieID, presetValue)
