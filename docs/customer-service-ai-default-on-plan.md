@@ -116,3 +116,87 @@
 2. 写 `ai_master_enabled=false` 后，下一条消息的 `ai_decision_log.reason` 为新增的 `master-off`，且不发 AI 回复。
 3. 总闸开 + 某账号 `ai_enabled=0` 时，该账号 `reason=account-off`，其它账号正常接管。
 4. 一条真实「多少钱」消息在总闸开启后 `reason=taken`（放开 inquiry 后）。
+
+## 五、五项整改的逐项评估（2026-11-01）
+
+### 5.1 意图白名单实际拦住了什么（实测，不是推测）
+
+方法：用内置边界 `defaultScope` 对 `data/evalexport/samples.jsonl` 里 12 个真实会话的 **22 条买家文本消息**逐条分类（临时探针跑完即删，未入库）。
+
+| 结果 | 条数 |
+|---|---|
+| 负向词拦截（转人工） | 0 |
+| 放行（bargain/stock/refund/shipping） | 5 |
+| **被拦** | **17**，其中 **11 条命中 `order`**、6 条零命中 |
+
+被 `order` 拦下的原话（全部是渠道问法，正是事实最全的一类）：
+
+- 「有度盘的吗」「夸克？」「夸克网盘吗」「有夸克网盘的吗」「夸克网盘有吗」
+- 「支持复制粘贴到百度网盘吗？」「我要夸克的」「你好想问下有夸克的嘛」「发网盘吗」「有夸克嘛」
+
+**结论：当前白名单拦下的主力不是合规/安全，而是「发货渠道」——最高频、且 `card-channel` 事实最完整的一类问句。** 这正是「AI 开着却总不回」的主因。
+
+按「只拦合规、安全」的目标重排：
+
+| 意图 | 建议 | 理由与前置 |
+|---|---|---|
+| `order` | **放开** | 渠道/发货/下载，事实源已具备；须补一条「不得承诺发货时效」约束 |
+| `inquiry` | **放开** | 价格问题已有价格守卫（最低价 / 拒绝兜底）兜底 |
+| `consult` | **放开** | FAQ 与商品描述有据；需 acceptance：无 FAQ 命中时不得编造内容 |
+| `spec` | 暂留拦 | 依赖标题规格抽取覆盖率（A2，27 个商品仅 21 个有渠道事实） |
+| `usage` | 暂留拦 | 有效期/会员属承诺类，无事实源，放开会直接放大编造 |
+| 负向词表 | **保持不动** | 投诉、站外引流、退款动作、转人工——这就是「合规/安全」的全部 |
+
+预期效果：接管率 5/22（23%）→ 16/22（73%）；剩余 6 条是零命中闲聊（「？」「已经买了」「[捂脸哭]」），不属白名单问题。
+
+### 5.2 移除人工确认模式：可以删，但要按顺序
+
+现有触点 6 处：`engine/reply_review.go`（79 行）+ 测试（213 行）、`ReplyService.reviewNotifier` 字段与构造参数、`application/settings/service.go` 的键校验分支、前端 `AISettings.tsx` 开关 + `models.ts`/`constants.ts`/`api.ts`、前端测试。
+
+**风险**：它是当前唯一的「发送前人工缓冲」。删掉之后，AI 的每条产出都会直接外发，唯一的确定性保护只剩 A4 的回避话术兜底——而 A4 挡不住「承诺包邮 / 承诺售后 / 承诺时效」这类编造。
+
+**建议顺序**：先在线上查一次 `ai_reply_review_mode` 的实际值（若为开，说明至少有人在用，删前需确认）→ 与 E1/E2 同批上线总闸 → 观察一周编造类投诉 → 再删。删除本身是一次性动作，晚删一周的成本远低于删早了出事。
+
+### 5.3 准入层自动同步：设想可行，但不要同步等待
+
+现状证据：`canAutoReply` 全程是**本地查询**（`ItemBelongsToAccount`）；mtop `Client` 接口**没有单品详情方法**（`fetchItemDetail` 是私有的，`DetectItemMultiSpec`/`FetchItemPublisher` 只读不落库），`adapter` 侧只有 `SyncAll`/`SyncPage` 列表同步；`items.UpsertItemBasic` 存在可复用。
+
+| 方案 | 做法 | 问题 |
+|---|---|---|
+| A 阻塞式全量同步 | 发现缺失 → 调 `SyncAll` → 重查 | 列表分页多次请求，1~3 秒起；dispatcher 串行处理，会拖垮整账号吞吐 |
+| B 单品详情直查 | 新增 `FetchItemDetail`（公开）+ 映射落库 → 重查 | 单次请求可控，但要新增字段映射，且凭证锁 + 网络 I/O 仍在回复链上 |
+| **C 异步补齐（推荐）** | 缺失时投递一次去重的补齐任务，本条按现有降级 | 本条仍不回，下一条即可命中；无阻塞、无风暴 |
+
+**推荐 C 先上、B 作为第二阶段**。无论哪个方案都必须配套：同一商品负缓存（24h 内不重试）、按账号限流（例：5 分钟 3 次）、single-flight（并发消息只触发一次）、以及明确的失败语义（同步失败不得改变「不回」的默认）。
+验收：`ai_decision_log` 出现新 reason `item-sync-requested`；补齐成功后该会话下一条消息 `reason=taken`。
+
+### 5.4 密钥审计膨胀：可优化，推荐内存缓存 + 写时失效
+
+量级：`globalAIConfig` 每条 AI 回复调一次 `ReadSensitiveSettingForAccount` → **每条回复一行 `security_audit_logs`**；该表已有 30 天保留清理（`retention.go:108`），所以是「有界但没必要的高频」——日 300 条回复即约 9000 行/月。
+
+| 方案 | 说明 | 取舍 |
+|---|---|---|
+| 读缓存（TTL 10 分钟） | 命中缓存不写审计，只有真实解密读取才写 | 审计语义从「每次访问」变「每次真实读取」，需在文档写明 |
+| 写入去重 | 同 (user,key,action) 窗口内合并一行 | 每次仍打一次 DB |
+| **专用 provider（推荐）** | `aiKeyProvider`：TTL + single-flight + 设置写入时 bump 版本失效 | 一次改动同时解决审计膨胀与每次解密的 CPU 开销 |
+
+注意：`Settings.Get` 是普通读、不审计；总闸与 `ai_scope_config` 走普通读路径，不受此事影响。
+
+### 5.5 Agent 开关统一：留配置、去开关
+
+现状：`ai_enabled`（AI）之外还叠了两层——租户 `agent.support.enabled` 与账号 `agent_enabled`，`ResolveSession` 返回 `effective.Enabled`。三者独立，用户极易误判「全开了」。
+
+建议：**`ResolveSession` 的 enabled 直接取统一生效值**（E1/E2 的产物），`preset` 仍按「租户默认 → 账号覆盖」解析并保留。
+要删：`KeySupportEnabled`、`agent_enabled` 列的读取、4 个 `/api/v1/agent/support/*` 接口里的 enabled 字段、前端 AgentCenter 与账号页的 Agent 开关。
+要留：preset 的读写接口与 UI。
+
+**风险**：Agent 带工具，成本与延迟都高于单次问答；「AI 开 = Agent 开」会把工具调用量一起拉起来，与 E4 意图放开叠加时尤其明显。默认档位保持 `readonly`（`capability.DefaultPreset`），需要时再逐账号升档。
+
+### 5.6 五项合起来的实施顺序
+
+1. **E1 + E2**（语义反转 + 总闸）——一切的前提；
+2. **E6 删人工确认**——必须在 E1/E2 之后，且线上原值先确认；
+3. **E4 意图放开**——order → inquiry → consult，逐条配可机检期望；
+4. **E7 密钥 provider**——与总闸同批，避免开启后审计表暴涨；
+5. **E8 准入层异步补齐**——独立，可并行；
+6. **E9 Agent 开关统一**——最后做，避免与前三项同时在线上放大变量。

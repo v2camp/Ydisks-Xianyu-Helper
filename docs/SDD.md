@@ -82,8 +82,12 @@
 | E1 | 语义反转：无行 = 跟随总闸（默认开），有 0 = 显式关 | `未开始` | `ai_reply.go:107` 仍返回 `ErrNotFound`；`ai.go:68` 仍按 nil 跳过 |
 | E2 | 全局总闸 `ai_master_enabled`（缺省为开，走普通读取不写审计） | `未开始` | `system_settings` 无该键，`ai.go` 无总闸判定 |
 | E3 | 契约与 UI：`effective_enabled` + `source`，设置页顶部总闸开关 | `未开始` | `ai_enabled` 仍是唯一字段；前端无全局开关 |
-| E4 | 意图白名单放开（先 order / consult，spec / usage 待 A2） | `未开始` | `ai_scope.go:168-175` 四类仍 `allowAI=false` |
+| E4 | 意图白名单放开：order → inquiry → consult（spec / usage 待 A2） | `未开始` | `ai_scope.go:161-175` 四类仍 `allowAI=false`；负向词表保持不动 |
 | E5 | 自检与人工确认口径同步 | `未开始` | `ai_readiness.go:47` 仍把「无启用行」当故障；`ai_reply_review_mode` 与总闸无联动提示 |
+| E6 | 移除人工确认模式（UI + 逻辑 + 契约） | `未开始` | 触点 6 处：`reply_review.go`(79 行)+测试(213 行)、`settings/service.go:535` 键校验、前端 3 处、前端测试。**前置：先查线上 `ai_reply_review_mode` 实际值** |
+| E7 | AI 密钥 provider（TTL + single-flight + 写时失效） | `未开始` | `globalAIConfig` 每条回复都走 `ReadSensitiveSettingForAccount` → 每条回复一行审计；日 300 条 ≈ 9000 行/月 |
+| E8 | 准入层异步补齐缺失商品（方案 C） | `未开始` | `canAutoReply` 纯本地查询，`mtop.Client` 无单品详情方法；需负缓存 24h + 按账号限流 + single-flight，新 reason `item-sync-requested` |
+| E9 | Agent 开关归并到统一开关（保留 preset 配置） | `未开始` | 待删：`KeySupportEnabled`、`agent_enabled` 列读取、4 个 `/api/v1/agent/support/*` 的 enabled 字段、前端两处开关；默认档保持 `readonly` |
 
 ### 1.6 待决策（非工程待办，需产品/用户拍板）
 
@@ -98,6 +102,8 @@
 | O5 | 颜色令牌是否做统一治理子项目 | 设计决策 | `docs/architecture/ai-agent-config-domain-plan.md` §11 |
 | O6 | Agent 中心依赖行是否支持就地配置 | 架构边界决策（涉及「消费侧不编辑供给」） | 同上 §11 |
 | O7 | 买家侧「是否收到」确认信号如何采集 | 产品 + 技术，闭环最高遗留风险 | `docs/attribution-queries.md` |
+| O8 | 历史 `ai_enabled=0` 行如何解释（显式关 vs 继承默认开） | 决定 E1 的迁移语义：若一律继承，原先手工关掉的账号会被打开 | `docs/customer-service-ai-default-on-plan.md` §2 |
+| O9 | 删人工确认前的线上原值确认（是否真有人用） | 只能查生产库，需用户授权执行 | 同上 §5.2 |
 
 ## 2. 索引：方案与设计文档
 
