@@ -38,7 +38,7 @@
 
 ## 1. 待办总表
 
-### 1.1 P0 准确性（当前唯一活跃档位）
+### 1.1 P0 准确性
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 | 方案出处 |
 |---|---|---|---|---|
@@ -75,7 +75,17 @@
 | D1 | 提示词 token 瘦身 | `未开始` | 商品「描述」注入平台原始 JSON，噪音且占 token | 升级计划 §12 |
 | D2 | 多轮上下文裁剪 | `未开始` | 依赖 D1，暂不评估 | 同上 |
 
-### 1.5 待决策（非工程待办，需产品/用户拍板）
+### 1.5 E 组：AI 默认开启与一键关闭（P0，方案见 `docs/customer-service-ai-default-on-plan.md`）
+
+| 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
+|---|---|---|---|
+| E1 | 语义反转：无行 = 跟随总闸（默认开），有 0 = 显式关 | `未开始` | `ai_reply.go:107` 仍返回 `ErrNotFound`；`ai.go:68` 仍按 nil 跳过 |
+| E2 | 全局总闸 `ai_master_enabled`（缺省为开，走普通读取不写审计） | `未开始` | `system_settings` 无该键，`ai.go` 无总闸判定 |
+| E3 | 契约与 UI：`effective_enabled` + `source`，设置页顶部总闸开关 | `未开始` | `ai_enabled` 仍是唯一字段；前端无全局开关 |
+| E4 | 意图白名单放开（先 order / consult，spec / usage 待 A2） | `未开始` | `ai_scope.go:168-175` 四类仍 `allowAI=false` |
+| E5 | 自检与人工确认口径同步 | `未开始` | `ai_readiness.go:47` 仍把「无启用行」当故障；`ai_reply_review_mode` 与总闸无联动提示 |
+
+### 1.6 待决策（非工程待办，需产品/用户拍板）
 
 这些不是「没写代码」，而是「等一个决定」，因此不占四态：
 
@@ -99,6 +109,7 @@
 | `docs/architecture/comment-standard.md` | 中文注释标准 | 生效中 |
 | `docs/customer-service-agent-upgrade-plan.md` | 客服 Agent 总体方案 + §12 看板 | 持续演进 |
 | `docs/eval-harness-validity-diagnosis-20261101.md` | 评测口径 7 处缺陷与修复记录 | A1 依据 |
+| `docs/customer-service-ai-default-on-plan.md` | AI 默认开启与一键关闭的阻碍清单与整改方案 | E 组依据 |
 | `docs/eval-replay-runbook.md` | 评测运行手册 | 生效中 |
 | `docs/attribution-queries.md` | 三张归因表 SQL 手册 | 生效中 |
 | `docs/architecture/agent-capability-kernel-plan.md` | 能力内核方案（含未决项） | 方案态 |
