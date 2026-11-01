@@ -355,6 +355,25 @@ npm --prefix frontend run build
 
 Use local fixtures, httptest, mock accounts, and local browser pages. Never use real credentials in tests.
 
+## Roadmap and status (SDD)
+
+**[docs/SDD.md](docs/SDD.md) is the single source of truth for open work.** It is the only place that
+lists unfinished items and their status; every other document describes design, decisions, and evidence,
+and must not maintain its own todo list.
+
+Each item carries exactly one of four states: `未开始` (not started), `在树` (merged to main),
+`已发布` (running image contains it), `已生效` (verified by live telemetry or evaluation).
+`在树` does **not** mean fixed — the column always states what is still missing.
+
+Conventions:
+
+- Read `docs/SDD.md` before starting work to get the active priority tier (accuracy > generality > hotfix > performance).
+- Update the status cell and its evidence in the same change that alters it.
+- Register any new planning document in the SDD index, otherwise it becomes an orphan.
+- Do not claim completion unless the SDD row is `已发布` or `已生效`.
+
+The six-stage refactor status stays defined by `docs/architecture/refactoring-master-plan.md`; SDD only references it.
+
 ## Troubleshooting
 
 ### Administrator initialization
