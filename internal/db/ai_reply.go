@@ -233,15 +233,17 @@ func (a *AIReply) PricingMode(ctx context.Context, cookieID string) (bool, bool,
 func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, error) {
 	// s 是本账号的 AI 设置结果。
 	var s AIReplySettings
-	// enabled 是账号级开关整数值；列值为 NULL 时按 1（跟随总闸）读取。
-	var enabled int
+	// enabled 是账号级开关列的原值；Valid 为 false 表示该账号从未显式提交过开关。
+	// 这里刻意不先做 COALESCE：显式标记必须能区分「列有值」与「列为空」，
+	// 否则「只保存了砍价护栏」的账号会被误报成「账号显式开启」。
+	var enabled sql.NullInt64
 	// autoAdjustEnabled 表示 AI 报价是否允许在订单创建后触发真实改价；NULL 时按关闭读取。
 	var autoAdjustEnabled int
 	// customPrompts 是账号自定义提示词，数据库允许为空。
 	var customPrompts sql.NullString
 	// err 是配置查询错误；ErrNoRows 表示账号尚未保存显式设置。
 	err := a.DB.QueryRowContext(ctx,
-		`SELECT cookie_id, COALESCE(ai_enabled, 1), COALESCE(auto_adjust_price_enabled, 0),
+		`SELECT cookie_id, ai_enabled, COALESCE(auto_adjust_price_enabled, 0),
 		        COALESCE(max_discount_percent, ?), COALESCE(max_discount_amount, ?), COALESCE(max_bargain_rounds, ?),
 		        COALESCE(custom_prompts, '')
 		 FROM ai_reply_settings WHERE cookie_id=?`,
@@ -256,8 +258,9 @@ func (a *AIReply) Get(ctx context.Context, cookieID string) (*AIReplySettings, e
 		}
 		return nil, err
 	}
-	s.AIEnabled = enabled != 0
-	s.AIEnabledExplicit = true
+	// 未显式提交（NULL）时按「跟随总闸」取 true，与 COALESCE(ai_enabled,1) 口径一致。
+	s.AIEnabled = !enabled.Valid || enabled.Int64 != 0
+	s.AIEnabledExplicit = enabled.Valid
 	s.AutoAdjustPriceEnabled = autoAdjustEnabled != 0
 	s.CustomPrompts = customPrompts.String
 	return &s, nil
@@ -275,7 +278,7 @@ func (a *AIReply) ListForUser(ctx context.Context, userID int64) ([]AIReplySetti
 		       COALESCE(s.ai_enabled, 1), COALESCE(s.auto_adjust_price_enabled, 0),
 		       COALESCE(s.max_discount_percent, ?), COALESCE(s.max_discount_amount, ?), COALESCE(s.max_bargain_rounds, ?),
 		       COALESCE(s.custom_prompts, ''),
-		       CASE WHEN s.cookie_id IS NULL THEN 0 ELSE 1 END
+		       CASE WHEN s.ai_enabled IS NULL THEN 0 ELSE 1 END
 		  FROM cookies c
 		  LEFT JOIN ai_reply_settings s ON s.cookie_id = c.id
 		 WHERE c.user_id = ?
@@ -313,11 +316,14 @@ func (a *AIReply) ListForUser(ctx context.Context, userID int64) ([]AIReplySetti
 // 这让「只改砍价护栏」的保存不会把原本启用的账号悄悄写成显式关闭。
 // 布尔列一律经 boolToInt 写入：pgx 的二进制编码会拒绝把 Go bool 写进 int4 列。
 func (a *AIReply) UpsertSettings(ctx context.Context, cookieID string, settings AIReplySettings) error {
-	// insertEnabled 是首次插入行的 ai_enabled 初值。
-	insertEnabled := boolToInt(settings.AIEnabled)
+	// insertEnabled 是首次插入行的 ai_enabled 初值；nil 落库为 NULL。
+	//
+	// 未提交开关时写 NULL 而不是 1：NULL 才是「该账号从未显式表态」的准确表示。
+	// 写 1 虽然生效值相同，但会让 source 把「只改过砍价护栏」的账号报成
+	// 「账号显式设置」（接口契约里 source=account 就是这个含义），属于对调用方撒谎。
+	var insertEnabled any = boolToInt(settings.AIEnabled)
 	if settings.SkipAIEnabled {
-		// 不提交开关时插入 1：没有历史值时，「跟随总闸」在总闸开启下等价于显式启用。
-		insertEnabled = 1
+		insertEnabled = nil
 	}
 	// assignments 是冲突时需要覆盖的列及其 SQL 表达式。
 	assignments := map[string]string{
@@ -328,12 +334,13 @@ func (a *AIReply) UpsertSettings(ctx context.Context, cookieID string, settings 
 		"custom_prompts":            "EXCLUDED.custom_prompts",
 		"updated_at":                "CURRENT_TIMESTAMP",
 	}
-	if settings.SkipAIEnabled {
-		// ai_enabled=ai_enabled 是两种方言都支持的「保留已有值」写法（右值指向更新前的行）。
-		assignments["ai_enabled"] = "ai_enabled"
-	} else {
+	if !settings.SkipAIEnabled {
 		assignments["ai_enabled"] = "EXCLUDED.ai_enabled"
 	}
+	// SkipAIEnabled 时刻意不把 ai_enabled 放进 assignments：不在 SET 列表里的列本来就不会被更新，
+	// 这既是「保留已有值」最直白的表达，也是唯一在两种方言上都合法的写法。
+	// 不要改回 assignments["ai_enabled"]="ai_enabled"——PostgreSQL 在 ON CONFLICT DO UPDATE 里
+	// 对未限定的同名列会判歧义（SQLSTATE 42702），而 SQLite 能通过，只测 SQLite 抓不到。
 	// err 是配置写入失败原因。
 	_, err := a.DB.ExecContext(ctx,
 		`INSERT INTO ai_reply_settings

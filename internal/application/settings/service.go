@@ -67,7 +67,8 @@ type AIReplySettings struct {
 	CookieID string
 	// AIEnabled 是账号级 AI 回复开关：未显式保存过设置时为跟随全局总闸的默认值 true。
 	AIEnabled bool
-	// AIEnabledExplicit 表示账号是否已显式保存过开关；读路径由是否存在设置行决定，
+	// AIEnabledExplicit 表示账号是否已显式保存过开关；读路径由 ai_enabled 列是否有值决定，
+	// 不能看「是否存在设置行」——保存砍价护栏与 Agent 档位都会建行但都不表达开关意愿，
 	// false 表示开关跟随全局总闸（来源记为 global）。
 	AIEnabledExplicit bool
 	// SkipAIEnabled 表示本次保存不修改账号级开关，保留数据库中的已有值。
