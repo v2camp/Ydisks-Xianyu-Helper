@@ -1306,14 +1306,19 @@ func TestUsers_UpdateCredentials(t *testing.T) {
 
 // --- ai_reply.go ---
 
-// TestAIReply_GetNotFound 不存在返回 ErrNotFound。
+// TestAIReply_GetNotFound 账号没有显式设置行时返回跟随总闸的默认护栏，而不是 ErrNotFound。
 func TestAIReply_GetNotFound(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newTestDB(t)
 	defer cleanup()
-	if // err 用于本次流程后续判断的err
-	_, err := s.AIReply.Get(context.Background(), "nope"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
+	// cfg、err 是不存在显式行的账号配置与读取错误。
+	cfg, err := s.AIReply.Get(context.Background(), "nope")
+	if err != nil {
+		t.Fatalf("无显式行应返回默认配置, got %v", err)
+	}
+	// 无显式行必须标记 AIEnabledExplicit=false，供展示层给出 source=global。
+	if cfg == nil || !cfg.AIEnabled || cfg.AIEnabledExplicit || cfg.CookieID != "nope" {
+		t.Fatalf("默认配置不符: %+v", cfg)
 	}
 }
 

@@ -26,25 +26,30 @@ const minAIReadinessInterval = time.Minute
 // AIReadinessReport 是一次 AI 启用链路自检的结果。
 // 只记录判定结论与账号标识，不含任何凭据内容。
 type AIReadinessReport struct {
-	// EnabledCookieIDs 是 ai_enabled 为真的账号列表。
+	// MasterEnabled 表示 AI 全局总闸（system_settings.ai_master_enabled）是否开启；未配置视为开启。
+	MasterEnabled bool
+	// EnabledCookieIDs 是账号级启用 AI 的账号列表：不区分是否已显式保存设置行，
+	// 只要没有被显式关闭就算启用；是否真正生效还取决于 MasterEnabled。
 	EnabledCookieIDs []string
 	// ScopeConfigured 表示 ai_scope_config 是否已写入；未写入时回落内置边界，不算阻断。
 	ScopeConfigured bool
-	// CredentialIssues 是凭据侧的阻断说明（已启用但未配置密钥、或配置无法读取）。
+	// CredentialIssues 是凭据侧的阻断说明（未配置密钥、或配置无法读取）。
 	CredentialIssues []string
 }
 
-// Ready 表示可判定部分均无阻断：至少一个账号启用 AI，且没有凭据问题。
+// Ready 表示可判定部分均无阻断：全局总闸开启，且没有凭据问题。
+// 账号是否「已显式启用」不再是前置条件——无设置行的账号默认跟随总闸。
 func (r AIReadinessReport) Ready() bool {
-	return len(r.EnabledCookieIDs) > 0 && len(r.CredentialIssues) == 0
+	return r.MasterEnabled && len(r.CredentialIssues) == 0
 }
 
 // Problems 把阻断项整理成人读说明，供启动日志与巡检共用。
+// 「没有任何账号启用 AI」不再是故障：默认开启语义下只要账号未被显式关闭即视为启用。
 func (r AIReadinessReport) Problems() []string {
 	// problems 是累积的阻断说明。
 	problems := make([]string, 0, 2+len(r.CredentialIssues))
-	if len(r.EnabledCookieIDs) == 0 {
-		problems = append(problems, "没有任何账号启用 AI 回复（ai_reply_settings 无启用行），四条回复通道里 AI 与默认回复都不会工作")
+	if !r.MasterEnabled {
+		problems = append(problems, "AI 总闸已关闭（system_settings.ai_master_enabled），所有账号的 AI 回复都不会工作")
 	}
 	problems = append(problems, r.CredentialIssues...)
 	return problems
@@ -61,7 +66,13 @@ func CheckAIReadiness(ctx context.Context, store *db.Store) (AIReadinessReport, 
 	if store == nil {
 		return report, errors.New("自检需要已初始化的存储")
 	}
-	// ids、err 是启用 AI 的账号列表；查询失败必须显式返回，不能当作「没有账号启用」。
+	// master、masterErr 是全局总闸的生效值；查询失败必须显式返回，不能当作「总闸关闭」。
+	master, masterErr := store.AIReply.MasterEnabled(ctx)
+	if masterErr != nil {
+		return report, fmt.Errorf("读取 AI 全局总闸失败: %w", masterErr)
+	}
+	report.MasterEnabled = master
+	// ids、err 是账号级启用 AI 的账号列表；查询失败必须显式返回，不能当作「没有账号启用」。
 	ids, err := store.AIReply.ListEnabledCookieIDs(ctx)
 	if err != nil {
 		return report, fmt.Errorf("查询启用 AI 的账号失败: %w", err)
@@ -73,21 +84,36 @@ func CheckAIReadiness(ctx context.Context, store *db.Store) (AIReadinessReport, 
 		return report, fmt.Errorf("读取 AI 边界配置失败: %w", err)
 	}
 	report.ScopeConfigured = strings.TrimSpace(raw) != ""
-	// id 是当前检查的账号。
-	for _, id := range ids {
-		// key、keyErr 是该账号解析出的 API 密钥；失败说明存储或账号所有者异常。
-		key, keyErr := store.ReadSensitiveSettingForAccount(ctx, id, "ai_api_key", "settings.use", "ai_reply")
-		if keyErr != nil {
-			report.CredentialIssues = append(report.CredentialIssues,
-				fmt.Sprintf("账号 %s 已启用 AI，但读取 ai_api_key 失败：%v", id, keyErr))
-			continue
-		}
-		if strings.TrimSpace(key) == "" {
-			report.CredentialIssues = append(report.CredentialIssues,
-				fmt.Sprintf("账号 %s 已启用 AI，但未配置 ai_api_key，AI 回复会被静默跳过", id))
-		}
+	// AI 模型密钥是全局单键，与账号数量无关：只按第一个启用账号的所有者审计读取一次，
+	// 避免账号数变全量后每次自检都刷出成百条 security_audit_logs。
+	if len(ids) > 0 {
+		report.checkCredential(ctx, store, ids[0])
 	}
 	return report, nil
+}
+
+// checkCredential 检查一次全局 AI 模型密钥是否可用，并把阻断原因累积到 report 上。
+// 参数 ctx 是自检作用域；store 是只读查询边界；cookieID 是任一启用账号，仅用于解析密钥审计归属的所有者。
+// 该方法只读取密钥是否存在，不保存也不记录密钥内容。
+func (r *AIReadinessReport) checkCredential(ctx context.Context, store *db.Store, cookieID string) {
+	// ownerID、ownerErr 是该账号的所有者标识；失败说明账号或会话存储异常。
+	ownerID, ownerErr := store.Cookies.GetOwnerID(ctx, cookieID)
+	if ownerErr != nil {
+		r.CredentialIssues = append(r.CredentialIssues,
+			fmt.Sprintf("读取 AI 密钥归属账号 %s 失败：%v", cookieID, ownerErr))
+		return
+	}
+	// key、keyErr 是解密后的全局 AI 密钥；失败说明存储或审计写入异常。
+	key, keyErr := store.ReadSensitiveSetting(ctx, ownerID, "ai_api_key", "settings.use", "ai_readiness")
+	if keyErr != nil {
+		r.CredentialIssues = append(r.CredentialIssues,
+			fmt.Sprintf("读取 ai_api_key 失败：%v", keyErr))
+		return
+	}
+	if strings.TrimSpace(key) == "" {
+		r.CredentialIssues = append(r.CredentialIssues,
+			"未配置 ai_api_key，AI 回复会被静默跳过")
+	}
 }
 
 // AIReadinessProbe 周期执行 AI 启用链路自检，把「配了但没生效」从静默变成告警。

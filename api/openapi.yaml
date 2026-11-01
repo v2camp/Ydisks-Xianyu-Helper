@@ -8065,10 +8065,19 @@ components:
       items: {$ref: '#/components/schemas/ItemReplyResponse'}
     AIReplySettingsResponse:
       type: object
-      required: [ai_enabled, auto_adjust_price_enabled, max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts]
+      required: [ai_enabled, effective_enabled, source, auto_adjust_price_enabled, max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts]
       properties:
         cookie_id: {type: string}
-        ai_enabled: {type: boolean}
+        ai_enabled:
+          type: boolean
+          description: 账号显式保存的 AI 开关值；账号跟随全局总闸时取默认值 true，语义需结合 source 判断。
+        effective_enabled:
+          type: boolean
+          description: 全局总闸与账号开关组合后的生效值；只有为 true 时 AI 才会实际回复。
+        source:
+          type: string
+          enum: [global, account]
+          description: 开关来源。global 表示跟随全局总闸，account 表示账号显式设置。
         auto_adjust_price_enabled: {type: boolean}
         max_discount_percent: {type: integer}
         max_discount_amount: {type: integer}
@@ -8076,9 +8085,11 @@ components:
         custom_prompts: {type: string}
     AIReplySettingsUpdateRequest:
       type: object
-      required: [ai_enabled, auto_adjust_price_enabled, max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts]
+      required: [auto_adjust_price_enabled, max_discount_percent, max_discount_amount, max_bargain_rounds, custom_prompts]
       properties:
-        ai_enabled: {type: boolean}
+        ai_enabled:
+          type: boolean
+          description: 账号显式开关。缺省表示本次不修改开关，保留账号已有显式值；账号从未保存过设置时继续跟随全局总闸。
         auto_adjust_price_enabled: {type: boolean}
         max_discount_percent: {type: integer, minimum: 0, maximum: 100}
         max_discount_amount: {type: integer, minimum: 0}

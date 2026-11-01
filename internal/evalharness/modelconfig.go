@@ -10,7 +10,6 @@ package evalharness
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -144,20 +143,19 @@ func readModelConfigFromDB(ctx context.Context, store *db.Store) (ModelConfig, e
 	}, nil
 }
 
-// firstAIEnabledAccount 取任意一个已启用 AI 回复的账号标识。
+// firstAIEnabledAccount 取任意一个账号级启用 AI 回复的账号标识。
 // 该查询只读取账号主键，不涉及任何凭证解密。
+//
+// 口径复用 db.AIReply.ListEnabledCookieIDs：没有 ai_reply_settings 行的账号默认跟随总闸，
+// 同样算启用。这里不再复制一份裸 SQL，避免「自检全开、评测却说无启用账号」的口径漂移。
 func firstAIEnabledAccount(ctx context.Context, store *db.Store) (string, error) {
-	// query 取启用 AI 的账号，顺序固定便于复现。
-	query := `SELECT cookie_id FROM ai_reply_settings WHERE ai_enabled = 1 ORDER BY cookie_id LIMIT 1`
-	// cookieID 是查询结果。
-	var cookieID string
-	// err 是查询失败原因；sql.ErrNoRows 单独提示，避免与连接错误混淆。
-	err := store.DB.QueryRowContext(ctx, query).Scan(&cookieID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", errors.New("数据库中没有启用 AI 回复的账号，无法读取模型配置")
-	}
+	// ids 是按账号升序排列的账号级启用清单。
+	ids, err := store.AIReply.ListEnabledCookieIDs(ctx)
 	if err != nil {
 		return "", fmt.Errorf("查询启用 AI 的账号失败: %w", err)
 	}
-	return cookieID, nil
+	if len(ids) == 0 {
+		return "", errors.New("数据库中没有启用 AI 回复的账号，无法读取模型配置")
+	}
+	return ids[0], nil
 }

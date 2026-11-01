@@ -65,8 +65,16 @@ type SecretChange struct {
 type AIReplySettings struct {
 	// CookieID 是设置所属账号的稳定标识。
 	CookieID string
-	// AIEnabled 表示账号 AI 回复是否启用。
+	// AIEnabled 是账号级 AI 回复开关：未显式保存过设置时为跟随全局总闸的默认值 true。
 	AIEnabled bool
+	// AIEnabledExplicit 表示账号是否已显式保存过开关；读路径由是否存在设置行决定，
+	// false 表示开关跟随全局总闸（来源记为 global）。
+	AIEnabledExplicit bool
+	// SkipAIEnabled 表示本次保存不修改账号级开关，保留数据库中的已有值。
+	// HTTP 请求未提交 ai_enabled 时置为 true；默认 false 表示照常写入，保持既有调用方语义。
+	SkipAIEnabled bool
+	// EffectiveEnabled 是把全局总闸与账号开关组合后的生效值，只在读路径由适配器填充。
+	EffectiveEnabled bool
 	// AutoAdjustPriceEnabled 表示是否把有效 AI 报价自动应用到买家新拍订单。
 	AutoAdjustPriceEnabled bool
 	// MaxDiscountPercent 是允许的最大折扣比例。
@@ -343,10 +351,23 @@ func (s *Service) UpsertAIReply(ctx context.Context, userID int64, cookieID stri
 	if settings.MaxBargainRounds < 1 || settings.MaxBargainRounds > 10 {
 		return validationError("最大砍价轮次必须在 1 到 10 之间")
 	}
-	if settings.AutoAdjustPriceEnabled && !settings.AIEnabled {
+	// accountAIEnabled 是本次保存后账号级 AI 开关的值，用于两条改价前置校验。
+	// 未提交开关（SkipAIEnabled）时沿用已保存值；账号从未保存过设置时按「跟随全局总闸」视为启用，
+	// 否则默认开启的账号会因为请求未带 ai_enabled 而永远开不了自动改价。
+	accountAIEnabled := settings.AIEnabled
+	if settings.SkipAIEnabled {
+		accountAIEnabled = true
+		// current、currentErr 是账号已保存的 AI 设置；ErrConfigNotFound 表示尚未保存过，按跟随总闸处理。
+		if current, currentErr := s.repository.GetAIReply(ctx, userID, strings.TrimSpace(cookieID)); currentErr == nil {
+			accountAIEnabled = current.AIEnabled
+		} else if !errors.Is(currentErr, ErrConfigNotFound) {
+			return currentErr
+		}
+	}
+	if settings.AutoAdjustPriceEnabled && !accountAIEnabled {
 		return validationError("开启 AI 自动改价前必须先启用 AI 议价")
 	}
-	if settings.AIEnabled {
+	if accountAIEnabled {
 		// conflict 表示当前账号是否已有启用的固定价格规则；conflictErr 是查询错误。
 		conflict, conflictErr := s.repository.HasEnabledAdjustPriceRule(ctx, strings.TrimSpace(cookieID))
 		if conflictErr != nil {
@@ -511,6 +532,12 @@ func validateSystemValue(key, value string) error {
 	case "outbound_http_public_only":
 		if !strings.EqualFold(trimmed, "true") && !strings.EqualFold(trimmed, "false") {
 			return validationError("outbound_http_public_only 必须是布尔值")
+		}
+	case "ai_master_enabled":
+		// AI 全局总闸只接受 true/false：空串等价于「未配置」在读取侧已被视为开启，
+		// 若允许空串落库会让「清空开关」与「默认开启」两种意图无法区分。
+		if !strings.EqualFold(trimmed, "true") && !strings.EqualFold(trimmed, "false") {
+			return validationError("ai_master_enabled 必须是布尔值")
 		}
 	case "global_send_daily_limit", "silence_alert_minutes":
 		// n、err 是解析出的非负整数；负数或非法值拒绝落库，避免额度或阈值被悄悄重置或反向配置。

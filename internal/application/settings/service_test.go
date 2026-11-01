@@ -693,6 +693,10 @@ func TestValidateSystemValue(t *testing.T) {
 		{name: "备份间隔非法档位", key: "backup_interval_hours", value: "6", wantErr: true},
 		{name: "备份间隔非法文本", key: "backup_interval_hours", value: "每天", wantErr: true},
 		{name: "备份间隔负值", key: "backup_interval_hours", value: "-12", wantErr: true},
+		{name: "AI总闸开启", key: "ai_master_enabled", value: "true", wantErr: false},
+		{name: "AI总闸关闭", key: "ai_master_enabled", value: "FALSE", wantErr: false},
+		{name: "AI总闸空串拒绝", key: "ai_master_enabled", value: "", wantErr: true},
+		{name: "AI总闸非法取值", key: "ai_master_enabled", value: "maybe", wantErr: true},
 		{name: "其它设置放行", key: "theme_color", value: "blue", wantErr: false},
 	}
 	for // tc 表示当前遍历过程中的用例

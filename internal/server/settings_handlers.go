@@ -32,8 +32,8 @@ type systemSettingUpdateRequest struct {
 
 // aiReplySettingsUpdateRequest 是保存账号 AI 回复策略的 HTTP 请求 DTO。
 type aiReplySettingsUpdateRequest struct {
-	// AIEnabled 是账号 AI 自动回复开关。
-	AIEnabled bool `json:"ai_enabled"`
+	// AIEnabled 是账号 AI 自动回复开关；缺省（null）表示本次不修改开关，保留已有显式值。
+	AIEnabled *bool `json:"ai_enabled"`
 	// AutoAdjustPriceEnabled 是把 AI 有效报价自动应用到待付款订单的显式开关。
 	AutoAdjustPriceEnabled bool `json:"auto_adjust_price_enabled"`
 	// MaxDiscountPercent 是允许自动接受的最大折扣百分比。
@@ -44,6 +44,23 @@ type aiReplySettingsUpdateRequest struct {
 	MaxBargainRounds int `json:"max_bargain_rounds"`
 	// CustomPrompts 是账号专用的补充提示词。
 	CustomPrompts string `json:"custom_prompts"`
+}
+
+// aiReplySettingsResponseFrom 把应用层设置摘要转换为具名响应 DTO。
+// 参数 cfg 是账号级设置，EffectiveEnabled 已由应用层按全局总闸折算；
+// 开关来源按「是否存在显式开关」给出，避免把跟随总闸误报成账号显式启用。
+func aiReplySettingsResponseFrom(cfg settingsapp.AIReplySettings) aiReplySettingsResponse {
+	// source 是开关来源：有显式行记 account，否则记 global。
+	source := aiReplySourceGlobal
+	if cfg.AIEnabledExplicit {
+		source = aiReplySourceAccount
+	}
+	return aiReplySettingsResponse{
+		CookieID: cfg.CookieID, AIEnabled: cfg.AIEnabled, EffectiveEnabled: cfg.EffectiveEnabled, Source: source,
+		AutoAdjustPriceEnabled: cfg.AutoAdjustPriceEnabled, MaxDiscountPercent: cfg.MaxDiscountPercent,
+		MaxDiscountAmount: cfg.MaxDiscountAmount, MaxBargainRounds: cfg.MaxBargainRounds,
+		CustomPrompts: cfg.CustomPrompts,
+	}
 }
 
 // aiModelListRequest 是读取指定 AI 服务模型目录的 HTTP 请求 DTO。
@@ -342,14 +359,8 @@ func (s *Server) listAIReply(w http.ResponseWriter, r *http.Request) {
 	result := make(map[string]aiReplySettingsResponse)
 	// row 表示当前遍历过程中的row
 	for _, row := range rows {
-		result[row.CookieID] = aiReplySettingsResponse{
-			CookieID: row.CookieID, AIEnabled: row.AIEnabled, AutoAdjustPriceEnabled: row.AutoAdjustPriceEnabled, MaxDiscountPercent: row.MaxDiscountPercent,
-			MaxDiscountAmount: row.MaxDiscountAmount, MaxBargainRounds: row.MaxBargainRounds, CustomPrompts: row.CustomPrompts,
-			// 账号标识和五项配置字段保持旧 JSON 名称。
-			// 布尔值继续由数据库整数转换得到。
-			// 自定义提示词不做额外格式化。
-			// DTO 转换不改变查询失败处理。
-		}
+		// 未保存过设置的账号同样出现在列表里，其开关来源是全局总闸（source=global）。
+		result[row.CookieID] = aiReplySettingsResponseFrom(row)
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -368,8 +379,12 @@ func (s *Server) getAIReply(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.settingsApplication().GetAIReply(r.Context(), sess.UserID, cid)
 	if err != nil {
 		if errors.Is(err, settingsapp.ErrConfigNotFound) {
-			// 未保存配置使用与旧接口一致的默认值。
-			writeJSON(w, http.StatusOK, aiReplySettingsResponse{AIEnabled: false, AutoAdjustPriceEnabled: false, MaxDiscountPercent: 10, MaxDiscountAmount: 100, MaxBargainRounds: 3, CustomPrompts: ""})
+			// 兜底分支：账号不在当前用户范围内时不再回显配置，只给出与默认开启语义一致的缺省值。
+			// 正常路径下从未保存过设置的账号会由应用层返回「跟随全局总闸」的默认摘要。
+			writeJSON(w, http.StatusOK, aiReplySettingsResponse{
+				AIEnabled: true, EffectiveEnabled: false, Source: aiReplySourceGlobal,
+				AutoAdjustPriceEnabled: false, MaxDiscountPercent: 10, MaxDiscountAmount: 100, MaxBargainRounds: 3, CustomPrompts: "",
+			})
 			return
 		}
 		if writeSettingsAccountError(w, err) {
@@ -379,13 +394,9 @@ func (s *Server) getAIReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 已保存配置返回账号标识，客户端可据此区分账号级设置。
-	// AIEnabled 表示账号 AI 回复开关。
-	// 折扣上限字段保持原有数值类型和命名。
-	// 砍价轮次字段保持原有校验范围。
-	// CustomPrompts 仍返回原始提示词文本。
-	// 该响应仅静态化 JSON 结构，不改变存储或校验逻辑。
-	// 旧客户端可以继续直接读取这些字段。
-	writeJSON(w, http.StatusOK, aiReplySettingsResponse{CookieID: cfg.CookieID, AIEnabled: cfg.AIEnabled, AutoAdjustPriceEnabled: cfg.AutoAdjustPriceEnabled, MaxDiscountPercent: cfg.MaxDiscountPercent, MaxDiscountAmount: cfg.MaxDiscountAmount, MaxBargainRounds: cfg.MaxBargainRounds, CustomPrompts: cfg.CustomPrompts})
+	// AIEnabled 是账号显式值；EffectiveEnabled 才是「AI 是否真的会回复」的结论值。
+	// 折扣上限、砍价轮次与自定义提示词字段保持原有类型和命名。
+	writeJSON(w, http.StatusOK, aiReplySettingsResponseFrom(cfg))
 }
 
 // setAIReply 封装setAI回复业务协调。
@@ -425,13 +436,21 @@ func (s *Server) setAIReply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "最大砍价轮次必须在 1 到 10 之间")
 		return
 	}
-	if req.AutoAdjustPriceEnabled && !req.AIEnabled {
+	// 请求显式提交「关闭开关 + 开启自动改价」时在传输层直接拒绝，给出稳定文案；
+	// 未提交 ai_enabled 的情况无法只凭请求体判断（账号可能跟随全局总闸），由应用层按生效值校验。
+	if req.AutoAdjustPriceEnabled && req.AIEnabled != nil && !*req.AIEnabled {
 		writeErr(w, http.StatusBadRequest, "开启 AI 自动改价前必须先启用 AI 议价")
 		return
 	}
+	// enabled 是本次提交的账号级开关值；请求未提交开关时该值被忽略。
+	enabled := false
+	if req.AIEnabled != nil {
+		enabled = *req.AIEnabled
+	}
 	// err 是 AI 回复配置写入错误。
 	err := s.settingsApplication().UpsertAIReply(r.Context(), sess.UserID, cid, settingsapp.AIReplySettings{
-		CookieID: cid, AIEnabled: req.AIEnabled, AutoAdjustPriceEnabled: req.AutoAdjustPriceEnabled, MaxDiscountPercent: req.MaxDiscountPercent,
+		CookieID: cid, AIEnabled: enabled, SkipAIEnabled: req.AIEnabled == nil,
+		AutoAdjustPriceEnabled: req.AutoAdjustPriceEnabled, MaxDiscountPercent: req.MaxDiscountPercent,
 		MaxDiscountAmount: req.MaxDiscountAmount, MaxBargainRounds: req.MaxBargainRounds,
 		CustomPrompts: req.CustomPrompts,
 	})

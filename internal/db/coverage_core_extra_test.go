@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
@@ -16,19 +15,19 @@ func TestAIReplySettingsAndConversationBranches(t *testing.T) {
 	// userID、cookieID 保存 AI 配置所属账号。
 	userID, cookieID := seedAccount(t, store)
 
-	// enabled、enabledErr 验证未配置账号按关闭处理。
+	// enabled、enabledErr 验证未配置账号默认跟随全局总闸（总闸未配置视为开启）。
 	enabled, enabledErr := store.AIReply.IsEnabled(ctx, cookieID)
-	if enabledErr != nil || enabled {
+	if enabledErr != nil || !enabled {
 		t.Fatalf("missing IsEnabled=%v err=%v", enabled, enabledErr)
 	}
-	// aiEnabled、autoAdjustEnabled、modeErr 验证未配置账号的双开关默认关闭。
+	// aiEnabled、autoAdjustEnabled、modeErr 验证未配置账号的议价生效、真实改价默认关闭。
 	aiEnabled, autoAdjustEnabled, modeErr := store.AIReply.PricingMode(ctx, cookieID)
-	if modeErr != nil || aiEnabled || autoAdjustEnabled {
+	if modeErr != nil || !aiEnabled || autoAdjustEnabled {
 		t.Fatalf("missing PricingMode=%v/%v err=%v", aiEnabled, autoAdjustEnabled, modeErr)
 	}
-	// missing、missingErr 验证读取不存在的完整配置返回领域未找到错误。
+	// missing、missingErr 验证读取不存在的完整配置返回跟随总闸的默认护栏，而不是未找到错误。
 	missing, missingErr := store.AIReply.Get(ctx, cookieID)
-	if missing != nil || !errors.Is(missingErr, ErrNotFound) {
+	if missingErr != nil || missing == nil || !missing.AIEnabled || missing.AIEnabledExplicit || missing.MaxBargainRounds != aiReplyDefaultMaxBargainRounds {
 		t.Fatalf("missing Get=%+v err=%v", missing, missingErr)
 	}
 

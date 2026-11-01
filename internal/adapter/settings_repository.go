@@ -167,10 +167,16 @@ func (r *SettingsRepository) CheckOwnership(ctx context.Context, userID int64, c
 }
 
 // ListAIReply 查询用户范围内的账号 AI 设置摘要，数据库层不会读取 API 密钥。
+// 数据库查询以 cookies 为主表，因此从未保存过设置的账号也会出现，其开关跟随全局总闸。
 func (r *SettingsRepository) ListAIReply(ctx context.Context, userID int64) ([]settingsapp.AIReplySettings, error) {
 	// err 表示设置数据库适配器未装配。
 	if err := r.validate(); err != nil {
 		return nil, err
+	}
+	// master 是全局总闸；用于把账号开关折算成生效值，只读一次避免按账号数放大查询。
+	master, masterErr := r.store.AIReply.MasterEnabled(ctx)
+	if masterErr != nil {
+		return nil, masterErr
 	}
 	// records、err 保存数据库 AI 设置摘要及查询错误。
 	records, err := r.store.AIReply.ListForUser(ctx, userID)
@@ -181,16 +187,22 @@ func (r *SettingsRepository) ListAIReply(ctx context.Context, userID int64) ([]s
 	result := make([]settingsapp.AIReplySettings, 0, len(records))
 	// record 是当前待转换的数据库 AI 设置摘要。
 	for _, record := range records {
-		result = append(result, aiReplyModel(record))
+		result = append(result, aiReplyModel(record, master))
 	}
 	return result, nil
 }
 
 // GetAIReply 从用户范围摘要中读取单个账号，避免解密或传递账号 API 密钥。
+// 账号存在但从未保存过设置时返回「跟随全局总闸」的默认摘要，只有账号不在该用户范围时才返回 ErrConfigNotFound。
 func (r *SettingsRepository) GetAIReply(ctx context.Context, userID int64, cookieID string) (settingsapp.AIReplySettings, error) {
 	// err 表示设置数据库适配器未装配。
 	if err := r.validate(); err != nil {
 		return settingsapp.AIReplySettings{}, err
+	}
+	// master 是全局总闸；用于把账号开关折算成生效值。
+	master, masterErr := r.store.AIReply.MasterEnabled(ctx)
+	if masterErr != nil {
+		return settingsapp.AIReplySettings{}, masterErr
 	}
 	// records、err 保存数据库 AI 设置摘要及查询错误。
 	records, err := r.store.AIReply.ListForUser(ctx, userID)
@@ -200,13 +212,16 @@ func (r *SettingsRepository) GetAIReply(ctx context.Context, userID int64, cooki
 	// record 是当前待匹配的账号 AI 设置摘要。
 	for _, record := range records {
 		if record.CookieID == cookieID {
-			return aiReplyModel(record), nil
+			return aiReplyModel(record, master), nil
 		}
 	}
 	return settingsapp.AIReplySettings{}, settingsapp.ErrConfigNotFound
 }
 
 // UpsertAIReply 将账号 AI 设置转换为数据库模型并保存。
+//
+// 互斥校验必须用生效值：本次未提交开关时先解析出账号级现值，
+// 且全局总闸关闭时 AI 不会实际改价，此时已有的固定改价规则不构成冲突。
 func (r *SettingsRepository) UpsertAIReply(ctx context.Context, cookieID string, settings settingsapp.AIReplySettings) error {
 	// err 表示设置数据库适配器未装配。
 	if err := r.validate(); err != nil {
@@ -215,7 +230,22 @@ func (r *SettingsRepository) UpsertAIReply(ctx context.Context, cookieID string,
 	// unlock 串行化 AI 议价与固定规则改价的最终冲突检查和写入。
 	unlock := r.store.LockPricingMode()
 	defer unlock()
-	if settings.AIEnabled {
+	// accountEnabled 是本次写入后账号级开关的值；默认取提交值。
+	accountEnabled := settings.AIEnabled
+	if settings.SkipAIEnabled {
+		// current、currentErr 是已保存的账号设置；无设置行时 Get 返回跟随总闸的默认值（AIEnabled 为 true）。
+		current, currentErr := r.store.AIReply.Get(ctx, cookieID)
+		if currentErr != nil {
+			return currentErr
+		}
+		accountEnabled = current.AIEnabled
+	}
+	// master 是全局总闸；关闭时 AI 不参与任何改价，因此固定改价规则不再与之互斥。
+	master, masterErr := r.store.AIReply.MasterEnabled(ctx)
+	if masterErr != nil {
+		return masterErr
+	}
+	if master && accountEnabled {
 		// conflict 表示最终写入时账号是否已有启用的固定改价规则；conflictErr 是查询错误。
 		conflict, conflictErr := r.store.Automation.HasEnabledAdjustPriceRule(ctx, cookieID)
 		if conflictErr != nil {
@@ -226,8 +256,9 @@ func (r *SettingsRepository) UpsertAIReply(ctx context.Context, cookieID string,
 		}
 	}
 	return r.store.AIReply.UpsertSettings(ctx, cookieID, db.AIReplySettings{
-		CookieID: cookieID, AIEnabled: settings.AIEnabled, AutoAdjustPriceEnabled: settings.AutoAdjustPriceEnabled,
-		MaxDiscountPercent: settings.MaxDiscountPercent, MaxDiscountAmount: settings.MaxDiscountAmount,
+		CookieID: cookieID, AIEnabled: settings.AIEnabled, SkipAIEnabled: settings.SkipAIEnabled,
+		AutoAdjustPriceEnabled: settings.AutoAdjustPriceEnabled,
+		MaxDiscountPercent:     settings.MaxDiscountPercent, MaxDiscountAmount: settings.MaxDiscountAmount,
 		MaxBargainRounds: settings.MaxBargainRounds, CustomPrompts: settings.CustomPrompts,
 	})
 }
@@ -264,10 +295,13 @@ func (r *SettingsRepository) validateAudit() error {
 	return nil
 }
 
-// aiReplyModel 将不含 API 密钥的数据库摘要转换为应用模型。
-func aiReplyModel(record db.AIReplySettings) settingsapp.AIReplySettings {
+// aiReplyModel 把不含 API 密钥的数据库摘要转换为应用模型，并按全局总闸折算生效值。
+// 参数 record 是账号级设置；master 是全局总闸的生效值，仅用于计算 EffectiveEnabled。
+// 返回值的 AIEnabledExplicit 为 false 表示该账号没有显式开关，开关来源是全局总闸。
+func aiReplyModel(record db.AIReplySettings, master bool) settingsapp.AIReplySettings {
 	return settingsapp.AIReplySettings{
-		CookieID: record.CookieID, AIEnabled: record.AIEnabled, AutoAdjustPriceEnabled: record.AutoAdjustPriceEnabled,
+		CookieID: record.CookieID, AIEnabled: record.AIEnabled, AIEnabledExplicit: record.AIEnabledExplicit,
+		EffectiveEnabled: master && record.AIEnabled, AutoAdjustPriceEnabled: record.AutoAdjustPriceEnabled,
 		MaxDiscountPercent: record.MaxDiscountPercent, MaxDiscountAmount: record.MaxDiscountAmount,
 		MaxBargainRounds: record.MaxBargainRounds, CustomPrompts: record.CustomPrompts,
 	}

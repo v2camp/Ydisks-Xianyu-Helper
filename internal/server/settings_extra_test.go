@@ -427,7 +427,8 @@ func TestGetAIReplyExistingAccountWithoutConfigReturnsDefault(t *testing.T) {
 	// res 用于本次流程后续判断的响应
 	var res map[string]any
 	json.Unmarshal(rec.Body.Bytes(), &res)
-	if res["ai_enabled"] != false || res["max_discount_percent"] != float64(10) {
+	// 默认语义已反转为「跟随全局总闸」：账号开关值取默认 true、来源 global、生效值取决于总闸（未配置即开启）。
+	if res["ai_enabled"] != true || res["source"] != aiReplySourceGlobal || res["effective_enabled"] != true || res["max_discount_percent"] != float64(10) {
 		t.Fatalf("默认值异常: %+v", res)
 	}
 }

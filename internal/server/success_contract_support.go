@@ -7,12 +7,22 @@ import (
 	notificationsapp "xianyu-go/internal/application/notifications"
 )
 
+// aiReplySourceGlobal 是 AI 开关来源取值：账号没有显式设置，跟随全局总闸。
+const aiReplySourceGlobal = "global"
+
+// aiReplySourceAccount 是 AI 开关来源取值：账号级设置显式决定开关。
+const aiReplySourceAccount = "account"
+
 // aiReplySettingsResponse 是账号 AI 回复设置接口的具名响应 DTO。
 type aiReplySettingsResponse struct {
 	// CookieID 是账号稳定标识；默认配置响应省略该字段。
 	CookieID string `json:"cookie_id,omitempty"`
-	// AIEnabled 表示账号 AI 回复是否启用。
+	// AIEnabled 是账号显式保存的开关值；账号跟随全局总闸时为默认值 true，需结合 Source 判断语义。
 	AIEnabled bool `json:"ai_enabled"`
+	// EffectiveEnabled 是全局总闸与账号开关组合后的生效值，前端应据此展示「AI 是否真的会回复」。
+	EffectiveEnabled bool `json:"effective_enabled"`
+	// Source 是开关来源：global 表示跟随全局总闸，account 表示账号显式设置。
+	Source string `json:"source"`
 	// AutoAdjustPriceEnabled 表示有效 AI 报价是否会触发真实订单改价。
 	AutoAdjustPriceEnabled bool `json:"auto_adjust_price_enabled"`
 	// MaxDiscountPercent 是允许的最大折扣比例。

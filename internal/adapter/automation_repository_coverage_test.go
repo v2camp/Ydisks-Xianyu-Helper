@@ -135,10 +135,20 @@ func TestAutomationRepositoryPricingModeAndSensitiveSummary(t *testing.T) {
 	if foreignCard != (automationapp.CardInfo{}) || !errors.Is(foreignCardErr, automationapp.ErrRuleNotFound) {
 		t.Fatalf("foreign card=%+v err=%v", foreignCard, foreignCardErr)
 	}
-	// aiBefore、aiBeforeErr 保存尚未配置 AI 开关时的默认状态。
+	// aiBefore、aiBeforeErr 保存尚未配置 AI 开关时的默认状态：无设置行即跟随全局总闸，视为启用。
 	aiBefore, aiBeforeErr := repository.AIReplyEnabled(ctx, "cid")
-	if aiBeforeErr != nil || aiBefore {
+	if aiBeforeErr != nil || !aiBefore {
 		t.Fatalf("default AI enabled=%v err=%v", aiBefore, aiBeforeErr)
+	}
+	// disabledErr 保存显式关闭 AI 议价设置的错误。
+	disabledErr := store.AIReply.UpsertSettings(ctx, "cid", db.AIReplySettings{AIEnabled: false, MaxBargainRounds: 2})
+	if disabledErr != nil {
+		t.Fatal(disabledErr)
+	}
+	// aiDisabled、aiDisabledErr 保存显式关闭后的 AI 开关状态。
+	aiDisabled, aiDisabledErr := repository.AIReplyEnabled(ctx, "cid")
+	if aiDisabledErr != nil || aiDisabled {
+		t.Fatalf("disabled AI=%v err=%v", aiDisabled, aiDisabledErr)
 	}
 	// settingsErr 保存开启 AI 议价设置的错误。
 	settingsErr := store.AIReply.UpsertSettings(ctx, "cid", db.AIReplySettings{AIEnabled: true, MaxBargainRounds: 2})
