@@ -92,7 +92,7 @@
 | E7 | AI 密钥 provider（TTL + single-flight + 写时失效） | `未开始` | `globalAIConfig` 每条回复都走 `ReadSensitiveSettingForAccount` → 每条回复一行审计；日 300 条 ≈ 9000 行/月 |
 | E8 | 准入层异步补齐缺失商品（方案 C） | `已发布` | `f762c353`：新增 `item_backfill.go`（去重 + 24h 负缓存 + 按账号限流 + single-flight），单商品详情走新窄接口不改 `mtop.Client`，`platform_unresolved` 永久短路已修；原因码 `item-sync-requested` / `item-sync-failed` |
 | E9 | Agent 开关归并到统一开关（保留 preset 配置） | `已发布` | `c0008544`：`KeySupportEnabled`、`agent_enabled` 读取、4 个接口 enabled 字段已删；`ResolveSession` 恒 true；并修掉写档位顺带写 `ai_enabled=0` 的隐患 |
-| E10 | 修掉 `source` 标签对「只配过 Agent 档位」的账号误报为 `account` | `未开始` | 写档位时按 `SkipAIEnabled` 插入写 1，`AIEnabledExplicit` 按列非空判定，故该类账号显示为「账号显式开」而用户从未动过 AI 开关。生效值正确，仅标签失真；彻底修法是把「未提交」写成 NULL 并让两条写入路径统一，需配套测试 |
+| E10 | `source` 只认「显式保存过开关」 | `已发布` | `808322f9`（合并 `d870a64f`）：定性为缺陷——契约规定 `source=account` 表示「账号显式设置」，实现却用「行存在」冒充。未提交开关时改落 NULL，两条写入通路统一；`AIEnabledExplicit` 改判列是否有值。**顺带修掉只在 PostgreSQL 暴露的 `ON CONFLICT DO UPDATE` 列名歧义（SQLSTATE 42702）**，SQLite 测不出。生产实测：只改护栏 PUT 返回 200 且 `ai_enabled` 原值保留 |
 
 ### 1.6 待决策（非工程待办，需产品/用户拍板）
 
