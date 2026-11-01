@@ -298,8 +298,11 @@ func TestAIReplyBuildsExecutableQuote(t *testing.T) {
 	}
 }
 
-// TestAIReply_NonBargainMessageFallsThrough 封装TestAI回复NonBargain消息FallsThrough业务协调。
-func TestAIReply_NonBargainMessageFallsThrough(t *testing.T) {
+// TestAIReply_ZeroIntentMessageFallsThrough 验证零意图消息不进 AI 层、交默认回复。
+//
+// 原用例用「在吗，什么时候发货」作为「非砍价」样本；2026-11-01 放开 order 接管后，
+// 这句话已属正常接管范围，故改用真正零意图的问候语，才继续守住「零命中不调模型」这条边界。
+func TestAIReply_ZeroIntentMessageFallsThrough(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newAIStore(t)
 	defer cleanup()
@@ -310,9 +313,9 @@ func TestAIReply_NonBargainMessageFallsThrough(t *testing.T) {
 	s.Settings.Set(ctx, "ai_api_url", "http://127.0.0.1:1")
 
 	// res、err 用于本次流程后续判断的res、err
-	res, err := NewAIReplier("cid", s, nil).Reply(ctx, chatMsg("在吗，什么时候发货", "item1", "chat1"))
+	res, err := NewAIReplier("cid", s, nil).Reply(ctx, chatMsg("你好", "item1", "chat1"))
 	if err != nil || res != nil {
-		t.Fatalf("非砍价消息应交给默认回复: res=%+v err=%v", res, err)
+		t.Fatalf("零意图消息应交给默认回复: res=%+v err=%v", res, err)
 	}
 }
 

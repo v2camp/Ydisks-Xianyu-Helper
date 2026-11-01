@@ -118,12 +118,17 @@ const builtinBargainExpr = "(便宜|优惠|少点|最低|砍价|降价|打折)|(
 // 「退货」保持整词：买家说到退货时已进入售后流程，应交人工。
 const builtinComplaintExpr = "要退款|我退款|给我退|申请退款|已退款|退款吧|退掉|退下款|退了吧|退货|投诉|差评|举报|骗子|骗人|假货|被骗|维权|微信|加微|加V|维信|薇信|二维码|扫码|线下|站外|起诉|法院|报警|消协|工商|12315|侵权|盗版|违规|扣分|封号|申诉|转人工|人工客服|找人工|转接人工"
 
-// 内置非接管意图词表与历史意图注册表等价：仅参与命中标注（写入历史），不触发接管；
-// 保证未配置时「多意图归并 ambiguous」等历史语义不变。
+// 内置接管意图词表：命中即允许 AI 应答，收录真实聊天里高频且有确定答案的问法。
+//
+// 收录标准是「有确定事实源可依据」，不是「风险低」：
+// 补偿性约束（fabricationGuard 枚举禁令、价格守卫、回避话术兜底）负责兜住越界，
+// 词表只负责决定「这个问题值不值得交给 AI 答」。
 const (
-	// builtinOrderExpr 是订单/发货咨询意图，覆盖发货时效、发货方式与网盘渠道问法。
+	// builtinOrderExpr 是订单/发货咨询意图，覆盖发货方式与网盘渠道问法。
 	// 渠道词（百度/夸克/度盘/迅雷）与口语疑问句式（X 吗 / 什么盘）必须收录：
 	// 真实买家以「有夸克吗」「百度吗」为主，只写「什么网盘」会大面积漏配。
+	// 发货时效类问法也命中本意图，但答案边界由 fabricationGuard 第 5 条与卡密渠道事实锁定，
+	// 不得因本意图放开而承诺「多久发出」「今天能否发出」。
 	builtinOrderExpr = "发货|还没发|直接拍|拍下|提取码|网盘|什么盘|哪种盘|百度|度盘|夸克|迅雷|资源码|下载链接|链接|怎么下载|怎么发|什么时候发|多久发|发货方式|什么网盘|发网盘"
 	// builtinInquiryExpr 是询价意图。「包邮」已迁到 builtinShippingExpr：
 	// 它问的是运费归属，留在这里会与 shipping 同时命中，把单一意图打成 ambiguous。
@@ -131,10 +136,6 @@ const (
 	// builtinConsultExpr 是商品内容咨询意图。刻意不收「是什么」「啥」这类通用疑问词，
 	// 否则「发货方式是什么」会同时命中 order 与 consult，把单一意图打成 ambiguous。
 	builtinConsultExpr = "内容|适合|有效|真实|怎么用|讲什么|讲的什么"
-)
-
-// 内置接管意图词表：命中即允许 AI 应答，收录真实聊天里高频且有确定答案的问法。
-const (
 	// builtinStockExpr 是内容完整性咨询意图，覆盖全集/完结/剧集范围的口语问法。
 	// 末尾两项用双引号包成正则词，匹配「第 N 季」里的变动数字与中文数字。
 	builtinStockExpr = `全集|全剧|完整版|完结|所有的|全吗|多少集|几集|更新完|更新了吗|单买|"第[一二三四五六七八九十\d]季"|"第\d+季"`
@@ -152,8 +153,15 @@ const (
 	builtinShippingExpr = "运费|邮费|物流费|快递费|快递多少钱|快递多钱|走快递|发快递|寄到|运到|邮寄|能寄|可以寄|寄吗|包邮|自提"
 )
 
-// defaultScope 是 ai_scope_config 未配置时的内置边界：仅砍价允许 AI 接管，
-// 其余正向意图只参与意图标注，负向词表为内置投诉词。
+// defaultScope 是 ai_scope_config 未配置时的内置边界：
+// 除 spec 与 usage 两个缺事实源的意图外，其余正向意图全部允许 AI 接管；
+// 负向词表为内置投诉词，是唯一代表「合规与安全拦截」的一层。
+//
+// 为什么放开 order / inquiry / consult：2026-11-01 用内置边界对 22 条真实买家消息
+// 实测，17 条被判 no-intent，其中 11 条只命中 order（「有度盘的吗」「夸克？」「发网盘吗」），
+// 负向词 0 命中——当时的白名单拦下的主力是发货渠道问句，而这正是卡密渠道事实最完整的一类。
+// spec 与 usage 继续拦：前者依赖标题规格抽取覆盖率（A2），后者是有效期/会员类承诺，
+// 两者都没有事实源，放开会直接放大编造。
 var defaultScope = &aiScope{
 	negative:    orMatchers(compileSafe(builtinComplaintExpr)),
 	fingerprint: defaultScopeFingerprint,
@@ -165,9 +173,9 @@ var defaultScope = &aiScope{
 		// 运费咨询允许接管：平台运费标注（包邮/不包邮/仅自提）是确定事实，
 		// 未标注时也有明确的「需另议、不得承诺包邮」口径，不会退化成编造。
 		{id: IntentShipping, allowAI: true, match: compileSafe(builtinShippingExpr)},
-		{id: IntentOrder, allowAI: false, match: compileSafe(builtinOrderExpr)},
-		{id: IntentInquiry, allowAI: false, match: compileSafe(builtinInquiryExpr)},
-		{id: IntentConsult, allowAI: false, match: compileSafe(builtinConsultExpr)},
+		{id: IntentOrder, allowAI: true, match: compileSafe(builtinOrderExpr)},
+		{id: IntentInquiry, allowAI: true, match: compileSafe(builtinInquiryExpr)},
+		{id: IntentConsult, allowAI: true, match: compileSafe(builtinConsultExpr)},
 		// 规格与时效类暂时只标注不接管：商品侧尚无确定的规格事实源，
 		// 交给 AI 硬答会重演「答非所问」，待事实源补齐后再放开。
 		{id: IntentSpec, allowAI: false, match: compileSafe(builtinSpecExpr)},
