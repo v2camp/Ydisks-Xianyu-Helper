@@ -1,6 +1,6 @@
 import type { AgentPresetOption,AgentSupportSettings,AgentSupportSettingsUpdate,MCPAuditPage,MCPAuditRecord,MCPServiceStatus,OperationResponse,SystemSettings } from './models';
 import { contractClient, runContractRequest } from '../../../shared/api-contract/client';
-import { normalizeSystemSettingsUpdate,SENSITIVE_SYSTEM_SETTING_KEYS } from '../../../shared/api-contract/settings';
+import { isQQConnectorReady,normalizeSystemSettingsUpdate,SENSITIVE_SYSTEM_SETTING_KEYS } from '../../../shared/api-contract/settings';
 import { type RequestControlOptions } from '../../../shared/http/client';
 import { collectionFrom } from '../../../shared/http/contract';
 import type { SystemSettingsUpdate } from '../../../shared/api-contract/settings';
@@ -41,11 +41,12 @@ const normalizeSettings = (settings: Record<string, unknown>): SystemSettings =>
     // publicOnly 保存统一出站策略的布尔状态，兼容旧服务端返回的字符串。
     result.outbound_http_public_only = result.outbound_http_public_only === true || result.outbound_http_public_only === 'true';
   }
-  if ('ai_reply_review_mode' in result) {
-    // reviewEnabled 是人工确认开关的布尔状态，匹配引擎接受的真值集合。
-    const raw = result.ai_reply_review_mode;
-    result.ai_reply_review_mode = typeof raw === 'string' && ['1', 'true', 'yes', 'on', 'enabled'].includes(raw.toLowerCase());
-  }
+  // 总闸缺省语义是开启：只有显式写入 "false" 才算关闭，因此未配置时必须回落 true。
+  // masterRaw 是服务端返回的总闸原始值，可能是布尔、数字或字符串。
+  const masterRaw = result.ai_master_enabled;
+  result.ai_master_enabled = masterRaw === undefined || masterRaw === null
+    ? true
+    : masterRaw === true || masterRaw === 1 || masterRaw === '1' || String(masterRaw).toLowerCase() === 'true';
   if ('global_send_daily_limit' in result) {
     // limit 是完成数值转换后的全局日发送额度，非有限值回落不限（0）。
     const limit = Number(result.global_send_daily_limit);
@@ -249,21 +250,23 @@ const parseAgentPresetOptions = (payload: unknown): AgentPresetOption[] => colle
     description: String(entry.description ?? ''),
   }));
 
-/** 读取租户级客服 Agent 的默认开关、默认档位与服务端下发的可选档位名单。 */
+/** 读取租户级客服 Agent 的默认档位与服务端下发的可选档位名单；是否运行由 AI 生效值统一决定。 */
 export const getAgentSupportSettings = async (options?: RequestControlOptions): Promise<AgentSupportSettings> => {
-  // response 是 OpenAPI 约束的客服 Agent 租户配置响应。
+  // response 是 OpenAPI 约束的客服 Agent 租户配置响应，只含档位相关字段。
   const response = await runContractRequest(/* signal 控制客服 Agent 租户配置读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/support/settings', { signal }), options);
   return {
-    enabled: response.enabled === true,
     preset: typeof response.preset === 'string' ? response.preset : '',
     presets: parseAgentPresetOptions(response.presets),
   };
 };
 
-/** 保存租户级客服 Agent 的默认开关与档位；该配置是未单独覆盖的账号的继承来源。 */
+/** 保存租户级客服 Agent 的默认档位；该配置是未单独覆盖的账号的继承来源。 */
 export const updateAgentSupportSettings = async (update: AgentSupportSettingsUpdate, options?: RequestControlOptions): Promise<void> => {
   await runContractRequest(/* signal 控制客服 Agent 租户配置保存的取消和超时。 */ signal => contractClient.PUT('/api/v1/agent/support/settings', {
-    body: { enabled: update.enabled, preset: update.preset },
+    body: { preset: update.preset },
     signal,
   }), options);
 };
+
+/** 判断 QQ 机器人凭据是否足以启用运营 Agent；Hook 只能经本 feature adapter 使用该判定，不得直接依赖 transport 模块。 */
+export const isQQBotConnectorReady = isQQConnectorReady;

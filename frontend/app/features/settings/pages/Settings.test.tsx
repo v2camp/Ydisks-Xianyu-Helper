@@ -26,6 +26,8 @@ const SYSTEM_SETTINGS_FIXTURE: SystemSettings = {
   log_level: 'info',
   log_format: 'text',
   renewal_log_retention_days: 10,
+  // 总闸属于 AI 设置页的白名单字段，系统设置页必须把它排除在外。
+  ai_master_enabled: true,
   backup_interval_hours: '24',
   global_send_daily_limit: 5,
   silence_alert_minutes: 180,
@@ -58,6 +60,7 @@ describe('Settings 保存范式', /* 当前测试组验证系统配置保存改�
     const payload = updateSettingsMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload.log_level).toBe('info');
     expect(payload.ai_api_url).toBeUndefined();
+    expect(payload.ai_master_enabled).toBeUndefined();
     expect(window.alert).not.toHaveBeenCalled();
   });
 

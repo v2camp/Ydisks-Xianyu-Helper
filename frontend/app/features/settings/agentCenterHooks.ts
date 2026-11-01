@@ -1,7 +1,6 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
-import { isQQConnectorReady } from '../../../shared/api-contract/settings';
 import type { DependencyState } from '../../../shared/ui/DependencyRow';
-import { getAgentSupportSettings,getSystemSettings,updateAgentSupportSettings } from './api';
+import { getAgentSupportSettings,getSystemSettings,isQQBotConnectorReady,updateAgentSupportSettings } from './api';
 import { createMCPServiceMessage,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage } from './state';
 import type { AgentSupportSettings,AgentSupportSettingsUpdate,MCPServiceMessage } from './models';
 
@@ -42,8 +41,8 @@ const deriveAgentDependencies = (settings: Record<string, unknown>): AgentDepend
   aiScope: String(settings[AI_SCOPE_SETTING_KEY] ?? '').trim() !== '' ? 'ready' : 'fallback',
   // 至少一个外部 MCP 服务才算具备工具能力；空串与非法 JSON 都按未配置处理。
   aiTools: countMCPServers(settings[MCP_SERVERS_SETTING_KEY]) >= 1 ? 'ready' : 'missing',
-  // QQ 凭据判定与运营 Agent 的启用前提一致，由跨 feature 的共享判定函数给出。
-  qqConnector: isQQConnectorReady(settings) ? 'ready' : 'missing',
+  // QQ 凭据判定与运营 Agent 的启用前提一致，经本 feature adapter 转出共享判定函数。
+  qqConnector: isQQBotConnectorReady(settings) ? 'ready' : 'missing',
 });
 
 /** Agent 中心页的 Hook 返回值。 */
@@ -167,13 +166,13 @@ export const useAgentCenter = (): UseAgentCenterResult => {
     setSettings(/* updater 基于当前草稿合并补丁，草稿缺失时不重建。 */ current => current ? { ...current, ...patch } : current);
   }, []);
 
-  /** submit 保存租户级客服 Agent 的开关与档位。 */
+  /** submit 保存租户级客服 Agent 的默认档位；Agent 是否运行不在这里控制。 */
   const submit = useCallback(/* 当前回调提交租户配置并收敛保存提示。 */ async (): Promise<void> => {
     if (!settings || saving) return;
     setSaving(true);
     setSaveMessage(null);
     try {
-      await updateAgentSupportSettings({ enabled: settings.enabled, preset: settings.preset });
+      await updateAgentSupportSettings({ preset: settings.preset });
       setSaveMessage(createMCPServiceMessage('success', '客服 Agent 配置已保存'));
     } catch (/* error 是保存请求的失败原因，转为页面提示而不改动草稿。 */ error) {
       setSaveMessage(createMCPServiceMessage('error', settingsErrorMessage(error, '保存客服 Agent 配置失败')));

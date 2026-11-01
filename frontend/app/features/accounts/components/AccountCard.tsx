@@ -73,6 +73,7 @@ export const AccountCard = React.memo(/* AccountCard 负责渲染单个账号卡
           <div className="flex flex-wrap items-center gap-2.5 mb-1">
             <h3 className="text-xl font-extrabold text-gray-900 break-words">{account.nickname || account.remark || `账号 ${account.id.substring(0, 6)}...`}</h3>
             <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${runtime.badge}`}>{runtime.label}</span>
+            {/* ai_enabled 是合并后的生效值：跟随全局且总闸开着时同样显示 AI 标记。 */}
             {account.ai_enabled && (
               <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1 ${CHIP_TONE_STYLES.ai}`}>
                 <Bot className="w-3 h-3" /> AI

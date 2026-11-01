@@ -41,8 +41,8 @@ export interface SystemSettings {
   ai_knowledge_config?: string;
   /** 策略配置 JSON：报价与拒绝兜底话术模板。 */
   ai_policy_config?: string;
-  /** 是否启用 AI 回复人工确认模式，开启后 AI 回复需人工确认后再发送。 */
-  ai_reply_review_mode?: boolean;
+  /** 是否启用 AI 全局总闸；关闭后所有账号的 AI 回复立即停止，未配置时按开启处理。 */
+  ai_master_enabled?: boolean;
   /** 多账号合计的每日发送条数上限，0 表示不限制。 */
   global_send_daily_limit?: number;
   /** 业务静默告警阈值（分钟），0 表示关闭看门狗，未配置回落默认 180。 */
@@ -60,8 +60,12 @@ export interface SystemSettings {
 
 /** 由当前 feature adapter 归一后的 AIReplySettings UI 模型；不直接暴露 HTTP DTO。 */
 export interface AIReplySettings {
-  /** 是否启用账号 AI 回复。 */
+  /** 账号显式保存的 AI 开关值；语义需结合 source 判断，不代表实际是否回复。 */
   ai_enabled: boolean;
+  /** 全局总闸与账号开关组合后的生效值；只有为 true 时 AI 才会实际回复。 */
+  effective_enabled?: boolean;
+  /** 开关来源：global 表示跟随全局总闸，account 表示账号显式设置。 */
+  source?: 'global' | 'account';
   /** 最大折扣比例。 */
   max_discount_percent: number;
   /** 最大折扣金额。 */
@@ -179,18 +183,14 @@ export interface AgentPresetOption {
 
 /** 租户级客服 Agent 配置 UI 模型；账号未单独覆盖时按此生效。 */
 export interface AgentSupportSettings {
-  /** 租户默认是否开启客服 Agent。 */
-  enabled: boolean;
-  /** 租户默认能力档位稳定标识。 */
+  /** 租户默认能力档位稳定标识；Agent 是否运行统一由 AI 生效值决定，此处不再有开关。 */
   preset: string;
   /** 服务端下发的可选档位名单，顺序即展示顺序。 */
   presets: AgentPresetOption[];
 }
 
-/** 租户级客服 Agent 配置的保存载荷；两个字段都是全量替换语义。 */
+/** 租户级客服 Agent 配置的保存载荷；档位是整份配置的唯一可变字段。 */
 export interface AgentSupportSettingsUpdate {
-  /** 保存后的租户默认开关。 */
-  enabled: boolean;
   /** 保存后的租户默认档位稳定标识。 */
   preset: string;
 }

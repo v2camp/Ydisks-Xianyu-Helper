@@ -2084,28 +2084,23 @@ export interface components {
             description: string;
         };
         AgentSupportSettingsResponse: {
-            enabled: boolean;
-            /** @description 当前租户默认档位；取值属于 presets 名单 */
+            /** @description 当前租户默认档位；取值属于 presets 名单。是否运行客服 Agent 由统一 AI 开关决定，本响应不含开关键 */
             preset: string;
             presets: components["schemas"]["AgentPresetResponse"][];
         };
         AgentSupportSettingsUpdateRequest: {
-            enabled: boolean;
             /** @description 目标档位；不属于 presets 名单时返回 400 */
             preset: string;
         };
         AgentSupportAccountResponse: {
             cookie_id: string;
-            enabled: boolean;
             /** @description 账号当前生效档位；账号未覆盖时即租户默认档位 */
             preset: string;
-            account_enabled: boolean | null;
             /** @description 账号级档位覆盖；null 表示继承租户默认 */
             account_preset: string | null;
             presets: components["schemas"]["AgentPresetResponse"][];
         };
         AgentSupportAccountUpdateRequest: {
-            enabled: boolean | null;
             /** @description 账号级档位覆盖；null 表示继承租户默认；不属于 presets 名单时返回 400 */
             preset: string | null;
         };
@@ -2389,7 +2384,15 @@ export interface components {
         ItemReplyListResponse: components["schemas"]["ItemReplyResponse"][];
         AIReplySettingsResponse: {
             cookie_id?: string;
+            /** @description 账号显式保存的 AI 开关值；账号跟随全局总闸时取默认值 true，语义需结合 source 判断。 */
             ai_enabled: boolean;
+            /** @description 全局总闸与账号开关组合后的生效值；只有为 true 时 AI 才会实际回复。 */
+            effective_enabled: boolean;
+            /**
+             * @description 开关来源。global 表示跟随全局总闸，account 表示账号显式设置。
+             * @enum {string}
+             */
+            source: "global" | "account";
             auto_adjust_price_enabled: boolean;
             max_discount_percent: number;
             max_discount_amount: number;
@@ -2397,7 +2400,8 @@ export interface components {
             custom_prompts: string;
         };
         AIReplySettingsUpdateRequest: {
-            ai_enabled: boolean;
+            /** @description 账号显式开关。缺省表示本次不修改开关，保留账号已有显式值；账号从未保存过设置时继续跟随全局总闸。 */
+            ai_enabled?: boolean;
             auto_adjust_price_enabled: boolean;
             max_discount_percent: number;
             max_discount_amount: number;

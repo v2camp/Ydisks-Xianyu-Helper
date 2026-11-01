@@ -24,7 +24,7 @@ export interface AISettingsProps {
   onNavigate?: (tab: string) => void;
 }
 
-// AISettings 展示 AI 智能回复、AI 客服接管、人工确认开关与 MCP 服务器配置；保存只提交 AI 白名单字段。
+// AISettings 展示 AI 智能回复、AI 总闸、AI 客服接管与 MCP 服务器配置；保存只提交 AI 白名单字段。
 const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
   // featureState 是 Settings Hook 提供的状态与动作集合，scope=ai 只保存 AI 白名单字段并启用模型发现与连接测试。
   const {
@@ -235,15 +235,24 @@ const AISettings: React.FC<AISettingsProps> = ({ onNavigate }) => {
         {/* AI 客服可配置接管范围：边界/语料/策略三层 JSON，改完随 AI 配置保存即时生效。 */}
         <AIConfigEditor settings={settings} onChange={/* patch 是 AI 客服配置编辑区写回的字段，合并进当前草稿。 */ patch => setSettings({ ...settings, ...patch })} />
 
-        {/* AI 回复人工确认：开关，开启后 AI 回复先拦截待人工确认再发送。 */}
+        {/* AI 总闸：全局唯一总开关，关闭后所有账号的 AI 回复立即停止，不需要逐账号操作。 */}
         <section className="space-y-4">
-          <SectionHeader icon={Sparkles} title="AI 回复人工确认" tone="brand" />
+          <SectionHeader icon={Zap} title="AI 总闸" tone="brand" />
           <div className="ios-card rounded-xl p-6 bg-white">
             <label className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 cursor-pointer">
-              <input type="checkbox" className="mt-1" checked={settings.ai_reply_review_mode || false} onChange={/* 勾选变化更新 AI 回复人工确认开关草稿。 */ event => setSettings({ ...settings, ai_reply_review_mode: event.target.checked })} />
+              <input
+                type="checkbox"
+                className="mt-1"
+                aria-label="启用 AI 自动回复"
+                // 总闸未配置时按开启展示，与后端「缺省即开」的语义保持一致。
+                checked={settings.ai_master_enabled !== false}
+                onChange={/* 勾选变化更新 AI 总闸草稿；关闭后引擎对所有账号停止 AI 回复。 */ event => setSettings({ ...settings, ai_master_enabled: event.target.checked })}
+              />
               <span>
-                <span className="block text-sm font-bold text-brand-900">AI 回复人工确认模式</span>
-                <span className="mt-1 block text-xs leading-5 text-brand-800">开启后 AI 生成的回复不会自动发送，需在会话页人工确认后再发出，防止误发。</span>
+                <span className="block text-sm font-bold text-brand-900">启用 AI 自动回复</span>
+                <span className="mt-1 block text-xs leading-5 text-brand-800">
+                  关闭后所有账号的 AI 回复立即停止，无需逐账号操作；账号各自的开关值与砍价策略都会保留，重新打开总闸后按原设置恢复。
+                </span>
               </span>
             </label>
           </div>

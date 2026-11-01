@@ -2,6 +2,7 @@ import { useCallback,useEffect,useRef,useState,type Dispatch,type SetStateAction
 import type { AccountDetail } from './api';
 import { getAccountDetails,getAccountRuntimeStatuses,getAllAISettings } from './api';
 import { mergeAccountRuntimeStatuses } from './runtime';
+import { resolveAccountAIEnabled } from './state';
 import type { AccountAISettingsState } from './types';
 
 // AccountsDataResult 暴露账号列表、加载状态和可复用的刷新动作。
@@ -24,7 +25,8 @@ export const mergeAccountAISettings = (
   // account 是待补充 AI 配置的账号对象。
   account => ({
     ...account,
-    ai_enabled: allAISettings[account.id]?.ai_enabled ?? false,
+    // 卡片上的 AI 标记展示生效值：没有账号条目表示跟随全局总闸，同样可能处于开启状态。
+    ai_enabled: resolveAccountAIEnabled(allAISettings[account.id]),
     auto_adjust_price_enabled: allAISettings[account.id]?.auto_adjust_price_enabled ?? false,
     max_discount_percent: allAISettings[account.id]?.max_discount_percent ?? 10,
     max_discount_amount: allAISettings[account.id]?.max_discount_amount ?? 100,

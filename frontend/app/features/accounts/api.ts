@@ -79,7 +79,8 @@ export const getAccountDetails = async (options?: RequestControlOptions): Promis
     nickname: item.nickname || item.remark || `账号 ${item.id.substring(0,6)}`,
     avatar_url: accountAvatarURL(item, avatarVersion),
     profile_error: item.profile_error || '',
-    ai_enabled: false,
+    // 账号摘要不含 AI 开关：没有账号级设置时按跟随全局总闸展示为开启，真实值由 AI 设置合并覆盖。
+    ai_enabled: true,
 		auto_rate_enabled: item.auto_rate_enabled,
 		rate_content: item.rate_content || '不错的买家，交易愉快',
 		auto_polish_enabled: item.auto_polish_enabled,
@@ -345,11 +346,11 @@ export const updateAccountLoginInfo = async (id: string, data: {
   }));
 };
 
-// getAllAISettings 读取全部人工智能设置。
-export const getAllAISettings = async (options?: RequestControlOptions): Promise<Record<string, AIReplySettings>> => {
+// getAllAISettings 读取全部人工智能设置；每个条目都带服务端解析出的生效值与开关来源。
+export const getAllAISettings = async (options?: RequestControlOptions): Promise<Record<string, AIReplySettingsResponse>> => {
   const response = await runContractRequest(/* signal 控制全部账号 AI 设置读取的取消和超时。 */ signal => contractClient.GET('/api/v1/settings/ai-reply', { signal }), options) as unknown;
   // settings 是兼容直接映射、data 包裹和 null 的账号 AI 设置索引。
-  return objectFrom<Record<string, AIReplySettings>>(response, ['settings', 'data', 'result']) || {};
+  return objectFrom<Record<string, AIReplySettingsResponse>>(response, ['settings', 'data', 'result']) || {};
 };
 
 
@@ -360,15 +361,25 @@ export const getAccountAISettings = async (cookieId: string, options?: RequestCo
 
 // updateAccountAISettings 更新账号人工智能设置。
 export const updateAccountAISettings = async (cookieId: string, settings: Partial<AIReplySettings>, options?: RequestControlOptions): Promise<OperationResponse> => {
-  // payload 请求载荷，用于当前 API 处理流程。
-  const payload = {
-    ai_enabled: settings.ai_enabled ?? false,
+  // payload 是账号 AI 设置请求体；ai_enabled 只在用户本次亲手切换过开关时才提交。
+  const payload: {
+    /** ai_enabled 缺省表示不修改开关，账号继续沿用已有显式值或跟随全局总闸。 */ ai_enabled?: boolean;
+    /** auto_adjust_price_enabled 表示是否自动执行 AI 报价改价。 */ auto_adjust_price_enabled: boolean;
+    /** max_discount_percent 表示最大折扣比例。 */ max_discount_percent: number;
+    /** max_discount_amount 表示最大折扣金额。 */ max_discount_amount: number;
+    /** max_bargain_rounds 表示最大砍价轮次。 */ max_bargain_rounds: number;
+    /** custom_prompts 表示账号自定义提示词。 */ custom_prompts: string;
+  } = {
     auto_adjust_price_enabled: settings.auto_adjust_price_enabled ?? false,
     max_discount_percent: settings.max_discount_percent ?? 10,
     max_discount_amount: settings.max_discount_amount ?? 100,
     max_bargain_rounds: settings.max_bargain_rounds ?? 3,
     custom_prompts: settings.custom_prompts ?? ''
   };
+  // 只改砍价策略时省略 ai_enabled，后端据此保留账号原有开关语义，不会把「跟随」写死成某个值。
+  if (settings.ai_enabled_touched === true && typeof settings.ai_enabled === 'boolean') {
+    payload.ai_enabled = settings.ai_enabled;
+  }
   return runContractRequest(/* signal 控制账号 AI 设置更新的取消和超时。 */ signal => contractClient.PUT('/api/v1/settings/ai-reply/{cookie_id}', { params: { path: { cookie_id: cookieId } }, body: payload, signal }), options);
 }
 
@@ -428,24 +439,22 @@ const parseAgentPresetOptions = (payload: unknown): AccountAgentPresetOption[] =
     description: String(entry.description ?? ''),
   }));
 
-/** 读取指定账号的客服 Agent 授权：账号覆盖值、服务端解析出的生效值与可选档位名单。 */
+/** 读取指定账号的客服 Agent 授权：账号档位覆盖值、服务端解析出的生效档位与可选档位名单。 */
 export const getAccountAgentSupport = async (cookieId: string, options?: RequestControlOptions): Promise<AccountAgentSupport> => {
-  // response 是 OpenAPI 约束的账号级客服 Agent 授权响应。
+  // response 是 OpenAPI 约束的账号级客服 Agent 授权响应；Agent 是否运行由统一 AI 生效值决定，不含开关键。
   const response = await runContractRequest(/* signal 控制账号级客服 Agent 授权读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/support/accounts/{cookie_id}', { params: { path: { cookie_id: cookieId } }, signal }), options);
   return {
-    enabled: typeof response.account_enabled === 'boolean' ? response.account_enabled : null,
     preset: typeof response.account_preset === 'string' ? response.account_preset : null,
-    effectiveEnabled: response.enabled === true,
     effectivePreset: typeof response.preset === 'string' ? response.preset : '',
     presets: parseAgentPresetOptions(response.presets),
   };
 };
 
-/** 保存指定账号的客服 Agent 授权覆盖；两个字段传 null 表示恢复继承租户默认。 */
+/** 保存指定账号的客服 Agent 档位覆盖；preset 传 null 表示恢复继承租户默认档位。 */
 export const updateAccountAgentSupport = async (cookieId: string, override: AccountAgentOverride, options?: RequestControlOptions): Promise<void> => {
   await runContractRequest(/* signal 控制账号级客服 Agent 授权保存的取消和超时。 */ signal => contractClient.PUT('/api/v1/agent/support/accounts/{cookie_id}', {
     params: { path: { cookie_id: cookieId } },
-    body: { enabled: override.enabled, preset: override.preset },
+    body: { preset: override.preset },
     signal,
   }), options);
 };

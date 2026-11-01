@@ -1,5 +1,5 @@
 import type { Dispatch,SetStateAction } from 'react';
-import type { AccountDetail,AIReplySettings,NotificationChannel } from './api';
+import type { AccountDetail,AIReplySettingsResponse,NotificationChannel } from './api';
 
 // AccountEditForm 描述账号编辑弹窗中的可编辑字段。
 export interface AccountEditForm {
@@ -109,5 +109,5 @@ export interface AccountEditModalProps {
   onSettingsDirty: () => void;
 }
 
-// AccountAISettingsState 是账号列表合并 AI 配置时使用的索引结构。
-export type AccountAISettingsState = Record<string, AIReplySettings>;
+// AccountAISettingsState 是账号列表合并 AI 配置时使用的索引结构；值保留服务端下发的生效值与来源供界面判断。
+export type AccountAISettingsState = Record<string, AIReplySettingsResponse>;
