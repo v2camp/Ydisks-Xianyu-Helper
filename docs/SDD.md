@@ -42,10 +42,10 @@
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 | 方案出处 |
 |---|---|---|---|---|
-| A1 | 评测口径修正 | `在树` | 提交 `c9200229` 已随 2026-11-01 镜像发布；`commentlint`/门禁全绿。**差**一次真实模型跑分（容器网络内或 `EVAL_*`）确认口径 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
+| A1 | 评测口径修正 | `已生效` | 提交 `c9200229`；2026-11-07 在容器网络内完成真实模型跑分（`deepseek-flash`，70 条，采样 1 次）：通过率 72.9%(51/70)、内容层 70.3%(45/64)、决策层 100%(6/6)、判定失败 0，门禁通过。分层与按标签报告均正常产出 → 口径已可用 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
 | A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07)：`ai_generation_log.grounding_source=card-channel` 占 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
 | A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`(`reply_guard.go`+`applyAnswerGuards`)已随 2026-11-01 镜像发布，4 条真实回避话术全部被改写。11-07 补提交 `03079506`：回避判定由精确子串升级为「指向对象×推诿词」共现，覆盖「以商品详情页说明和拍下后的发货消息为准」等插入式变体（导出器 `deflectionMarkers` 早已能识别，此前守卫漏网）。**差**镜像重建发布 + 一次真实模型跑分确认 `answer_source=policy-guard` 出现(11-07 实测 llm=3/policy-min-price=1) | 同上 §12 |
+| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed` 已随镜像发布；11-07 提交 `03079506` 把回避判定升级为「指向对象×推诿词」共现。**跑分(11-07)**：`delivery` 组 7/7 全通过，模型+提示词已能直答渠道；但评测链路不经过 `applyAnswerGuards`，`policy-guard` 仍 0 行。**范围缺口**：守卫只覆盖「回避」，不覆盖「合规编造」——跑分 `compliance` 仅 2/7（承诺包邮 / 断言非正版 / 「不支持退款」话术）。**差**镜像重建发布 + 合规编造守卫扩展 + 线上真实信号 | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
 | A6 | AI 启用态与凭据启动自检 | `已发布` | 提交 `76542eed` 已随 2026-11-01 镜像发布(`build_time 2026-11-01T15:37:20Z`)；`ai_master_enabled=true`、两账号 `ai_enabled=1`，`ai_decision_log` 录得 `taken`(迄 11-07) → 自检链路**已生效**。G1(商品归属)依赖具体消息，不在自检范围 | 同上 §12 |
 
@@ -172,4 +172,6 @@
 | answer_source | llm 3、policy-min-price 1 |
 | 决策接管 | taken 4、no-intent 14、item-sync 6；接管率≈22%(小样本) |
 
-**优先级**：未落地项顺序不变（A1-A6 > B1-B4 > C1-C3 > D1-D2），同档内无新阻塞变化；B/C/D 全组仍 `未开始`（本周无对应提交）。
+**真实跑分（11-07 18:52，容器网络内，`deepseek-flash`，70 条 × 1 次）**：通过率 72.9%(51/70)，内容层 70.3%(45/64)，决策层 100%(6/6)，判定失败 0，门禁通过（基线 75%、容差 5pp、下限 70%）。按标签：`delivery` 7/7、`escalation` 6/6、`bargain` 5/5、`baseline` 2/2 全通过；`compliance` 2/7、`order` 1/3、`fulfillment` 2/4、`human-correction` 12/20 为失败集中区。19 条失败构成：回避/让看详情约 10 条、合规编造 3 条（包邮 / 正品 / 退款话术）、未达「额外判定要求」4 条。→ **发货渠道回避已由模型+提示词解决**，下一准确性焦点转为合规编造。
+
+**优先级**：A1 已转入 `已生效`；未落地项仍按 准确性 > 通用性 > 热点 > 性能。准确性内部焦点由「发货回避」转向「合规编造（`compliance` 2/7）」，归入 A4 的范围扩展；B/C/D 全组仍 `未开始`（本周无对应提交）。
