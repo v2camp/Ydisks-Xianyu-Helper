@@ -305,10 +305,19 @@ func (a *AIReplierImpl) applyAnswerGuards(in answerGuardInput) guardedAnswer {
 	} else if in.AutoAdjustPrice && in.MarkerOK && in.MarkerPrice > 0 && in.MarkerPrice+0.0001 < in.ItemPrice && replyContainsOfferedPrice(out.Reply, in.MarkerPrice) {
 		out.Quote = &AIPriceQuoteProposal{PriceCents: priceToCents(in.MarkerPrice)}
 	}
-	// 事实兜底只对「仍是模型原稿且未附带改价提案」的回复生效：
+	// 合规兜底与事实兜底都只对「仍是模型原稿且未附带改价提案」的回复生效：
 	// 策略话术是结论、改价提案带结构化报价，两者都不该被文案改写覆盖。
 	if out.Source == answerSourceLLM && out.Quote == nil {
-		// guarded、changed 是兜底后的文本与是否发生改写。
+		// 合规兜底先跑：禁语与无依据承诺属硬风险，优先级高于文案纠正。
+		// guarded、changed 是合规兜底后的文本与是否发生改写。
+		if guarded, changed := guardCompliance(out.Reply, in.Live); changed {
+			out.Reply = guarded
+			out.Source = answerSourcePolicyCompliance
+			out.Reason = "compliance-guard"
+			a.logger.Info("AI 回复含合规禁语或无依据承诺，已改写为默认话术", "chat_id", in.ChatID, "item_id", in.ItemID)
+		}
+		// 事实兜底：合规改写后的文本仍可继续纠正回避话术。
+		// guarded、changed 是事实兜底后的文本与是否发生改写。
 		if guarded, changed := guardDeflection(out.Reply, in.Live); changed {
 			out.Reply = guarded
 			out.Source = answerSourcePolicyGuard
@@ -399,6 +408,9 @@ const (
 	// answerSourcePolicyGuard 表示模型有产出但含回避话术，答案已被事实结论改写。
 	// 与价格守卫同理：不单列就会把确定性兜底的产出记成模型能力。
 	answerSourcePolicyGuard = "policy-guard"
+	// answerSourcePolicyCompliance 表示模型有产出但含合规禁语或无依据承诺，
+	// 答案已被确定性合规话术改写。与 policy-guard 分开，便于归因区分「推诿」与「越界承诺」。
+	answerSourcePolicyCompliance = "policy-compliance"
 )
 
 // recordGeneration 记录一次生成的归因：谁答的、依据什么。
