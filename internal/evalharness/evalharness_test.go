@@ -368,3 +368,45 @@ func TestExpandPerBuyerMessage(t *testing.T) {
 		t.Fatalf("末条之前应有 2 条历史: %d", len(out[1].Snapshot.History))
 	}
 }
+
+// TestReconstructLiveFacts 从系统提示重建守卫所需的三类事实。
+// 这是评测复用生产守卫的前提：重建不出事实，守卫就只能按「无事实」处理。
+func TestReconstructLiveFacts(t *testing.T) {
+	// prompt 是含渠道、规格与运费三段事实的系统提示。
+	prompt := "【该商品确定发货方式】百度网盘、夸克网盘。\n\n" +
+		"本商品确定事实（来自商品标题与平台标注，可直接回答）：\n- 1-4季\n- 全集\n\n" +
+		"本商品运费口径（回答运费时以此为准）：\n- 平台标注运费信息：不包邮，运费由买家承担。\n"
+	// facts 是重建出的事实集合。
+	facts := reconstructLiveFacts(prompt)
+	if facts.DeliverySource != "card-channel" || len(facts.DeliveryChannels) != 2 {
+		t.Fatalf("渠道事实不符: %+v", facts)
+	}
+	if len(facts.ItemFacts) != 2 || facts.ItemFacts[0] != "1-4季" {
+		t.Fatalf("规格事实不符: %+v", facts.ItemFacts)
+	}
+	if !strings.Contains(facts.ShippingFact, "不包邮") {
+		t.Fatalf("运费事实不符: %q", facts.ShippingFact)
+	}
+}
+
+// TestRunAppliesDeterministicGuards 真实回放必须先过守卫再判定：
+// 模型裸输出回避话术时，买家实际看到的是守卫改写后的事实结论，评测必须按后者判。
+func TestRunAppliesDeterministicGuards(t *testing.T) {
+	// sample 的提示已声明确定渠道。
+	sample := evalSampleWithPrompt("……【该商品确定发货方式】百度网盘、夸克网盘。……", "")
+	// gen 是固定返回回避话术的假生成器。
+	gen := func(ctx context.Context, cfg ModelConfig, systemPrompt string, history []ConversationTurn, message string) (string, error) {
+		return "具体以商品详情和拍下后的发货消息为准哈", nil
+	}
+	// results 是应用守卫后的回放结果。
+	results := Run(context.Background(), []Sample{sample}, gen, ModelConfig{}, ModelConfig{}, RunOptions{SamplesPerCase: 1})
+	if len(results) != 1 {
+		t.Fatalf("应产出 1 条结果: %d", len(results))
+	}
+	if results[0].GuardSource != "policy-guard" {
+		t.Fatalf("应记录守卫来源: %+v", results[0])
+	}
+	if !results[0].Pass {
+		t.Fatalf("守卫改写后应判通过: %+v", results[0])
+	}
+}

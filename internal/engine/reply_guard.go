@@ -264,3 +264,36 @@ func claimsFreeShipping(sentence string) bool {
 func shippingFactConfirmsFreeShipping(fact string) bool {
 	return strings.Contains(fact, "包邮") && !strings.Contains(fact, "不包邮") && !strings.Contains(fact, "未标注")
 }
+
+// ApplyReplyGuardsForEval 用与生产相同的确定性守卫改写一条模型回复，供离线评测复用。
+// 与生产 applyAnswerGuards 的差异：不模拟价格守卫（评测样本不触发结构化改价），
+// 只跑合规兜底与事实兜底，顺序与生产一致。
+// 返回改写后的文本、最终答案来源（llm/policy-compliance/policy-guard）与是否发生改写。
+func ApplyReplyGuardsForEval(reply string, facts PromptLiveFacts) (string, string, bool) {
+	// live 是把导出事实转成守卫内部使用的形态。
+	live := liveKnowledge{
+		DeliverySource:   facts.DeliverySource,
+		DeliveryChannels: facts.DeliveryChannels,
+		ItemFacts:        facts.ItemFacts,
+		ShippingFact:     facts.ShippingFact,
+	}
+	// out 是逐层改写后的文本。
+	out := reply
+	// source 是最终答案来源，未改写时为模型原稿。
+	source := answerSourceLLM
+	// changed 表示是否至少发生一次改写。
+	changed := false
+	// guarded、hit 是合规兜底后的文本与是否命中。
+	if guarded, hit := guardCompliance(out, live); hit {
+		out = guarded
+		source = answerSourcePolicyCompliance
+		changed = true
+	}
+	// guarded、hit 是事实兜底后的文本与是否命中。
+	if guarded, hit := guardDeflection(out, live); hit {
+		out = guarded
+		source = answerSourcePolicyGuard
+		changed = true
+	}
+	return out, source, changed
+}

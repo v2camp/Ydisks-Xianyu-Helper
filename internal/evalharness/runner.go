@@ -7,6 +7,8 @@ package evalharness
 import (
 	"context"
 	"strings"
+
+	"xianyu-go/internal/engine"
 )
 
 // RunOptions 是一次回放运行的选项。
@@ -100,6 +102,10 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 
 	// 采样 perCase 次：真实模型非确定性，取多数可抑制噪声。
 	verdicts := make([]Verdict, 0, perCase)
+	// facts 是从提示快照重建的守卫所需事实；缺失字段留空表示「无可用事实」。
+	facts := reconstructLiveFacts(sample.Snapshot.SystemPrompt)
+	// guardSource 记录最近一次被守卫改写的答案来源；未改写时为空。
+	guardSource := ""
 	// i 是当前采样轮次，无业务含义。
 	for i := 0; i < perCase; i++ {
 		// reply、err 是被测模型本次回复与调用失败原因。
@@ -108,9 +114,17 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 			verdicts = append(verdicts, Verdict{Layer: layerJudge, JudgeFailed: true, Reason: "被测模型调用失败: " + err.Error()})
 			continue
 		}
+		// 生产链路的确定性守卫必须参与评测：否则测的是模型裸输出，而非买家实际看到的文本。
+		// guarded、guardedSource、hit 是改写后的文本、答案来源与是否发生改写。
+		guarded, guardedSource, hit := engine.ApplyReplyGuardsForEval(reply, facts)
+		if hit {
+			reply = guarded
+			guardSource = guardedSource
+		}
 		verdicts = append(verdicts, judgeReply(ctx, exp, sample, reply, gen, judgeCfg, blind))
 	}
 	aggregate(&result, verdicts)
+	result.GuardSource = guardSource
 	return result
 }
 
