@@ -158,3 +158,109 @@ func ensureReplySentenceEnd(text string) string {
 	}
 	return text + "。"
 }
+
+// complianceForbiddenRefundPhrases 是外发文本中一律不得出现的绝对化拒绝话术。
+// 2026-11-07 真实跑分 compliance 组 2/7，其中一条就是「不支持退款」被机检判失败。
+// 这类话术无法事后追偿，命中即整句替换为唯一默认话术。
+var complianceForbiddenRefundPhrases = []string{
+	"不支持退款", "概不退款", "一律不退", "无法退款", "不能退款",
+}
+
+// complianceRefundDefault 是退款禁语命中后的唯一默认话术。
+const complianceRefundDefault = "虚拟商品发货后按平台规则处理；如资料失效或与描述不符，可联系我们协商补发或退款。"
+
+// complianceAuthenticityPhrases 是无依据否定正版/授权的绝对断言。
+// 商品信息通常不提供授权与正版资质，断言「不是」与断言「是」同样没有依据。
+var complianceAuthenticityPhrases = []string{"不是正版", "不是正品", "非正版", "非正品"}
+
+// complianceAuthenticityDefault 是正版否定断言命中后的唯一默认话术。
+const complianceAuthenticityDefault = "商品信息未标注正版或授权信息，具体以商品详情页说明为准。"
+
+// shippingClaimPhrases 是无条件承诺包邮的表述；仅在运费事实未确认包邮时改写。
+var shippingClaimPhrases = []string{"包邮", "免运费", "不用另付运费", "不用付运费", "包运费"}
+
+// shippingClaimSafeMarkers 是已带否定或限定的标记，命中说明不是无条件承诺，不应改写。
+var shippingClaimSafeMarkers = []string{"不包邮", "不包运费", "不免运费", "未标注", "没有标注", "另行商议", "另议", "以拍下", "以下单"}
+
+// shippingDefaultQualifier 是无运费事实时对包邮承诺的唯一默认限定话术。
+const shippingDefaultQualifier = "运费以下单页面显示为准。"
+
+// guardCompliance 在模型生成后、外发前做三类确定性合规改写：
+// 退换货禁语、无依据包邮承诺、无依据正版否定断言。
+// reply 是模型产出或已过价格守卫的回复文本；live 是本次注入的事实集合。
+// 返回改写后的文本与是否发生改写；逐句处理以保留同一回复里的渠道等有效信息。
+func guardCompliance(reply string, live liveKnowledge) (string, bool) {
+	// changed 表示是否至少有一句被改写。
+	changed := false
+	// kept 是逐句处理后保留的句子。
+	kept := make([]string, 0, len(splitReplySentences(reply)))
+	// sentence 是当前遍历到的句子。
+	for _, sentence := range splitReplySentences(reply) {
+		// replacement、ok 是该句的合规替换话术与是否需要替换。
+		if replacement, ok := complianceReplacement(sentence, live); ok {
+			// 替换话术自带句号，拼句前去掉，避免与 Join 的分隔符叠加成「。。」。
+			kept = append(kept, strings.TrimSuffix(replacement, "。"))
+			changed = true
+			continue
+		}
+		kept = append(kept, sentence)
+	}
+	if !changed {
+		return reply, false
+	}
+	// body 是替换后拼成的正文。
+	body := strings.TrimSpace(strings.Join(kept, "。"))
+	if body == "" {
+		return reply, false
+	}
+	return ensureReplySentenceEnd(body), true
+}
+
+// complianceReplacement 返回单句应替换成的话术；无需改写时 ok 为 false。
+// 判定顺序固定：退款禁语 > 正版否定 > 包邮承诺，命中即返回，避免多规则互相覆盖。
+func complianceReplacement(sentence string, live liveKnowledge) (string, bool) {
+	// phrase 是当前遍历到的退款禁语。
+	for _, phrase := range complianceForbiddenRefundPhrases {
+		if strings.Contains(sentence, phrase) {
+			return complianceRefundDefault, true
+		}
+	}
+	// phrase 是当前遍历到的正版否定断言。
+	for _, phrase := range complianceAuthenticityPhrases {
+		if strings.Contains(sentence, phrase) {
+			return complianceAuthenticityDefault, true
+		}
+	}
+	if claimsFreeShipping(sentence) && !shippingFactConfirmsFreeShipping(live.ShippingFact) {
+		// fact 是已注入的运费事实；有事实用事实施加限定，无事实用通用限定。
+		if fact := strings.TrimSpace(live.ShippingFact); fact != "" {
+			return fact, true
+		}
+		return shippingDefaultQualifier, true
+	}
+	return "", false
+}
+
+// claimsFreeShipping 判断单句是否在无条件承诺包邮。
+// 先排除已带否定或限定的表述，避免把「不包邮」「平台未标注包邮信息」误判为承诺。
+func claimsFreeShipping(sentence string) bool {
+	// marker 是当前遍历到的限定/否定标记。
+	for _, marker := range shippingClaimSafeMarkers {
+		if strings.Contains(sentence, marker) {
+			return false
+		}
+	}
+	// phrase 是当前遍历到的包邮承诺表述。
+	for _, phrase := range shippingClaimPhrases {
+		if strings.Contains(sentence, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// shippingFactConfirmsFreeShipping 判断运费事实是否明确标注包邮。
+// 「不包邮」与「未标注…包邮信息」都含「包邮」字样，必须排除，否则会把无依据承诺当成事实放行。
+func shippingFactConfirmsFreeShipping(fact string) bool {
+	return strings.Contains(fact, "包邮") && !strings.Contains(fact, "不包邮") && !strings.Contains(fact, "未标注")
+}

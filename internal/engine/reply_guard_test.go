@@ -211,8 +211,7 @@ func TestGuardDeflection_RealDeflectionReplies(t *testing.T) {
 	}
 }
 
-// TestContainsDeflection_Cooccurrence 锁定「指向对象 + 推诿判断词」共现规则：
-// 插入式变体（以商品详情页说明和拍下后的发货消息为准）必须命中，
+// TestContainsDeflection_Cooccurrence 锁定「指向对象 + 推诿判断词」共现规则：// 插入式变体（以商品详情页说明和拍下后的发货消息为准）必须命中，
 // 而「详情页写了 1-4 季」这类正常陈述必须放行——否则会把陈述误改写成渠道结论。
 func TestContainsDeflection_Cooccurrence(t *testing.T) {
 	// cases 是逐条用例：文本 + 是否期望判为回避。
@@ -240,5 +239,132 @@ func TestContainsDeflection_Cooccurrence(t *testing.T) {
 				t.Fatalf("回避判定不符：got=%v want=%v（文本 %q）", got, c.want, c.text)
 			}
 		})
+	}
+}
+
+// TestGuardCompliance 覆盖三类合规改写的边界：
+// 禁语必须改写、无依据包邮必须加限定、已确认包邮或已带否定的表述不得误改。
+func TestGuardCompliance(t *testing.T) {
+	// confirmedFreeShipping 是平台明确标注包邮的事实文案。
+	confirmedFreeShipping := "平台标注运费信息：包邮，运费由卖家承担。"
+	// cases 是逐条用例：输入回复 + 事实集合 + 期望文本与是否改写。
+	cases := []struct {
+		// name 是用例名。
+		name string
+		// reply 是模型产出的回复。
+		reply string
+		// live 是本次注入的事实集合。
+		live liveKnowledge
+		// want 是期望得到的回复。
+		want string
+		// wantChanged 表示是否期望发生改写。
+		wantChanged bool
+	}{
+		{
+			name:        "退款禁语被替换为默认话术",
+			reply:       "已经发出的电子资料，非质量问题不支持退款。",
+			live:        liveKnowledge{},
+			want:        complianceRefundDefault,
+			wantChanged: true,
+		},
+		{
+			name:        "无运费事实时包邮承诺加通用限定",
+			reply:       "这款包邮的，不用另付运费~",
+			live:        liveKnowledge{},
+			want:        shippingDefaultQualifier,
+			wantChanged: true,
+		},
+		{
+			name:        "已确认包邮时不改写",
+			reply:       "这款包邮的，拍下后发百度网盘。",
+			live:        liveKnowledge{ShippingFact: confirmedFreeShipping},
+			want:        "这款包邮的，拍下后发百度网盘。",
+			wantChanged: false,
+		},
+		{
+			name:        "不包邮表述不得误改",
+			reply:       "这款不包邮，运费以拍下页面为准。",
+			live:        liveKnowledge{},
+			want:        "这款不包邮，运费以拍下页面为准。",
+			wantChanged: false,
+		},
+		{
+			name:        "正版否定断言被替换",
+			reply:       "这不是正版。您考虑清楚。",
+			live:        liveKnowledge{},
+			want:        complianceAuthenticityDefault + "您考虑清楚。",
+			wantChanged: true,
+		},
+		{
+			name:        "正常回复不受影响",
+			reply:       "这款发百度网盘和夸克网盘，拍下后留意发货消息。",
+			live:        liveKnowledge{},
+			want:        "这款发百度网盘和夸克网盘，拍下后留意发货消息。",
+			wantChanged: false,
+		},
+	}
+
+	// c 是当前遍历到的用例。
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// got、changed 是合规兜底后的文本与是否改写。
+			got, changed := guardCompliance(c.reply, c.live)
+			if changed != c.wantChanged {
+				t.Fatalf("改写判定不符：got=%v want=%v（文本 %q）", changed, c.wantChanged, got)
+			}
+			if got != c.want {
+				t.Fatalf("改写结果不符：\n got=%q\nwant=%q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestAIReply_ComplianceGuardRewritesForbiddenRefund 端到端锁住合规兜底：
+// 模型输出「不支持退款」时，外发文本必须是默认合规话术，且归因记为 policy-compliance。
+func TestAIReply_ComplianceGuardRewritesForbiddenRefund(t *testing.T) {
+	// s、cleanup 是带账号的测试 store。
+	s, cleanup := newAIStore(t)
+	defer cleanup()
+	// ctx 是测试上下文。
+	ctx := context.Background()
+	// srv、_ 是固定返回退款禁语的 mock 模型。
+	srv, _ := aiContentMockServer(t, "已经发出的电子资料，非质量问题不支持退款。")
+	// err 是启用行写入失败原因。
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`); err != nil {
+		t.Fatalf("插入启用行: %v", err)
+	}
+	// err 是商品写入失败原因。
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO item_info (cookie_id, item_id, item_title, item_price, item_description, item_detail) VALUES ('cid','item-compliance','动画全集','9.90','','')`); err != nil {
+		t.Fatalf("插入商品: %v", err)
+	}
+	// err 是密钥写入失败原因；缺密钥会直接跳过 AI 通道。
+	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+		t.Fatalf("写入密钥: %v", err)
+	}
+	// err 是模型地址写入失败原因；不指向 mock 会打到真实端点。
+	if err := s.Settings.Set(ctx, "ai_api_url", srv.URL); err != nil {
+		t.Fatalf("写入模型地址: %v", err)
+	}
+	// a 是待测 AI 实现。
+	a := NewAIReplier("cid", s, nil)
+	// res、err 是完整回复链路结果。
+	res, err := a.Reply(ctx, chatMsg("这个能退吗", "item-compliance", "chat-compliance"))
+	if err != nil || res == nil {
+		t.Fatalf("应接管并返回结果: res=%v err=%v", res, err)
+	}
+	if strings.Contains(res.Text, "不支持退款") {
+		t.Fatalf("外发文本不得残留退款禁语: %q", res.Text)
+	}
+	if res.Text != complianceRefundDefault {
+		t.Fatalf("外发文本应为默认合规话术: %q", res.Text)
+	}
+	// source 是归因表里记录的答案来源。
+	var source string
+	// err 是归因行读取失败原因；查不到说明埋点没写或条件写错。
+	if err := s.DB.QueryRowContext(ctx, `SELECT answer_source FROM ai_generation_log WHERE chat_id='chat-compliance'`).Scan(&source); err != nil {
+		t.Fatalf("读取生成归因: %v", err)
+	}
+	if source != answerSourcePolicyCompliance {
+		t.Fatalf("答案来源应为 %s，got=%s", answerSourcePolicyCompliance, source)
 	}
 }
