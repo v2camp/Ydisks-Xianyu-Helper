@@ -158,6 +158,7 @@ describe('frontend navigation routing', () => {
     const connectors = readFrontendFile('app/features/connectors/pages/Connectors.tsx'); /* connectors 表示连接器页源码，用于确认引导挂载。 */
     const registry = readFrontendFile('app/features/connectors/registry.ts'); /* registry 表示连接器注册表源码，用于确认凭据字段来源。 */
     const card = readFrontendFile('app/features/connectors/components/ConnectorCard.tsx'); /* card 表示注册表驱动的连接器卡源码。 */
+    const connectorsApi = readFrontendFile('app/features/connectors/api.ts'); /* connectorsApi 表示连接器 feature 的契约适配器源码。 */
 
     expect(connectors).toContain('连接器');
     expect(connectors).toContain("import { ConnectorCard } from '../components/ConnectorCard'");
@@ -167,10 +168,12 @@ describe('frontend navigation routing', () => {
     expect(registry).toContain('机器人 AppID');
     expect(registry).toContain('机器人 AppSecret');
     expect(registry).toContain("'qqbot.app_secret'");
-    // QQ 连接器的 AppID 与「AppSecret 已配置」键名统一引用跨 feature 共享契约，注册表不再写字面量，避免同一设置键多处漂移。
+    // QQ 键名仍统一引用共享契约常量，但注册表必须经本 feature 的 api 适配器取用，不得直连 shared/api-contract。
     expect(registry).toContain('QQ_CONNECTOR_READY_KEYS.appId');
     expect(registry).toContain('QQ_CONNECTOR_READY_KEYS.appSecretConfigured');
-    expect(registry).toContain("from '../../../shared/api-contract/settings'");
+    expect(registry).toContain("from './api'");
+    expect(registry).not.toContain('shared/api-contract/');
+    expect(connectorsApi).toContain("export { QQ_CONNECTOR_READY_KEYS } from '../../../shared/api-contract/settings'");
     expect(card).toContain('connector.fields.map');
   } /* 测试回调断言连接器页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
 

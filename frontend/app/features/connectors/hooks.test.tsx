@@ -14,6 +14,7 @@ vi.mock('./api', /* notificationsApiMockFactory 提供通知 Hook 的确定性 A
   testNotificationChannel: vi.fn(),
   updateNotificationChannel: vi.fn(),
   updateSystemSettings: vi.fn(),
+  QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' },
 }));
 
 // createChannelMock 是新建通知渠道请求的可控替身。
