@@ -4,6 +4,8 @@ import { type RequestControlOptions } from '../../../shared/http/client';
 import { contractClient, runContractRequest } from '../../../shared/api-contract/client';
 import { normalizeNotificationEventTypes } from './models';
 export type * from './models';
+// 连接器注册表需要的设置键常量：契约层是唯一事实源，feature 内一律经本适配器转出。
+export { QQ_CONNECTOR_READY_KEYS } from '../../../shared/api-contract/settings';
 
 /** 通知渠道写入时使用的具名请求 DTO。 */
 export interface NotificationChannelRequest {

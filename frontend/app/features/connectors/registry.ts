@@ -1,6 +1,6 @@
 import { Bot } from 'lucide-react';
 import type { ElementType } from 'react';
-import { QQ_CONNECTOR_READY_KEYS } from '../../../shared/api-contract/settings';
+import { QQ_CONNECTOR_READY_KEYS } from './api';
 import type { NotificationChannelType } from './models';
 
 /** QQ_OPEN_PLATFORM_URL 是管理员创建机器人并获取 AppID 与 AppSecret 的 QQ 开放平台入口。 */
