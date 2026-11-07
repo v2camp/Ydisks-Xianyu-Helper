@@ -17,12 +17,13 @@ var replyDeflectionPhrases = []string{
 const guardMinKeptRunes = 8
 
 // guardDeflection 在「提示已给出确定事实」时清除回复中的回避话术。
-// reply 是模型产出或已过价格守卫的回复文本；live 是本次注入的事实集合。
+// reply 是模型产出或已过价格守卫的回复文本；live 是本次注入的事实集合；
+// buyerText 是买家问句，用于话题门控。
 // 返回改写后的文本与是否发生了改写；没有可断言的事实时一律不改，
 // 否则会把「本来就不该断言」的合法回避误改成编造。
-func guardDeflection(reply string, live liveKnowledge) (string, bool) {
+func guardDeflection(reply string, live liveKnowledge, buyerText string) (string, bool) {
 	// fact 是当前事实集合能支撑的结论句；hasFact 为假时不得改写回复。
-	fact, hasFact := guardFactStatement(live)
+	fact, hasFact := guardFactStatement(live, buyerText)
 	if !hasFact || !containsDeflection(reply) {
 		return reply, false
 	}
@@ -46,22 +47,103 @@ func guardDeflection(reply string, live liveKnowledge) (string, bool) {
 	return body + "。" + fact, true
 }
 
-// guardFactStatement 把事实集合整理成一句可断言的话，并声明是否足以断言。
+// deliveryQuestionMarkers 是「买家在问发货渠道」的标志词。
+// 作用域必须与 deliveryAnswerConstraint 完全一致：提示词只承诺回答「问到网盘或发货方式」的场景，
+// 守卫用更大的作用域就会把发票、售后、时效类问句改写成渠道结论。
+// 2026-11-07 真实跑分实证：无门控的守卫造成 4 条答非所问回归，净收益为负。
+var deliveryQuestionMarkers = []string{
+	"网盘", "度盘", "夸克", "双盘", "什么盘", "哪个盘", "发货方式", "发货渠道", "怎么发", "发什么", "发啥", "怎么给",
+}
+
+// specAttributeGroups 把规格问句与规格事实按同一属性归组：只有同属性才允许用事实改写。
+// 用「属性组」而不是「是否含规格词」，是因为「1-4季」这类事实能回答集数，
+// 但回答不了「是PDF还是视频」——按组匹配才能既保住集数场景又不制造答非所问。
+var specAttributeGroups = [][]string{
+	{"集", "季", "集数", "全集"},
+	{"格式", "pdf", "视频", "音频", "文档", "压缩包"},
+	{"清晰度", "4k", "1080", "720", "高清", "超清", "画质"},
+	{"版本", "完整版", "完结", "更新"},
+	{"大小", "容量", "内存"},
+}
+
+// isDeliveryQuestion 判断买家问句是否在问发货渠道。
+// 刻意不匹配单独的「发货」：「今天能发吗」「发货了吗」问的是时效与进度，不是渠道。
+func isDeliveryQuestion(buyerText string) bool {
+	// lowered 是归一化后的问句：英文渠道名大小写不应影响判定。
+	lowered := strings.ToLower(buyerText)
+	// marker 是当前遍历到的渠道问句标志词。
+	for _, marker := range deliveryQuestionMarkers {
+		if strings.Contains(lowered, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchSpecFacts 返回与买家问句同属性的规格事实；没有任何同属性事实时返回 nil。
+// 匹配按「属性组」而不是「同一个词」：问句问「多少集」、事实写「1-4季」属于同一属性，
+// 只比字面会漏掉这类同义写法。问句没命中任何属性组时返回 nil，表示事实答不了这个问题。
+func matchSpecFacts(itemFacts []string, buyerText string) []string {
+	// lowered 是归一化后的问句。
+	lowered := strings.ToLower(buyerText)
+	// askedMarkers 是问句命中的属性组内的全部标志词。
+	askedMarkers := make([]string, 0, 8)
+	// group 是当前遍历到的属性组。
+	for _, group := range specAttributeGroups {
+		// hit 表示问句是否命中该属性组。
+		hit := false
+		// marker 是当前遍历到的属性标志词。
+		for _, marker := range group {
+			if strings.Contains(lowered, marker) {
+				hit = true
+				break
+			}
+		}
+		if hit {
+			askedMarkers = append(askedMarkers, group...)
+		}
+	}
+	if len(askedMarkers) == 0 {
+		return nil
+	}
+	// matched 是与问句同属性的规格事实。
+	matched := make([]string, 0, len(itemFacts))
+	// fact 是当前遍历到的规格事实。
+	for _, fact := range itemFacts {
+		// loweredFact 是归一化后的事实文本。
+		loweredFact := strings.ToLower(fact)
+		// marker 是当前遍历到的、问句命中属性组内的标志词。
+		for _, marker := range askedMarkers {
+			if strings.Contains(loweredFact, marker) {
+				matched = append(matched, fact)
+				break
+			}
+		}
+	}
+	return matched
+}
+
+// guardFactStatement 选出与买家问句话题匹配、且足以断言的结论句，并声明是否足以断言。
 // 只有两种事实可以断言：卡密正文识别出的渠道（card-channel）与商品标题抽取的规格。
 // delivery-config 与 item-text 是文本规则猜出来的，拿它们断言等于把「编造渠道」换个方向重演，
 // 因此刻意排除。
-func guardFactStatement(live liveKnowledge) (string, bool) {
-	if live.DeliverySource == deliverySourceCard {
-		if len(live.DeliveryChannels) > 0 {
-			return "本商品发货渠道为：" + strings.Join(live.DeliveryChannels, "、") + "。", true
+func guardFactStatement(live liveKnowledge, buyerText string) (string, bool) {
+	if isDeliveryQuestion(buyerText) {
+		if live.DeliverySource == deliverySourceCard {
+			if len(live.DeliveryChannels) > 0 {
+				return "本商品发货渠道为：" + strings.Join(live.DeliveryChannels, "、") + "。", true
+			}
+			// trimmed 是去掉首尾空白的渠道结论；空白表示没有可用结论。
+			if trimmed := strings.TrimSpace(live.DeliveryHint); trimmed != "" {
+				return ensureReplySentenceEnd(trimmed), true
+			}
 		}
-		// trimmed 是去掉首尾空白的渠道结论；空白表示没有可用结论。
-		if trimmed := strings.TrimSpace(live.DeliveryHint); trimmed != "" {
-			return ensureReplySentenceEnd(trimmed), true
-		}
+		// 渠道问句只能由渠道事实回答：用它去答规格事实同样是答非所问。
+		return "", false
 	}
-	if len(live.ItemFacts) > 0 {
-		return "本商品确定信息：" + strings.Join(live.ItemFacts, "；") + "。", true
+	// facts 是与问句同属性的规格事实；为空说明规格事实答不了这个问题。
+	if facts := matchSpecFacts(live.ItemFacts, buyerText); len(facts) > 0 {
+		return "本商品确定信息：" + strings.Join(facts, "；") + "。", true
 	}
 	return "", false
 }
@@ -192,14 +274,28 @@ const shippingDefaultQualifier = "运费以下单页面显示为准。"
 func guardCompliance(reply string, live liveKnowledge) (string, bool) {
 	// changed 表示是否至少有一句被改写。
 	changed := false
+	// qualifierAdded 表示运费限定话术是否已追加，避免多句命中时重复追加。
+	qualifierAdded := false
 	// kept 是逐句处理后保留的句子。
 	kept := make([]string, 0, len(splitReplySentences(reply)))
 	// sentence 是当前遍历到的句子。
 	for _, sentence := range splitReplySentences(reply) {
-		// replacement、ok 是该句的合规替换话术与是否需要替换。
-		if replacement, ok := complianceReplacement(sentence, live); ok {
+		// replacement、ok 是该句的合规替换话术与是否需要整句替换。
+		if replacement, ok := complianceReplacement(sentence); ok {
 			// 替换话术自带句号，拼句前去掉，避免与 Join 的分隔符叠加成「。。」。
 			kept = append(kept, strings.TrimSuffix(replacement, "。"))
+			changed = true
+			continue
+		}
+		// rest、hit 是删除包邮承诺分句后的剩余内容与是否命中。
+		if rest, hit := stripShippingClaimClauses(sentence, live); hit {
+			if rest != "" {
+				kept = append(kept, rest)
+			}
+			if !qualifierAdded {
+				kept = append(kept, strings.TrimSuffix(shippingQualifier(live), "。"))
+				qualifierAdded = true
+			}
 			changed = true
 			continue
 		}
@@ -216,9 +312,11 @@ func guardCompliance(reply string, live liveKnowledge) (string, bool) {
 	return ensureReplySentenceEnd(body), true
 }
 
-// complianceReplacement 返回单句应替换成的话术；无需改写时 ok 为 false。
-// 判定顺序固定：退款禁语 > 正版否定 > 包邮承诺，命中即返回，避免多规则互相覆盖。
-func complianceReplacement(sentence string, live liveKnowledge) (string, bool) {
+// complianceReplacement 返回单句应整句替换成的话术；无需改写时 ok 为 false。
+// 判定顺序固定：退款禁语 > 正版否定，命中即返回，避免多规则互相覆盖。
+// 包邮承诺不在此处整句替换：一句里常混着在售信息与问候，整句替换会把有效内容一起删掉
+// （2026-11-07 实证：买家只问「在吗」，回复被整句换成运费限定，判为答非所问）。
+func complianceReplacement(sentence string) (string, bool) {
 	// phrase 是当前遍历到的退款禁语。
 	for _, phrase := range complianceForbiddenRefundPhrases {
 		if strings.Contains(sentence, phrase) {
@@ -231,14 +329,39 @@ func complianceReplacement(sentence string, live liveKnowledge) (string, bool) {
 			return complianceAuthenticityDefault, true
 		}
 	}
-	if claimsFreeShipping(sentence) && !shippingFactConfirmsFreeShipping(live.ShippingFact) {
-		// fact 是已注入的运费事实；有事实用事实施加限定，无事实用通用限定。
-		if fact := strings.TrimSpace(live.ShippingFact); fact != "" {
-			return fact, true
-		}
-		return shippingDefaultQualifier, true
-	}
 	return "", false
+}
+
+// stripShippingClaimClauses 删除句中承诺包邮的分句，返回剩余内容与是否命中。
+// 命中但返回空串，说明整句都在承诺包邮，调用方此时只保留运费限定话术。
+// 平台已明确标注包邮时整句放行：此时承诺包邮是事实陈述，不是无依据让步。
+func stripShippingClaimClauses(sentence string, live liveKnowledge) (string, bool) {
+	if shippingFactConfirmsFreeShipping(live.ShippingFact) || !claimsFreeShipping(sentence) {
+		return sentence, false
+	}
+	// kept 是保留的分句。
+	kept := make([]string, 0, 3)
+	// clause 是当前遍历到的分句。
+	for _, clause := range strings.FieldsFunc(sentence, func(r rune) bool {
+		return r == '，' || r == ','
+	}) {
+		// trimmed 是去空白后的分句；空分句与包邮承诺分句都丢弃。
+		trimmed := strings.TrimSpace(clause)
+		if trimmed == "" || claimsFreeShipping(trimmed) {
+			continue
+		}
+		kept = append(kept, trimmed)
+	}
+	return strings.Join(kept, "，"), true
+}
+
+// shippingQualifier 返回运费限定话术：有运费事实用事实，无事实用通用限定。
+func shippingQualifier(live liveKnowledge) string {
+	// fact 是已注入的运费事实；有事实用事实施加限定，无事实用通用限定。
+	if fact := strings.TrimSpace(live.ShippingFact); fact != "" {
+		return fact
+	}
+	return shippingDefaultQualifier
 }
 
 // claimsFreeShipping 判断单句是否在无条件承诺包邮。
@@ -268,8 +391,9 @@ func shippingFactConfirmsFreeShipping(fact string) bool {
 // ApplyReplyGuardsForEval 用与生产相同的确定性守卫改写一条模型回复，供离线评测复用。
 // 与生产 applyAnswerGuards 的差异：不模拟价格守卫（评测样本不触发结构化改价），
 // 只跑合规兜底与事实兜底，顺序与生产一致。
+// buyerText 必须传买家问句：事实兜底按话题门控决定是否改写，缺了它就等于丢掉门控条件。
 // 返回改写后的文本、最终答案来源（llm/policy-compliance/policy-guard）与是否发生改写。
-func ApplyReplyGuardsForEval(reply string, facts PromptLiveFacts) (string, string, bool) {
+func ApplyReplyGuardsForEval(reply string, facts PromptLiveFacts, buyerText string) (string, string, bool) {
 	// live 是把导出事实转成守卫内部使用的形态。
 	live := liveKnowledge{
 		DeliverySource:   facts.DeliverySource,
@@ -290,7 +414,7 @@ func ApplyReplyGuardsForEval(reply string, facts PromptLiveFacts) (string, strin
 		changed = true
 	}
 	// guarded、hit 是事实兜底后的文本与是否命中。
-	if guarded, hit := guardDeflection(out, live); hit {
+	if guarded, hit := guardDeflection(out, live, buyerText); hit {
 		out = guarded
 		source = answerSourcePolicyGuard
 		changed = true

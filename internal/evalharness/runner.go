@@ -116,7 +116,7 @@ func evalOne(ctx context.Context, sample Sample, gen GeneratorFunc, genCfg, judg
 		}
 		// 生产链路的确定性守卫必须参与评测：否则测的是模型裸输出，而非买家实际看到的文本。
 		// guarded、guardedSource、hit 是改写后的文本、答案来源与是否发生改写。
-		guarded, guardedSource, hit := engine.ApplyReplyGuardsForEval(reply, facts)
+		guarded, guardedSource, hit := engine.ApplyReplyGuardsForEval(reply, facts, sample.Snapshot.MessageText)
 		if hit {
 			reply = guarded
 			guardSource = guardedSource
