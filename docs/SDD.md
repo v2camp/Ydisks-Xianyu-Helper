@@ -42,12 +42,12 @@
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 | 方案出处 |
 |---|---|---|---|---|
-| A1 | 评测口径修正 | `在树` | 提交 `c9200229`；`commentlint`/门禁全绿。**差**一次真实模型跑分（需容器网络内或 `EVAL_*`） | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
-| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
+| A1 | 评测口径修正 | `在树` | 提交 `c9200229` 已随 2026-11-01 镜像发布；`commentlint`/门禁全绿。**差**一次真实模型跑分（容器网络内或 `EVAL_*`）确认口径 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
+| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07)：`ai_generation_log.grounding_source=card-channel` 占 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
 | A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`：`reply_guard.go` + `applyAnswerGuards` 已合入；4 条真实回避话术全部被改写。**差**一次真实模型跑分与线上 `answer_source=policy-guard` 出现 | 同上 §12 |
+| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`(`reply_guard.go`+`applyAnswerGuards`)已随 2026-11-01 镜像发布，4 条真实回避话术全部被改写。**差**线上 `answer_source=policy-guard` 尚未出现(11-07 实测 llm=3/policy-min-price=1)，守卫未在真实流量触发，需一次真实模型跑分确认 | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
-| A6 | AI 启用态与凭据启动自检 | `在树` | 提交 `76542eed`：`engine.AIReadinessProbe` 已登记为生命周期组件，启动即检 + 周期复检。**差**镜像发布；G1（商品归属）依赖具体消息，不在自检范围 | 同上 §12 |
+| A6 | AI 启用态与凭据启动自检 | `已发布` | 提交 `76542eed` 已随 2026-11-01 镜像发布(`build_time 2026-11-01T15:37:20Z`)；`ai_master_enabled=true`、两账号 `ai_enabled=1`，`ai_decision_log` 录得 `taken`(迄 11-07) → 自检链路**已生效**。G1(商品归属)依赖具体消息，不在自检范围 | 同上 §12 |
 
 **A2 + A4 是唯一能消掉评测里 9/9 失败组合的解**（A2 让事实进得去，A4 让回避出不来），其余各项不影响这 9 条。
 
@@ -77,9 +77,9 @@
 
 ### 1.5 E 组：AI 默认开启与一键关闭（P0，方案见 `docs/customer-service-ai-default-on-plan.md`）
 
-> 部署记录（2026-11-01）：本地部署镜像重建并替换 `ydisks-xianyu-helper-app-1`，运行镜像 ID `7eb796e3`，健康检查通过，部署后无 ERROR 日志。
-> 线上核验：`ai_master_enabled` 缺省无行=开；3 个账号全部生效为开；`ai_reply_review_mode` 线上无行（该功能从未被启用，删除对线上行为零改变），写入现返回 400。
-> 状态说明：`已发布` 指已运行，`已生效` 需真实买家消息进入后由 `ai_decision_log` 佐证，尚未观测到。
+> 部署记录（2026-11-01）：镜像重建 `7eb796e3` → 运行镜像 `d870a64f`（`v1.0.40-local-20261023-30-gd870a64f`，`build_time 2026-11-01T15:37:20Z`），app-1 `Up 5d healthy`。
+> 线上核验（2026-11-07 只读）：`ai_master_enabled=true`；两账号 `ai_reply_settings.ai_enabled=1`；`ai_decision_log` 录得 `taken`=4(接管,迄 11-07)、`no-intent`=14、`item-sync-requested/failed`=6；`ai_generation_log` 4 行，`grounding_source=card-channel` 占 3(75%)。→ **AI 默认开启已生效**。
+> `ai_reply_review_mode` 线上无行(从未启用,删除零影响),写入现返回 400。
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
 |---|---|---|---|
@@ -89,7 +89,7 @@
 | E4 | 意图白名单放开：order → inquiry → consult（spec / usage 待 A2） | `已发布` | `b0160659`：`order`/`inquiry`/`consult` 三处 `allowAI=true`，`spec`/`usage` 仍 false；6 处「只标注」断言同批改正 |
 | E5 | 自检与人工确认口径同步 | `已发布` | `02132065`：`Ready()` 改为「总闸开 && 无凭据问题」，「无启用行」不再是故障；`ai_reply_review_mode` 随 E6 整键删除，不再需要联动提示 |
 | E6 | 移除人工确认模式（UI + 逻辑 + 契约） | `已发布` | `adf80b0d`：`reply_review.go` 与 213 行测试已删，`NewReplyService` 收敛为 8 参，设置校验改为拒写该键。**线上原值仍未核对（O9）** |
-| E7 | AI 密钥 provider（TTL + single-flight + 写时失效） | `未开始` | `globalAIConfig` 每条回复都走 `ReadSensitiveSettingForAccount` → 每条回复一行审计；日 300 条 ≈ 9000 行/月 |
+| E7 | AI 密钥 provider（TTL + single-flight + 写时失效） | `已发布` | 提交 `2cd7750e`(`ai_key_provider.go`,256 行)已随 2026-11-01 镜像发布；模型密钥改走带 TTL 与 single-flight 的缓存，消除每回复一行审计(日 300 条 ≈ 9000 行/月)，fail-closed 语义保留 |
 | E8 | 准入层异步补齐缺失商品（方案 C） | `已发布` | `f762c353`：新增 `item_backfill.go`（去重 + 24h 负缓存 + 按账号限流 + single-flight），单商品详情走新窄接口不改 `mtop.Client`，`platform_unresolved` 永久短路已修；原因码 `item-sync-requested` / `item-sync-failed` |
 | E9 | Agent 开关归并到统一开关（保留 preset 配置） | `已发布` | `c0008544`：`KeySupportEnabled`、`agent_enabled` 读取、4 个接口 enabled 字段已删；`ResolveSession` 恒 true；并修掉写档位顺带写 `ai_enabled=0` 的隐患 |
 | E10 | `source` 只认「显式保存过开关」 | `已发布` | `808322f9`（合并 `d870a64f`）：定性为缺陷——契约规定 `source=account` 表示「账号显式设置」，实现却用「行存在」冒充。未提交开关时改落 NULL，两条写入通路统一；`AIEnabledExplicit` 改判列是否有值。**顺带修掉只在 PostgreSQL 暴露的 `ON CONFLICT DO UPDATE` 列名歧义（SQLSTATE 42702）**，SQLite 测不出。生产实测：只改护栏 PUT 返回 200 且 `ai_enabled` 原值保留 |
@@ -148,3 +148,28 @@
 1. 一项进入 `已生效` 后，在本文件保留一行摘要与日期，详细论证留在其方案文档。
 2. 方案文档被完全取代时，在 §2 标注「已归档：由 X 取代」，不删除。
 3. 本文件超过 300 行时，把 `已生效` 项移入 `docs/archive/sdd-done.md`，本文件只留未完成项。
+
+## 5. 周度记录
+
+### 2026-11-07
+
+**数据可得性**：本次成功只读连接生产库（`docker exec` 进 `ydisks-xianyu-helper-postgres-1`，纯 SELECT，未触发迁移）。样本库 `data/evalexport/samples-all.jsonl` 仍为 10-11 导出，本周无新导出 → 规则层用旧快照，归因分布用线上实时（降级说明）。
+
+**离线评测（dry-run）**：70 条消息；9 条可机检期望全部未通过（均为发货渠道回避话术「以商品详情/拍下后发货消息为准」，期望 百度网盘/夸克网盘）；6 条 decision 层通过（escalation）；其余 46 条为 dry-run 不可判定（无期望或无历史 AI 回复）。9/9 失败与 SDD 判定一致（A2/A4 仍在树未生效），无新增失败、无从失败变通过。
+
+**「在树≠已发布」复核（单独成行）**：
+- A1/A4 代码已随 2026-11-01 镜像发布（`d870a64f`,build 15:37Z），但缺真实跑分 / `policy-guard` 信号，仍判 `在树`。
+- A6 镜像已发布且线上 `ai_decision_log` 录得 `taken`(迄 11-07) → 升 `已发布`(且已生效)。
+- E7 实为提交 `2cd7750e` 已发布，原标 `未开始` 为误判 → 修正为 `已发布`。
+
+**状态变化**：E7 未开始→已发布；A6 在树→已发布(且 AI 默认开启整体已生效,见 §1.5)；A2 补线上证据(card-channel 75%)；A4 补证据(无 policy-guard 行)。
+
+**归因分布（线上实时,30 天窗口）**：
+
+| 维度 | 分布 |
+|---|---|
+| grounding_source | card-channel 3/4(75%)、none 1 |
+| answer_source | llm 3、policy-min-price 1 |
+| 决策接管 | taken 4、no-intent 14、item-sync 6；接管率≈22%(小样本) |
+
+**优先级**：未落地项顺序不变（A1-A6 > B1-B4 > C1-C3 > D1-D2），同档内无新阻塞变化；B/C/D 全组仍 `未开始`（本周无对应提交）。
