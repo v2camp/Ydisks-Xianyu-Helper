@@ -45,7 +45,7 @@
 | A1 | 评测口径修正 | `在树` | 提交 `c9200229` 已随 2026-11-01 镜像发布；`commentlint`/门禁全绿。**差**一次真实模型跑分（容器网络内或 `EVAL_*`）确认口径 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
 | A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07)：`ai_generation_log.grounding_source=card-channel` 占 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
 | A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`(`reply_guard.go`+`applyAnswerGuards`)已随 2026-11-01 镜像发布，4 条真实回避话术全部被改写。**差**线上 `answer_source=policy-guard` 尚未出现(11-07 实测 llm=3/policy-min-price=1)，守卫未在真实流量触发，需一次真实模型跑分确认 | 同上 §12 |
+| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed`(`reply_guard.go`+`applyAnswerGuards`)已随 2026-11-01 镜像发布，4 条真实回避话术全部被改写。11-07 补提交 `03079506`：回避判定由精确子串升级为「指向对象×推诿词」共现，覆盖「以商品详情页说明和拍下后的发货消息为准」等插入式变体（导出器 `deflectionMarkers` 早已能识别，此前守卫漏网）。**差**镜像重建发布 + 一次真实模型跑分确认 `answer_source=policy-guard` 出现(11-07 实测 llm=3/policy-min-price=1) | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
 | A6 | AI 启用态与凭据启动自检 | `已发布` | 提交 `76542eed` 已随 2026-11-01 镜像发布(`build_time 2026-11-01T15:37:20Z`)；`ai_master_enabled=true`、两账号 `ai_enabled=1`，`ai_decision_log` 录得 `taken`(迄 11-07) → 自检链路**已生效**。G1(商品归属)依赖具体消息，不在自检范围 | 同上 §12 |
 
