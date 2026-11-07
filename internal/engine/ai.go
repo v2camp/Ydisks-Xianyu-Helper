@@ -218,6 +218,7 @@ func (a *AIReplierImpl) Reply(ctx context.Context, m ChatMessage) (*ReplyResult,
 		AutoAdjustPrice:    cfg.AutoAdjustPriceEnabled,
 		Policy:             policy,
 		Live:               live,
+		BuyerText:          m.Text,
 		ChatID:             m.ChatID,
 		ItemID:             m.ItemID,
 	})
@@ -256,6 +257,8 @@ type answerGuardInput struct {
 	Policy *aiPolicyConfig
 	// Live 是本次注入的事实集合。
 	Live liveKnowledge
+	// BuyerText 是买家问句，事实兜底按它做话题门控。
+	BuyerText string
 	// ChatID、ItemID 仅用于日志定位，不参与判定。
 	ChatID string
 	ItemID string
@@ -318,7 +321,7 @@ func (a *AIReplierImpl) applyAnswerGuards(in answerGuardInput) guardedAnswer {
 		}
 		// 事实兜底：合规改写后的文本仍可继续纠正回避话术。
 		// guarded、changed 是事实兜底后的文本与是否发生改写。
-		if guarded, changed := guardDeflection(out.Reply, in.Live); changed {
+		if guarded, changed := guardDeflection(out.Reply, in.Live, in.BuyerText); changed {
 			out.Reply = guarded
 			out.Source = answerSourcePolicyGuard
 			out.Reason = "deflection-guard"

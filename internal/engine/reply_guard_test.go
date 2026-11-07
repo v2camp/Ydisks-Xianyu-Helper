@@ -7,13 +7,15 @@ import (
 )
 
 // TestGuardDeflection 覆盖事实兜底的可改写与不可改写边界。
-// 核心契约：有确定事实且回复含回避话术才改写；没有事实时一律不动，
-// 否则会把「本来就不该断言」的合法回避改成编造。
+// 核心契约：有确定性事实、回复含回避话术、且买家问句的话题与事实同属性时才改写；
+// 任一条不成立都不得动，否则会把「事实答不了」的合法回避改成答非所问。
 func TestGuardDeflection(t *testing.T) {
-	// cases 是逐条用例：输入回复 + 事实集合，期望文本与是否改写。
+	// cases 是逐条用例：买家问句 + 输入回复 + 事实集合，期望文本与是否改写。
 	cases := []struct {
 		// name 是用例名。
 		name string
+		// buyer 是买家问句，话题门控的输入。
+		buyer string
 		// reply 是模型产出的回复。
 		reply string
 		// live 是本次注入的事实集合。
@@ -25,6 +27,7 @@ func TestGuardDeflection(t *testing.T) {
 	}{
 		{
 			name:  "卡密渠道事实下回避话术被替换",
+			buyer: "有夸克网盘吗",
 			reply: "这款是双盘发货的，具体是哪个网盘以商品详情和拍下后的发货消息为准哦。",
 			live: liveKnowledge{
 				DeliverySource:   deliverySourceCard,
@@ -35,6 +38,7 @@ func TestGuardDeflection(t *testing.T) {
 		},
 		{
 			name:  "整段都是回避时只留事实句",
+			buyer: "发什么网盘",
 			reply: "具体以商品详情为准哈。",
 			live: liveKnowledge{
 				DeliverySource:   deliverySourceCard,
@@ -45,6 +49,7 @@ func TestGuardDeflection(t *testing.T) {
 		},
 		{
 			name:  "规格事实下说不准被纠正",
+			buyer: "一共多少集",
 			reply: "具体集数商品详情里没标注，我这边也说不准，内容是全的完结版。",
 			live: liveKnowledge{
 				DeliverySource: deliverySourceNone,
@@ -55,6 +60,7 @@ func TestGuardDeflection(t *testing.T) {
 		},
 		{
 			name:  "没有任何事实时不得改写",
+			buyer: "有夸克网盘吗",
 			reply: "具体以商品详情为准哦。",
 			live: liveKnowledge{
 				DeliverySource: deliverySourceNone,
@@ -64,6 +70,7 @@ func TestGuardDeflection(t *testing.T) {
 		},
 		{
 			name:  "文本规则猜出的渠道不得用来断言",
+			buyer: "有夸克网盘吗",
 			reply: "具体以商品详情为准哦。",
 			live: liveKnowledge{
 				DeliverySource:   deliverySourceItemText,
@@ -74,6 +81,7 @@ func TestGuardDeflection(t *testing.T) {
 		},
 		{
 			name:  "正常回复不受影响",
+			buyer: "有夸克网盘吗",
 			reply: "这款是百度网盘发货的，拍下后马上发链接。",
 			live: liveKnowledge{
 				DeliverySource:   deliverySourceCard,
@@ -82,13 +90,80 @@ func TestGuardDeflection(t *testing.T) {
 			want:        "这款是百度网盘发货的，拍下后马上发链接。",
 			wantChanged: false,
 		},
+		{
+			name:  "发票类问句不得被改成渠道结论",
+			buyer: "能开发票吗",
+			reply: "发票相关我这边给不了准信儿，具体以商品详情页和平台规则为准哈～",
+			live: liveKnowledge{
+				DeliverySource:   deliverySourceCard,
+				DeliveryChannels: []string{"百度网盘"},
+			},
+			want:        "发票相关我这边给不了准信儿，具体以商品详情页和平台规则为准哈～",
+			wantChanged: false,
+		},
+		{
+			name:  "赠品类问句不得被改成渠道结论",
+			buyer: "有赠品或者优惠吗",
+			reply: "赠品这块暂时没有相关信息，具体以商品详情页和平台规则为准哈。",
+			live: liveKnowledge{
+				DeliverySource:   deliverySourceCard,
+				DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+			},
+			want:        "赠品这块暂时没有相关信息，具体以商品详情页和平台规则为准哈。",
+			wantChanged: false,
+		},
+		{
+			name:  "格式问句不得被规格事实以外的渠道事实顶替",
+			buyer: "是PDF还是视频",
+			reply: "具体是PDF还是视频，以商品详情页和平台规则为准哈～",
+			live: liveKnowledge{
+				DeliverySource:   deliverySourceCard,
+				DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+				ItemFacts:        []string{"1-4季", "全集"},
+			},
+			want:        "具体是PDF还是视频，以商品详情页和平台规则为准哈～",
+			wantChanged: false,
+		},
+		{
+			name:  "格式问句命中格式事实时改写成该事实",
+			buyer: "是PDF还是视频",
+			reply: "具体格式以商品详情页和平台规则为准哈～",
+			live: liveKnowledge{
+				DeliverySource: deliverySourceCard,
+				ItemFacts:      []string{"1-4季", "视频"},
+			},
+			want:        "本商品确定信息：视频。",
+			wantChanged: true,
+		},
+		{
+			name:  "设备兼容问句不得被改成渠道结论",
+			buyer: "手机和电脑都能看吗",
+			reply: "至于具体播放设备和格式兼容，具体以商品详情页和平台规则为准哈～",
+			live: liveKnowledge{
+				DeliverySource:   deliverySourceCard,
+				DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+			},
+			want:        "至于具体播放设备和格式兼容，具体以商品详情页和平台规则为准哈～",
+			wantChanged: false,
+		},
+		{
+			name:  "发货进度问句不得被改成渠道结论",
+			buyer: "发货凭证在哪看",
+			reply: "这个以拍下后的发货消息为准哈。",
+			live: liveKnowledge{
+				DeliverySource:   deliverySourceCard,
+				DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+			},
+			want:        "这个以拍下后的发货消息为准哈。",
+			wantChanged: false,
+		},
 	}
 
 	// c 是当前遍历到的用例。
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			// got、changed 是兜底后的文本与是否改写。
-			got, changed := guardDeflection(c.reply, c.live)
+			got, changed := guardDeflection(c.reply, c.live, c.buyer)
 			if changed != c.wantChanged {
 				t.Fatalf("改写判定不符：got=%v want=%v（文本 %q）", changed, c.wantChanged, got)
 			}
@@ -106,7 +181,7 @@ func TestGuardDeflectionNeverLeavesDeflectionPhrase(t *testing.T) {
 	// live 是带卡密渠道的事实集合。
 	live := liveKnowledge{DeliverySource: deliverySourceCard, DeliveryChannels: []string{"夸克网盘"}}
 	// got 是兜底后的文本。
-	got, changed := guardDeflection(reply, live)
+	got, changed := guardDeflection(reply, live, "有夸克网盘吗")
 	if !changed {
 		t.Fatalf("应发生改写")
 	}
@@ -181,32 +256,41 @@ func TestAIReply_DeflectionGuardRewritesReply(t *testing.T) {
 	}
 }
 
-// TestGuardDeflection_RealDeflectionReplies 用评测里被机检判失败的 4 条真实话术做回归。
+// TestGuardDeflection_RealDeflectionReplies 用评测里被机检判失败的 6 条真实话术做回归。
 // 这批话术是 A4 的存在理由：模型在事实已注入时仍然把买家推回商品详情页。
 func TestGuardDeflection_RealDeflectionReplies(t *testing.T) {
-	// replies 是 2026-10 生产会话与 11-07 dry-run 里被判失败的原始回复文本。
-	replies := []string{
-		"您好～这款是双盘发货的，具体是哪个网盘以商品详情和拍下后的发货消息为准哦。",
-		"亲，具体用哪个网盘以商品详情和拍下后的发货消息为准哈，不同商品发货方式不一样～",
-		"不同商品发货方式不太一样哦，具体以商品详情和拍下后的发货消息为准～",
-		"具体集数商品详情里没标注，我这边也说不准，内容是全的完结版～",
-		"亲，具体网盘类型以商品详情和拍下后的发货消息为准哈，我这边先帮您确认下，您拍下后备注一下夸克，我看能不能安排~",
-		"不同商品发货方式不一样哈，具体以商品详情页说明和拍下后的发货消息为准～",
+	// cases 是「真实回避话术 + 该话术对应的买家问句」组合，问句决定事实类型。
+	cases := []struct {
+		// buyer 是触发该回避回复的买家问句。
+		buyer string
+		// reply 是 2026-10 生产会话与 11-07 dry-run 里被判失败的原始回复文本。
+		reply string
+	}{
+		{buyer: "有度盘的吗", reply: "您好～这款是双盘发货的，具体是哪个网盘以商品详情和拍下后的发货消息为准哦。"},
+		{buyer: "夸克网盘有吗", reply: "亲，具体用哪个网盘以商品详情和拍下后的发货消息为准哈，不同商品发货方式不一样～"},
+		{buyer: "支持网盘发货吗", reply: "不同商品发货方式不太一样哦，具体以商品详情和拍下后的发货消息为准～"},
+		{buyer: "一共多少集", reply: "具体集数商品详情里没标注，我这边也说不准，内容是全的完结版～"},
+		{buyer: "这款发什么网盘", reply: "亲，具体网盘类型以商品详情和拍下后的发货消息为准哈，我这边先帮您确认下，您拍下后备注一下夸克，我看能不能安排~"},
+		{buyer: "怎么发货", reply: "不同商品发货方式不一样哈，具体以商品详情页说明和拍下后的发货消息为准～"},
 	}
-	// live 是按卡密识别出的渠道事实。
-	live := liveKnowledge{DeliverySource: deliverySourceCard, DeliveryChannels: []string{"百度网盘", "夸克网盘"}}
-	// reply 是当前遍历到的真实回复。
-	for _, reply := range replies {
+	// live 是同时带渠道事实与规格事实的事实集合，按问句话题各取所需。
+	live := liveKnowledge{
+		DeliverySource:   deliverySourceCard,
+		DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+		ItemFacts:        []string{"1-4季", "全集"},
+	}
+	// c 是当前遍历到的真实用例。
+	for _, c := range cases {
 		// got、changed 是兜底后的文本与是否改写。
-		got, changed := guardDeflection(reply, live)
+		got, changed := guardDeflection(c.reply, live, c.buyer)
 		if !changed {
-			t.Fatalf("真实回避话术必须被改写: %q", reply)
+			t.Fatalf("真实回避话术必须被改写: %q（问句 %q）", c.reply, c.buyer)
 		}
 		if containsDeflection(got) {
 			t.Fatalf("改写后仍含回避话术: %q", got)
 		}
-		if !strings.Contains(got, "百度网盘") {
-			t.Fatalf("改写后应给出确定渠道: %q", got)
+		if !strings.Contains(got, "百度网盘") && !strings.Contains(got, "全集") {
+			t.Fatalf("改写后应给出确定事实: %q", got)
 		}
 	}
 }
@@ -237,6 +321,120 @@ func TestContainsDeflection_Cooccurrence(t *testing.T) {
 			// got 是判定结果。
 			if got := containsDeflection(c.text); got != c.want {
 				t.Fatalf("回避判定不符：got=%v want=%v（文本 %q）", got, c.want, c.text)
+			}
+		})
+	}
+}
+
+// TestIsDeliveryQuestion 锁定渠道问句的判定边界。
+// 「发货」单独出现时多指时效或进度（今天能发吗 / 发货了吗），不能被判成渠道问句，
+// 否则守卫又会把时效、履约类问句改写成渠道结论。
+func TestIsDeliveryQuestion(t *testing.T) {
+	// cases 是逐条用例：买家问句 + 是否期望判为渠道问句。
+	cases := []struct {
+		// text 是买家问句。
+		text string
+		// want 表示是否期望判为渠道问句。
+		want bool
+	}{
+		{text: "有度盘的吗", want: true},
+		{text: "夸克？", want: true},
+		{text: "这款发什么网盘", want: true},
+		{text: "怎么发货", want: true},
+		{text: "支持网盘发货吗", want: true},
+		{text: "百度和夸克两个网盘都有吗", want: true},
+		{text: "今天下单今天能发吗", want: false},
+		{text: "我的订单发货了吗", want: false},
+		{text: "发货凭证在哪看", want: false},
+		{text: "能开发票吗", want: false},
+		{text: "手机和电脑都能看吗", want: false},
+		{text: "在吗", want: false},
+	}
+	// c 是当前遍历到的用例。
+	for _, c := range cases {
+		// got 是判定结果。
+		if got := isDeliveryQuestion(c.text); got != c.want {
+			t.Fatalf("渠道问句判定不符：got=%v want=%v（问句 %q）", got, c.want, c.text)
+		}
+	}
+}
+
+// TestMatchSpecFacts 锁定规格事实的属性组匹配：同属性才算能回答。
+func TestMatchSpecFacts(t *testing.T) {
+	// facts 是商品标题抽出的规格事实。
+	facts := []string{"1-4季", "全集", "视频"}
+	// cases 是逐条用例：问句 + 期望命中的事实。
+	cases := []struct {
+		// text 是买家问句。
+		text string
+		// want 是期望命中的事实集。
+		want []string
+	}{
+		{text: "一共多少集", want: []string{"1-4季", "全集"}},
+		{text: "是PDF还是视频", want: []string{"视频"}},
+		{text: "能开发票吗", want: nil},
+		{text: "包邮吗", want: nil},
+	}
+	// c 是当前遍历到的用例。
+	for _, c := range cases {
+		// got 是命中的事实集。
+		got := matchSpecFacts(facts, c.text)
+		if len(got) != len(c.want) {
+			t.Fatalf("命中事实数不符：got=%v want=%v（问句 %q）", got, c.want, c.text)
+		}
+		// i 是当前比较的下标。
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Fatalf("命中事实不符：got=%v want=%v（问句 %q）", got, c.want, c.text)
+			}
+		}
+	}
+}
+
+// TestGuardDeflection_RealTopicMismatchRegressions 锁定 2026-11-07 真实跑分里
+// 由守卫自己造成的答非所问回归：这些回复在守卫之前的版本是通过的，
+// 加上渠道结论后才被判失败。事实与问句不同属性时，守卫必须原样放行。
+func TestGuardDeflection_RealTopicMismatchRegressions(t *testing.T) {
+	// live 是这些会话共同注入的事实：卡密渠道 + 标题规格。
+	live := liveKnowledge{
+		DeliverySource:   deliverySourceCard,
+		DeliveryChannels: []string{"百度网盘", "夸克网盘"},
+	}
+	// cases 是逐条真实回归用例：买家问句 + 守卫前通过的原始回复。
+	cases := []struct {
+		// name 是用例名，带评测用例 ID 便于回查报告。
+		name string
+		// buyer 是买家问句。
+		buyer string
+		// reply 是守卫之前被判通过的原始回复。
+		reply string
+	}{
+		{
+			name:  "catalog：问格式答渠道",
+			buyer: "是PDF还是视频",
+			reply: "具体是PDF还是视频，以商品详情页和平台规则为准哈～发货方式是百度网盘和夸克网盘双盘发货，内容34集全。",
+		},
+		{
+			name:  "compliance：问赠品答渠道",
+			buyer: "有赠品或者优惠吗",
+			reply: "赠品这块暂时没有相关信息，具体以商品详情页和平台规则为准哈。价格就是标价 2.13 元，已经是实价了，拍下就能发～",
+		},
+		{
+			name:  "link-code：问设备兼容答渠道",
+			buyer: "手机和电脑都能看吗",
+			reply: "这款是发百度网盘和夸克网盘，手机上、电脑上登录网盘都能看；至于具体播放设备和格式兼容，具体以商品详情页和平台规则为准哈～",
+		},
+	}
+	// c 是当前遍历到的用例。
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// got、changed 是兜底后的文本与是否改写。
+			got, changed := guardDeflection(c.reply, live, c.buyer)
+			if changed {
+				t.Fatalf("话题不匹配时不得改写：%q", got)
+			}
+			if got != c.reply {
+				t.Fatalf("原文必须原样保留：\n got=%q\nwant=%q", got, c.reply)
 			}
 		})
 	}
@@ -280,6 +478,13 @@ func TestGuardCompliance(t *testing.T) {
 			live:        liveKnowledge{ShippingFact: confirmedFreeShipping},
 			want:        "这款包邮的，拍下后发百度网盘。",
 			wantChanged: false,
+		},
+		{
+			name:        "包邮承诺只删该分句并保留其余内容",
+			reply:       "在的，亲～这款双盘发货，包邮的，2.13元",
+			live:        liveKnowledge{},
+			want:        "在的，亲～这款双盘发货，2.13元。运费以下单页面显示为准。",
+			wantChanged: true,
 		},
 		{
 			name:        "不包邮表述不得误改",
