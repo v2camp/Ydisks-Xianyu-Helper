@@ -45,7 +45,7 @@
 | A1 | 评测口径修正 | `已生效` | 提交 `c9200229`；2026-11-07 在容器网络内完成真实模型跑分（`deepseek-flash`，70 条，采样 1 次）：通过率 72.9%(51/70)、内容层 70.3%(45/64)、决策层 100%(6/6)、判定失败 0，门禁通过。分层与按标签报告均正常产出 → 口径已可用 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
 | A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07)：`ai_generation_log.grounding_source=card-channel` 占 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
 | A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `在树` | 提交 `76542eed` 已随镜像发布；11-07 `03079506` 把回避判定升级为「指向对象×推诿词」共现；`0d7b055a` 新增合规守卫（退款禁语→唯一默认话术、无依据包邮→事实施加限定、显式正版否定→以商品页说明为准），新增 `answer_source=policy-compliance`。**跑分(11-07)**：`delivery` 7/7，但评测链路不经过守卫，`policy-guard`/`policy-compliance` 仍 0 行。**残留缺口**：#42 裸「不是」无法确定性改写、#39 发票与 #41 时效属事实缺口。**差**镜像重建发布 + 线上真实信号 | 同上 §12 |
+| A4 | 生成后确定性校验兜底 | `已发布` | 提交 `2cc93e09` 已随镜像 `672a9310` 发布（`build_time 2026-11-07T16:00:03Z`，`/health` 已核）。守卫四层齐备：价格守卫 / 回避共现判定 `03079506` / 合规守卫 `0d7b055a` / **话题门控**（本轮）。**跑分(11-07 门控后)**：通过率 77.1%(54/70)，守卫仅触发 4 条且全通过，**守卫导致的回归 0 条**（门控前为 5 条）；`delivery` 7/7、`compliance` 5/7。**差**线上真实信号：`ai_generation_log` 迄 11-04 仍只有 `llm`/`policy-min-price`，`policy-guard`/`policy-compliance` 需等新流量。**残留**：#42 裸「不是」、#39 发票、#41 时效属事实缺口，不在守卫能力内 | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
 | A6 | AI 启用态与凭据启动自检 | `已发布` | 提交 `76542eed` 已随 2026-11-01 镜像发布(`build_time 2026-11-01T15:37:20Z`)；`ai_master_enabled=true`、两账号 `ai_enabled=1`，`ai_decision_log` 录得 `taken`(迄 11-07) → 自检链路**已生效**。G1(商品归属)依赖具体消息，不在自检范围 | 同上 §12 |
 
@@ -78,7 +78,9 @@
 ### 1.5 E 组：AI 默认开启与一键关闭（P0，方案见 `docs/customer-service-ai-default-on-plan.md`）
 
 > 部署记录（2026-11-01）：镜像重建 `7eb796e3` → 运行镜像 `d870a64f`（`v1.0.40-local-20261023-30-gd870a64f`，`build_time 2026-11-01T15:37:20Z`），app-1 `Up 5d healthy`。
+> 部署记录（2026-11-08 00:08 +0800）：镜像重建 `672a9310` → 运行镜像 `v1.0.40-local-20261023-44-g672a9310`（`build_time 2026-11-07T16:00:03Z`），app-1 `Recreated` 后 `healthy`，迁移版本 67（无新迁移），启动无 error/warn。
 > 线上核验（2026-11-07 只读）：`ai_master_enabled=true`；两账号 `ai_reply_settings.ai_enabled=1`；`ai_decision_log` 录得 `taken`=4(接管,迄 11-07)、`no-intent`=14、`item-sync-requested/failed`=6；`ai_generation_log` 4 行，`grounding_source=card-channel` 占 3(75%)。→ **AI 默认开启已生效**。
+> 线上核验（2026-11-08 00:10 只读，重启后）：`ai_master_enabled=true`、`ai_api_key` 在位（长度 91，不回传明文）、两账号 `ai_enabled` 仍为 1；`ai_generation_log` 仍 4 行（`llm`=3、`policy-min-price`=1），最新 11-04 → 新镜像尚无 AI 流量，守卫的线上信号待观察。
 > `ai_reply_review_mode` 线上无行(从未启用,删除零影响),写入现返回 400。
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
@@ -177,3 +179,19 @@
 **合规守卫落地（11-07）**：提交 `0d7b055a` 新增 `guardCompliance`，按「枚举具体项 + 明确禁令 + 唯一默认话术」改写退款禁语（`不支持退款` 等）、无依据包邮承诺、显式正版否定（`不是正版/正品`）；新增 `answer_source=policy-compliance` 保留归因粒度，engine 包全绿、vet/commentlint 通过。残留：#42 违规是裸「不是」无法安全改写、#39 发票与 #41 时效属事实缺口，均不在确定性守卫能力内。
 
 **优先级**：A1 已转入 `已生效`；未落地项仍按 准确性 > 通用性 > 热点 > 性能。准确性内部焦点由「发货回避」转向「合规编造（`compliance` 2/7）」，已由 A4 合规守卫部分承接；B/C/D 全组仍 `未开始`（本周无对应提交）。
+
+#### 2026-11-07 续：守卫话题门控、评测接入守卫、发布
+
+**测量缺口先补**：`internal/evalharness` 此前从不调用 `guardDeflection`/`applyAnswerGuards`，跑分测的是模型裸输出，`policy-guard` 结构上不可能出现——A4 的收益无法被测量。提交 `80be4ee7` 新增 `engine.ApplyReplyGuardsForEval` 与 `reconstructLiveFacts`（从快照系统提示重建最小事实集），评测链路自此复用与生产同源的守卫；`report.go` 增「确定性守卫改写：N 条」表头与逐条「兜底」行。
+
+**跑分暴露守卫净收益为负**：接入后 17 条触发，逐条对比守卫前后同一样本，改善 3 条、回归 5 条；表观 +2 条提升全部来自采样噪声（6 条无人为改写的翻转）。回归形态一致——买家问发票/赠品/格式/设备兼容/发货进度，守卫把回复追加或替换成渠道结论。根因是作用域：`deliveryAnswerConstraint` 只在「买家问到网盘或发货方式」时承诺直答，守卫却无此门控。
+
+**修复（提交 `2cc93e09`）**：`guardDeflection` 增加买家问句话题门控，判定词与提示词作用域对齐（单独「发货」不算渠道问句，避免误吞时效/履约）；规格事实改用属性组匹配（问「多少集」可用「1-4季」，问「PDF还是视频」不得用集数事实顶替），无同属性事实时放手；合规守卫的包邮分支改为分句级（整句替换曾把「在吗」的问候整段换成运费限定）。新增 17 条边界用例 + 3 条真实回归话术用例。
+
+**门控后跑分（11-07 23:15 起，容器网络内，`deepseek-flash`，70 条 × 1 次）**：通过率 **77.1%(54/70)**，内容层 75.0%(48/64)，决策层 100%(6/6)，判定失败 0，门禁通过。守卫仅触发 4 条（全部 `policy-compliance`，全部通过），**守卫导致的回归 0 条**。按标签：`delivery` 7/7、`fulfillment` 4/4、`escalation` 6/6、`bargain` 5/5、`link-code` 8/9、`compliance` 5/7（较守卫前 2/7 提升）；`human-correction` 11/20 仍为最大失败池，且失败集中在发票/退款/时效/地址/物流类事实缺口，非守卫能力范围。
+
+**发布（11-08 00:08 +0800）**：镜像重建 `672a9310`，`/health` 返回 `v1.0.40-local-20261023-44-g672a9310`、`build_time 2026-11-07T16:00:03Z`（晚于提交），app-1 重建后 healthy，迁移版本 67 无新迁移，启动日志无 error/warn。A4 由 `在树` 升 `已发布`。
+
+**仍未生效的部分（单独成行）**：`ai_generation_log` 迄 11-04 仍只有 `llm`=3、`policy-min-price`=1，`policy-guard`/`policy-compliance` 尚无线上行 → A4 **不是** `已生效`，需真实流量出现对应 `answer_source` 才能转态。
+
+**测量口径警示**：单样本 + 非零温度下，逐条通过与失败会随机翻转（本轮 6 条无人为改写翻转），因此**不接受单次跑分的逐条差分作为守卫归因**；归因只看「该条是否被守卫改写」（`GuardSource` 非空）。
