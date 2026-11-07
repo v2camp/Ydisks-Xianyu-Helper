@@ -184,12 +184,14 @@ func TestAIReply_DeflectionGuardRewritesReply(t *testing.T) {
 // TestGuardDeflection_RealDeflectionReplies 用评测里被机检判失败的 4 条真实话术做回归。
 // 这批话术是 A4 的存在理由：模型在事实已注入时仍然把买家推回商品详情页。
 func TestGuardDeflection_RealDeflectionReplies(t *testing.T) {
-	// replies 是 2026-10 生产会话里被判失败的原始回复文本。
+	// replies 是 2026-10 生产会话与 11-07 dry-run 里被判失败的原始回复文本。
 	replies := []string{
 		"您好～这款是双盘发货的，具体是哪个网盘以商品详情和拍下后的发货消息为准哦。",
 		"亲，具体用哪个网盘以商品详情和拍下后的发货消息为准哈，不同商品发货方式不一样～",
 		"不同商品发货方式不太一样哦，具体以商品详情和拍下后的发货消息为准～",
 		"具体集数商品详情里没标注，我这边也说不准，内容是全的完结版～",
+		"亲，具体网盘类型以商品详情和拍下后的发货消息为准哈，我这边先帮您确认下，您拍下后备注一下夸克，我看能不能安排~",
+		"不同商品发货方式不一样哈，具体以商品详情页说明和拍下后的发货消息为准～",
 	}
 	// live 是按卡密识别出的渠道事实。
 	live := liveKnowledge{DeliverySource: deliverySourceCard, DeliveryChannels: []string{"百度网盘", "夸克网盘"}}
@@ -206,5 +208,37 @@ func TestGuardDeflection_RealDeflectionReplies(t *testing.T) {
 		if !strings.Contains(got, "百度网盘") {
 			t.Fatalf("改写后应给出确定渠道: %q", got)
 		}
+	}
+}
+
+// TestContainsDeflection_Cooccurrence 锁定「指向对象 + 推诿判断词」共现规则：
+// 插入式变体（以商品详情页说明和拍下后的发货消息为准）必须命中，
+// 而「详情页写了 1-4 季」这类正常陈述必须放行——否则会把陈述误改写成渠道结论。
+func TestContainsDeflection_Cooccurrence(t *testing.T) {
+	// cases 是逐条用例：文本 + 是否期望判为回避。
+	cases := []struct {
+		// name 是用例名。
+		name string
+		// text 是待判定文本。
+		text string
+		// want 表示是否期望判为回避。
+		want bool
+	}{
+		{name: "插入页说明的变体", text: "具体以商品详情页说明和拍下后的发货消息为准～", want: true},
+		{name: "发货消息为准", text: "以拍下后的发货消息为准", want: true},
+		{name: "详情里没标注", text: "具体集数商品详情里没标注", want: true},
+		{name: "无指向对象的说不准", text: "我这边也说不准", want: true},
+		{name: "正常陈述详情页有规格", text: "详情页写了 1-4 季，拍下后马上发链接。", want: false},
+		{name: "正常表达不确定", text: "拍下后不确定能不能改地址", want: false},
+		{name: "正常给出渠道", text: "这款是百度网盘发货的，拍下后马上发链接。", want: false},
+	}
+	// c 是当前遍历到的用例。
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// got 是判定结果。
+			if got := containsDeflection(c.text); got != c.want {
+				t.Fatalf("回避判定不符：got=%v want=%v（文本 %q）", got, c.want, c.text)
+			}
+		})
 	}
 }

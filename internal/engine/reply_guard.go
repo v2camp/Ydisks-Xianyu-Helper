@@ -66,11 +66,40 @@ func guardFactStatement(live liveKnowledge) (string, bool) {
 	return "", false
 }
 
-// containsDeflection 判断文本是否含任一回避话术。
+// deflectionTargets 是「把买家推回别处」的指向对象（商品详情 / 发货消息）。
+// 只有与 deflectionPredicates 同时出现才判为回避：单独的「详情页写了 1-4 季」是陈述，不是推诿。
+var deflectionTargets = []string{"商品详情", "详情页", "详情里", "发货消息"}
+
+// deflectionPredicates 是推诿性判断词（以…为准 / 没标注 / 说不准）。
+// 刻意不含「不确定」：它是正当的表达不确定，不能与指向对象共现就当回避改写。
+var deflectionPredicates = []string{"为准", "没标注", "没有标注", "说不准"}
+
+// containsDeflection 判断文本是否含回避话术。
+// 先匹配枚举话术（覆盖「我这边也说不准」这类没有指向对象的固定句式），
+// 再按「指向对象 + 推诿判断词」共现判定：精确子串匹配会漏掉
+// 「以商品详情页说明和拍下后的发货消息为准」这类插入式变体，共现规则能兜住。
 func containsDeflection(text string) bool {
-	// phrase 是当前遍历到的回避话术。
+	// phrase 是当前遍历到的枚举回避话术。
 	for _, phrase := range replyDeflectionPhrases {
 		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	// hasTarget 表示文本是否出现推诿指向对象；没有指向对象时直接判为非回避。
+	hasTarget := false
+	// target 是当前遍历到的推诿指向对象。
+	for _, target := range deflectionTargets {
+		if strings.Contains(text, target) {
+			hasTarget = true
+			break
+		}
+	}
+	if !hasTarget {
+		return false
+	}
+	// predicate 是当前遍历到的推诿判断词；与指向对象共现即为回避。
+	for _, predicate := range deflectionPredicates {
+		if strings.Contains(text, predicate) {
 			return true
 		}
 	}
