@@ -53,6 +53,9 @@ const (
 	deliverySourceNone = "none"
 )
 
+// DeliverySourceCard 是卡密识别出的权威渠道来源简码，导出给评测链路重建事实使用。
+const DeliverySourceCard = deliverySourceCard
+
 // deliveryInference 是一次发货方式推断的结果与其事实来源。
 type deliveryInference struct {
 	// Hint 是注入提示词的发货说明；空表示无任何线索。

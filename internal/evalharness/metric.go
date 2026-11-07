@@ -33,6 +33,9 @@ type CaseResult struct {
 	// JudgeFailed 表示判定失败；汇总时按未通过计入分母，并单独计数供排障。
 	// 旧口径曾把判定失败从分母剔除，会让难样本蒸发、通过率虚高。
 	JudgeFailed bool
+	// GuardSource 是本次回复被确定性守卫改写后的答案来源（policy-guard / policy-compliance）。
+	// 为空表示未经守卫改写；它用于区分「模型能力」与「兜底产出」。
+	GuardSource string
 }
 
 // VerdictStat 是单个事故标签的统计。

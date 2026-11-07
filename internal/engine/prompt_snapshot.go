@@ -73,6 +73,19 @@ type PromptSnapshot struct {
 	Warnings []string
 }
 
+// PromptLiveFacts 是确定性守卫所需的最小事实集合，供离线评测复用生产守卫。
+// 只保留守卫会断言的字段，避免把整份 liveKnowledge（含在售列表与库存）带进评测链路。
+type PromptLiveFacts struct {
+	// DeliverySource 是发货渠道来源简码；只有 DeliverySourceCard 可用于断言渠道。
+	DeliverySource string `json:"delivery_source,omitempty"`
+	// DeliveryChannels 是识别出的渠道名列表。
+	DeliveryChannels []string `json:"delivery_channels,omitempty"`
+	// ItemFacts 是商品标题中可引用的规格事实。
+	ItemFacts []string `json:"item_facts,omitempty"`
+	// ShippingFact 是平台运费事实文案。
+	ShippingFact string `json:"shipping_fact,omitempty"`
+}
+
 // ExportPromptSnapshot 重建指定买家消息在生产链路下会使用的完整提示组成。
 // 方法只读：不生成回复、不写表；次要配置读取失败降级到 Warnings 而不中断导出。
 // ctx 用于取消读取；m 需要至少带 AccountID、ChatID、ItemID、Text 才能得到完整快照。

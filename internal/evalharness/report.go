@@ -20,6 +20,17 @@ func RenderMarkdown(rep *Report) string {
 	fmt.Fprintf(&b, "> 判定模型：`%s`（温度 0）\n", rep.JudgeModel)
 	fmt.Fprintf(&b, "> 每样本采样：%d 次\n", rep.SamplesPerCase)
 	fmt.Fprintf(&b, "> 样本：参与 %d 条，跳过 %d 条，判定失败 %d 条\n", rep.Total, rep.Skipped, rep.JudgeFailures)
+	// guardCount 是本次经确定性守卫改写的样本数，用于区分「模型能力」与「兜底产出」。
+	guardCount := 0
+	// caseResult 是当前遍历到的样本结果。
+	for _, caseResult := range rep.Cases {
+		if caseResult.GuardSource != "" {
+			guardCount++
+		}
+	}
+	if guardCount > 0 {
+		fmt.Fprintf(&b, "> 确定性守卫改写：%d 条（policy-guard / policy-compliance）\n", guardCount)
+	}
 	fmt.Fprintf(&b, "\n> **合规警示**：本文件含生产对话与模型回复原文，属敏感数据，禁止提交进版本库或外发。\n\n")
 
 	// 门禁结论。
@@ -110,6 +121,9 @@ func RenderMarkdown(rep *Report) string {
 		}
 		fmt.Fprintf(&b, "### %d. %s · %s · %s\n\n", index+1, caseResult.Chat, strings.Join(caseResult.Verdicts, ", "), status)
 		fmt.Fprintf(&b, "- 判定层：%s\n", caseResult.Layer)
+		if caseResult.GuardSource != "" {
+			fmt.Fprintf(&b, "- 兜底：`%s`（已改写）\n", caseResult.GuardSource)
+		}
 		fmt.Fprintf(&b, "- 理由：%s\n", orDash(caseResult.Reason))
 		if caseResult.Reply != "" {
 			fmt.Fprintf(&b, "\n模型回复：\n\n> %s\n\n", indentQuote(caseResult.Reply))
