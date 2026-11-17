@@ -46,12 +46,12 @@ func TestTokenFailureClassification(t *testing.T) {
 	}
 }
 
-// TestTokenRetryDelayCoversFailureAndExpiryRules 验证令牌重试延迟对失败次数和即将过期凭证的优先级。
+// TestTokenRetryDelayCoversFailureAndExpiryRules 验证令牌退避基准对失败次数和轮换窗口的优先级。
 func TestTokenRetryDelayCoversFailureAndExpiryRules(t *testing.T) {
 	// account 保存令牌延迟计算使用的账号运行时。
 	account := New(Config{CookieStr: "unb=token-delay"})
 	// firstDelay 保存首次获取令牌失败后的默认延迟。
-	firstDelay := account.tokenRetryDelay()
+	firstDelay := account.tokenRetryBase()
 	if firstDelay != time.Minute {
 		t.Fatalf("首次令牌延迟=%v", firstDelay)
 	}
@@ -59,17 +59,17 @@ func TestTokenRetryDelayCoversFailureAndExpiryRules(t *testing.T) {
 	account.tokenFetchFailures = 2
 	account.mu.Unlock()
 	// repeatedDelay 保存连续失败后的退避延迟。
-	repeatedDelay := account.tokenRetryDelay()
+	repeatedDelay := account.tokenRetryBase()
 	if repeatedDelay != 2*time.Minute {
 		t.Fatalf("连续失败令牌延迟=%v", repeatedDelay)
 	}
 	account.mu.Lock()
 	account.tokenExpiresAt = time.Now().Add(time.Minute)
 	account.mu.Unlock()
-	// expiringDelay 保存凭证即将过期时覆盖普通退避的短延迟。
-	expiringDelay := account.tokenRetryDelay()
-	if expiringDelay != 30*time.Second {
-		t.Fatalf("即将过期令牌延迟=%v", expiringDelay)
+	// expiringDelay 保存连续失败且凭证临近到期时的退避；连续失败必须压过轮换窗口。
+	expiringDelay := account.tokenRetryBase()
+	if expiringDelay != 2*time.Minute {
+		t.Fatalf("连续失败且凭证临近到期时延迟=%v", expiringDelay)
 	}
 	// expiredAccount 保存令牌已过期且尚未建立聊天连接的账号运行时。
 	expiredAccount := New(Config{CookieStr: "unb=expired-token"})
@@ -84,6 +84,55 @@ func TestTokenRetryDelayCoversFailureAndExpiryRules(t *testing.T) {
 	// readErr 保存未建立 WebSocket 时已读上报的生命周期错误。
 	if readErr := expiredAccount.MarkChatRead(context.Background(), "chat", nil); readErr == nil {
 		t.Fatal("未连接账号的已读上报应返回错误")
+	}
+}
+
+// TestTokenRetryBaseEscalatesOnStaleExpiry 验证陈旧过期时间下退避按指数阶梯增长并封顶，且轮换窗口仍可快速重试。
+func TestTokenRetryBaseEscalatesOnStaleExpiry(t *testing.T) {
+	// account 保存退避计算使用的账号运行时。
+	account := New(Config{CookieStr: "unb=stale-expiry"})
+	account.mu.Lock()
+	// 陈旧的过期时间模拟生产事故：上次成功 token 早已过期，失败循环中不再更新。
+	account.tokenExpiresAt = time.Now().Add(-time.Hour)
+	account.mu.Unlock()
+	// cases 枚举连续失败次数与期望的退避基准。
+	cases := []struct {
+		// failures 表示连续获取 token 失败次数。
+		failures int
+		// want 表示该失败次数对应的期望退避基准。
+		want time.Duration
+	}{
+		{failures: 1, want: 30 * time.Second},
+		{failures: 2, want: 2 * time.Minute},
+		{failures: 3, want: 4 * time.Minute},
+		{failures: 4, want: 8 * time.Minute},
+		{failures: 5, want: 15 * time.Minute},
+		{failures: 100, want: 15 * time.Minute},
+	}
+	// index 保存当前用例序号；tc 保存当前用例的失败次数与期望值。
+	for index, tc := range cases {
+		account.mu.Lock()
+		account.tokenFetchFailures = tc.failures
+		account.mu.Unlock()
+		// got 保存当前失败次数下的退避基准。
+		got := account.tokenRetryBase()
+		if got != tc.want {
+			t.Fatalf("用例 %d 失败次数 %d 退避=%v，期望 %v", index, tc.failures, got, tc.want)
+		}
+	}
+	account.mu.Lock()
+	account.tokenFetchFailures = 1
+	account.tokenExpiresAt = time.Now().Add(time.Minute)
+	account.mu.Unlock()
+	// rotationDelay 保存轮换窗口内首次失败的快速恢复延迟。
+	rotationDelay := account.tokenRetryBase()
+	if rotationDelay != 30*time.Second {
+		t.Fatalf("轮换窗口首次失败延迟=%v", rotationDelay)
+	}
+	// jittered 保存叠加抖动后的实际延迟，用于校验不超过基准的 1.3 倍。
+	jittered := account.tokenRetryDelay()
+	if jittered < rotationDelay || jittered > rotationDelay+rotationDelay*3/10 {
+		t.Fatalf("抖动后延迟=%v 超出基准 %v 的合理范围", jittered, rotationDelay)
 	}
 }
 
