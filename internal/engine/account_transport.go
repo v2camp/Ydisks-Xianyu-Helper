@@ -11,6 +11,14 @@ import (
 	"xianyu-go/internal/xianyu/protocol"
 )
 
+// tokenRotationGraceWindow 是上次 token 临近到期时允许快速重试的时间窗口。
+// 只有首次获取失败且上次 token 仍落在窗口内，才按健康连接轮换失败处理。
+const tokenRotationGraceWindow = 2 * time.Minute
+
+// tokenRetryMaxDelay 是连续获取 token 失败时的退避上限。
+// 永久无效的凭证不应继续以秒级节奏冲击平台 token 接口。
+const tokenRetryMaxDelay = 15 * time.Minute
+
 // acquireToken 为当前账号取得连接级 Token 与其绑定 Cookie 快照，供 WebSocket 注册使用。
 func (a *Account) acquireToken(ctx context.Context) (string, string, error) {
 	return a.acquireTokenWithMinGap(ctx, false)
@@ -117,23 +125,38 @@ func (a *Account) recordMessageReceived(receivedAt time.Time) {
 	a.runtimeMu.Unlock()
 }
 
-// tokenRetryDelay 封装令牌重试延迟业务协调。
-func (a *Account) tokenRetryDelay() time.Duration {
+// tokenRetryBase 返回不含抖动的 token 获取失败退避基准。
+// 首次失败且上次 token 临近到期时按轮换场景 30 秒快速重试；连续失败按 1/2/4/8/15
+// 分钟阶梯增长，避免陈旧的 tokenExpiresAt 把间隔永久钉在 30 秒。
+// 本方法只读取 a.mu 保护的诊断状态，不执行外部 I/O，可在测试中确定性断言。
+func (a *Account) tokenRetryBase() time.Duration {
 	a.mu.Lock()
-	// expiresAt 用于本次流程后续判断的expiresAt
-	expiresAt := a.tokenExpiresAt
-	// failures 用于本次流程后续判断的failures
-	failures := a.tokenFetchFailures
+	// expiresAt 是上次成功 token 的过期时间；failures 是当前连续获取失败次数。
+	expiresAt, failures := a.tokenExpiresAt, a.tokenFetchFailures
 	a.mu.Unlock()
-	// delay 用于本次流程后续判断的延迟
-	delay := time.Minute
-	if failures > 1 {
-		delay = 2 * time.Minute
+	if failures < 1 {
+		failures = 1
 	}
-	if !expiresAt.IsZero() && time.Until(expiresAt) <= 2*time.Minute {
-		delay = 30 * time.Second
+	// 轮换窗口内的首次失败：上次 token 仍在快速恢复窗口，保留 30 秒重试。
+	if failures == 1 && !expiresAt.IsZero() && time.Until(expiresAt) <= tokenRotationGraceWindow {
+		return 30 * time.Second
 	}
-	return delay
+	// step 把连续失败次数映射为指数阶梯，超过 4 次后固定在 16 分钟档再受上限裁剪。
+	step := failures - 1
+	if step > 4 {
+		step = 4
+	}
+	// base 是阶梯计算出的分钟级退避基准，再受统一上限约束。
+	base := time.Duration(1<<step) * time.Minute
+	if base > tokenRetryMaxDelay {
+		base = tokenRetryMaxDelay
+	}
+	return base
+}
+
+// tokenRetryDelay 返回实际使用的 token 重试退避，在基准上叠加抖动避免多账号同步重试。
+func (a *Account) tokenRetryDelay() time.Duration {
+	return withRetryJitter(a.tokenRetryBase())
 }
 
 // notifyTransportReady 封装notifyTransportReady业务协调。
