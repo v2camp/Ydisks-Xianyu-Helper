@@ -18,6 +18,7 @@ import (
 	keywordsapp "xianyu-go/internal/application/keywords"
 	mcpadminapp "xianyu-go/internal/application/mcpadmin"
 	notificationsapp "xianyu-go/internal/application/notifications"
+	opschatapp "xianyu-go/internal/application/opschat"
 	orderapp "xianyu-go/internal/application/orders"
 	settingsapp "xianyu-go/internal/application/settings"
 )
@@ -404,6 +405,24 @@ type AgentSupportPort interface {
 	UpdateAccountOverride(context.Context, int64, string, agentadminapp.AccountOverride) error
 }
 
+// AgentConversationPort 定义客服接管会话的只读查询能力。
+// 它单独成端口而不是扩展 ChatPort，避免给全部聊天测试替身增加必须实现的方法。
+type AgentConversationPort interface {
+	// ListTakeoverSessions 按用户归属读取被 AI 回复过的会话，附带接管轮次近似值。
+	ListTakeoverSessions(context.Context, int64, *chatapp.SessionCursor, int) (chatapp.TakeoverSessionPage, error)
+}
+
+// OpsAgentPort 定义运营 Agent 对话接口消费的最小用例能力：会话分页、消息分页与 Web 人工发送。
+// 它不暴露凭据、平台客户端或数据库模型。
+type OpsAgentPort interface {
+	// List 分页读取运营会话。
+	List(context.Context, int, int) (opschatapp.ConversationPage, error)
+	// Messages 读取指定会话的消息页。
+	Messages(context.Context, int64, int64, int) (opschatapp.MessagePage, error)
+	// Send 发送一条 Web 人工消息。
+	Send(context.Context, opschatapp.SendInput) (opschatapp.Message, opschatapp.Conversation, error)
+}
+
 // ApplicationPorts 是构造期注入 HTTP transport 的不可变应用 Port 集合。
 // 它不包含 adapter、数据库、平台 client、账号 Manager 或 worker 生命周期拥有权。
 type ApplicationPorts struct {
@@ -489,6 +508,10 @@ type ApplicationPorts struct {
 	mcpAdmin MCPAdminPort
 	// agentSupport 是客服 Agent 配置用例。
 	agentSupport AgentSupportPort
+	// agentConversation 是客服接管会话只读查询用例。
+	agentConversation AgentConversationPort
+	// opsAgent 是运营 Agent 对话用例。
+	opsAgent OpsAgentPort
 }
 
 // ApplicationPortsInput 是组合根向 HTTP transport 交付的完整应用 Port 快照。
@@ -535,6 +558,8 @@ type ApplicationPortsInput struct {
 	Admin                       AdminPort
 	MCPAdmin                    MCPAdminPort
 	AgentSupport                AgentSupportPort
+	AgentConversation           AgentConversationPort
+	OpsAgent                    OpsAgentPort
 }
 
 // NewApplicationPorts 将组合根已经验证的用例依赖冻结为 Server 私有快照。
@@ -555,6 +580,7 @@ func NewApplicationPorts(input ApplicationPortsInput) *ApplicationPorts {
 		cards: input.Cards, deliveryTemplates: input.DeliveryTemplates, apiRequestTester: input.APIRequestTester, publishAutomationRules: input.PublishAutomationRules, defaultReplies: input.DefaultReplies,
 		keywords: input.Keywords, settings: input.Settings, admin: input.Admin,
 		mcpAdmin: input.MCPAdmin, agentSupport: input.AgentSupport,
+		agentConversation: input.AgentConversation, opsAgent: input.OpsAgent,
 	}
 }
 
@@ -584,6 +610,7 @@ func (ports *ApplicationPorts) validate() error {
 		{"automation_rules", ports.automationRules}, {"cards", ports.cards}, {"publish_automation_rules", ports.publishAutomationRules},
 		{"default_replies", ports.defaultReplies}, {"keywords", ports.keywords}, {"settings", ports.settings}, {"admin", ports.admin},
 		{"mcp_admin", ports.mcpAdmin}, {"agent_support", ports.agentSupport},
+		{"agent_conversation", ports.agentConversation}, {"ops_agent", ports.opsAgent},
 	}
 	// requiredPort 是当前必须在 Server 构造前绑定的应用 Port 名称。
 	for _, requiredPort := range required {
@@ -735,6 +762,16 @@ func (server *Server) mcpAdminApplication() MCPAdminPort {
 // agentSupportApplication 返回客服 Agent 配置用例。
 func (server *Server) agentSupportApplication() AgentSupportPort {
 	return server.applicationServiceSet().agentSupport
+}
+
+// agentConversationApplication 返回客服接管会话只读查询用例。
+func (server *Server) agentConversationApplication() AgentConversationPort {
+	return server.applicationServiceSet().agentConversation
+}
+
+// opsAgentApplication 返回运营 Agent 对话用例。
+func (server *Server) opsAgentApplication() OpsAgentPort {
+	return server.applicationServiceSet().opsAgent
 }
 
 // applicationServiceSet 返回构造期注入的不可变 Port 快照；零值 Server 不会隐式装配业务服务。

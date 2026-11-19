@@ -24,8 +24,8 @@ const (
 	CommandChats Command = "chats"
 )
 
-// maxReplyRunes 是单条 QQ 文本回复允许的最大字符数，留出平台限制余量。
-const maxReplyRunes = 1500
+// MaxReplyRunes 是单条 QQ 文本回复允许的最大字符数，留出平台限制余量；运营人工发送复用同一上限。
+const MaxReplyRunes = 1500
 
 // maxTurnRunes 是会话审查中单条发言展示的最大字符数。
 const maxTurnRunes = 60
@@ -278,7 +278,7 @@ func clipRunes(text string, limit int) string {
 
 // truncateReply 按字符数裁剪回复文本，超出时按行保留并追加截断提示。
 func truncateReply(text string) string {
-	if utf8.RuneCountInString(text) <= maxReplyRunes {
+	if utf8.RuneCountInString(text) <= MaxReplyRunes {
 		return text
 	}
 	// lines 是按行切分后的回复文本。
@@ -291,7 +291,7 @@ func truncateReply(text string) string {
 	for _, line := range lines {
 		// cost 是本行计入后的字符数，含换行符。
 		cost := utf8.RuneCountInString(line) + 1
-		if used+cost > maxReplyRunes-len(truncatedNotice)-1 {
+		if used+cost > MaxReplyRunes-len(truncatedNotice)-1 {
 			break
 		}
 		kept = append(kept, line)
@@ -301,7 +301,7 @@ func truncateReply(text string) string {
 		// runes 是按字符切分后的完整文本。
 		runes := []rune(text)
 		// budget 是扣除提示后的可用字符数。
-		budget := maxReplyRunes - len(truncatedNotice) - 1
+		budget := MaxReplyRunes - len(truncatedNotice) - 1
 		if budget < 0 {
 			budget = 0
 		}

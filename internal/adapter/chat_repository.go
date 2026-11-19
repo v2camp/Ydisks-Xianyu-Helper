@@ -117,6 +117,41 @@ func (r chatRepository) ListSessionPage(ctx context.Context, userID int64, accou
 	return chatapp.SessionPage{Sessions: sessions, HasMore: databasePage.HasMore, NextCursor: nextCursor}, nil
 }
 
+// ListTakeoverSessions 查询被 AI 回复过的会话分页，并转换为应用层接管会话模型。
+func (r chatRepository) ListTakeoverSessions(ctx context.Context, userID int64, cursor *chatapp.SessionCursor, limit int) (chatapp.TakeoverSessionPage, error) {
+	// databaseCursor 保存转换为数据库排序键后的分页位置；空指针表示读取首页。
+	var databaseCursor *db.ChatSessionCursor
+	if cursor != nil {
+		databaseCursor = &db.ChatSessionCursor{LastMessageAt: cursor.LastMessageAt, ChatID: cursor.ChatID}
+	}
+	// databasePage、pageErr 保存数据库分页结果及查询错误。
+	databasePage, pageErr := r.store.Chats.ListTakeoverSessions(ctx, userID, databaseCursor, limit)
+	if pageErr != nil {
+		return chatapp.TakeoverSessionPage{}, pageErr
+	}
+	// sessions 保存脱离数据库模型的接管会话列表。
+	sessions := make([]chatapp.TakeoverSession, 0, len(databasePage.Sessions))
+	// row 表示当前待转换的数据库接管会话。
+	for _, row := range databasePage.Sessions {
+		sessions = append(sessions, chatapp.TakeoverSession{
+			Session: chatapp.Session{
+				AccountID: row.CookieID, ChatID: row.ChatID, PeerUserID: row.BuyerID,
+				PeerName: row.BuyerName, PeerAvatar: row.BuyerAvatar, AccountRole: row.AccountRole,
+				BuyerUserID: row.BuyerUserID, SellerUserID: row.SellerUserID, RoleItemID: row.RoleItemID, RoleSource: row.RoleSource, ItemID: row.ItemID,
+				ItemTitle: row.ItemTitle, ItemImageURL: row.ItemImageURL, LastMessage: row.LastMessage, LastMessageAt: row.LastMessageAt,
+				UnreadCount: row.UnreadCount,
+			},
+			TakeoverCount: row.TakeoverCount,
+		})
+	}
+	// nextCursor 保存转换后的下一页应用层排序键；末页保持 nil。
+	var nextCursor *chatapp.SessionCursor
+	if databasePage.NextCursor != nil {
+		nextCursor = &chatapp.SessionCursor{LastMessageAt: databasePage.NextCursor.LastMessageAt, ChatID: databasePage.NextCursor.ChatID}
+	}
+	return chatapp.TakeoverSessionPage{Sessions: sessions, HasMore: databasePage.HasMore, NextCursor: nextCursor}, nil
+}
+
 // DeleteEmptySessions 删除没有有效消息的聊天会话壳。
 func (r chatRepository) DeleteEmptySessions(ctx context.Context, accountID string) error {
 	return r.store.Chats.DeleteEmptySessions(ctx, accountID)

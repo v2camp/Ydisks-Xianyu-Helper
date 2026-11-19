@@ -195,8 +195,8 @@ func TestTruncateReplyKeepsWithinLimit(t *testing.T) {
 	// got 是裁剪后的文本。
 	got := truncateReply(builder.String())
 	// count 是裁剪结果的字符数。
-	if count := utf8.RuneCountInString(got); count > maxReplyRunes {
-		t.Fatalf("裁剪后字符数 %d 超过上限 %d", count, maxReplyRunes)
+	if count := utf8.RuneCountInString(got); count > MaxReplyRunes {
+		t.Fatalf("裁剪后字符数 %d 超过上限 %d", count, MaxReplyRunes)
 	}
 	if !strings.HasSuffix(got, truncatedNotice) {
 		t.Fatalf("裁剪结果应追加截断提示，实际尾部=%q", got)

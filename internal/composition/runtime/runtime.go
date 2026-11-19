@@ -193,6 +193,7 @@ func BuildRuntime(options RuntimeOptions, infrastructure RuntimeInfrastructure) 
 		Notifier: runtimeBundle.Notifier, Chat: runtimeBundle.Chat, Logger: infrastructure.Logger,
 		MTopClient: platformDependencies.MTOPClient, LongLoginClient: platformDependencies.LongLoginClient, QRLogin: platformDependencies.QRLoginService(),
 		UpdateRunningCookie: updateRunningCookie, SessionRecovery: sessionRecovery, LifecycleContext: lifecycleCoordinator.Context,
+		OpsChat: infrastructure.Store.OpsChat, OpsChatSender: buildOpsChatSender(infrastructure.Store, lifecycleCoordinator.Context),
 	})
 	if buildErr != nil {
 		return Runtime{}, fmt.Errorf("构造应用服务集合失败: %w", buildErr)

@@ -29,10 +29,12 @@ import (
 	lifecycleapp "xianyu-go/internal/application/lifecycle"
 	mcpadminapp "xianyu-go/internal/application/mcpadmin"
 	notificationsapp "xianyu-go/internal/application/notifications"
+	opschatapp "xianyu-go/internal/application/opschat"
 	orderapp "xianyu-go/internal/application/orders"
 	settingsapp "xianyu-go/internal/application/settings"
 	"xianyu-go/internal/automation"
 	"xianyu-go/internal/chat"
+	"xianyu-go/internal/db"
 	"xianyu-go/internal/netguard"
 	"xianyu-go/internal/notify"
 )
@@ -135,6 +137,8 @@ type Services struct {
 	mcpAdmin *mcpadminapp.Service
 	// agentSupport 是客服 Agent 的租户级默认与账号级覆盖配置应用服务。
 	agentSupport *agentadminapp.Service
+	// opsChat 是运营 Agent 对话的留痕、分页与人工发送应用服务。
+	opsChat *opschatapp.Service
 }
 
 // LifecycleContext 返回已启动协调器拥有的进程生命周期 Context，供组合层 transport adapter 注册后台 worker。
@@ -186,6 +190,10 @@ type Dependencies struct {
 	SessionRecovery adapter.SessionRecoveryHandler
 	// LifecycleContext 返回进程协调器拥有的应用生命周期 Context。
 	LifecycleContext func() context.Context
+	// OpsChat 是运营会话与消息仓储；nil 表示该部署不提供运营对话。
+	OpsChat *db.OpsChatStore
+	// OpsChatSender 是运营人工发送端口；由 runtime 子层实现并注入，nil 时发送返回渠道未配置。
+	OpsChatSender opschatapp.Sender
 }
 
 // settingsRuntimeTransport 将账号运行时控制投影给设置用例，并确保启用或 Cookie 重启永远使用进程生命周期 Context。
@@ -347,6 +355,8 @@ type TransportPorts struct {
 	MCPAdmin *mcpadminapp.Service
 	// AgentSupport 是客服 Agent 配置应用端口：租户级默认与账号级覆盖。
 	AgentSupport *agentadminapp.Service
+	// OpsChat 是运营对话应用端口：会话、消息与 Web 人工发送。
+	OpsChat *opschatapp.Service
 }
 
 // TransportPorts 返回已完成构造的只读服务引用；调用方不得在运行期替换任何字段。
@@ -370,6 +380,7 @@ func (services *Services) TransportPorts() TransportPorts {
 		Keywords: services.keywords, Settings: services.settings, Admin: services.admin,
 		MCPAdmin:     services.mcpAdmin,
 		AgentSupport: services.agentSupport,
+		OpsChat:      services.opsChat,
 	}
 }
 
@@ -492,6 +503,8 @@ func New(dependencies Dependencies) (*Services, error) {
 	if catalogServicesErr != nil {
 		return nil, catalogServicesErr
 	}
+	// opsChatService 是运营对话应用服务；仓储缺失时保持 nil，由 port 校验在启动期暴露。
+	opsChatService := buildOpsChatService(dependencies)
 	// services 是完成构造后只读注入 Server 的应用服务集合。
 	services := &Services{
 		lifecycleContext:            dependencies.LifecycleContext,
@@ -542,6 +555,7 @@ func New(dependencies Dependencies) (*Services, error) {
 		admin:                  dependencies.TransportApplications.Admin,
 		mcpAdmin:               dependencies.TransportApplications.MCPAdmin,
 		agentSupport:           dependencies.TransportApplications.AgentSupport,
+		opsChat:                opsChatService,
 	}
 	// authentication、authenticationErr 分别是认证应用服务及其构造错误。
 	authentication, authenticationErr := accountapp.NewAuthenticationService(dependencies.AccountDependencies.NewAuthenticationRepository())
@@ -550,6 +564,16 @@ func New(dependencies Dependencies) (*Services, error) {
 	}
 	services.authentication = authentication
 	return services, nil
+}
+
+// buildOpsChatService 装配运营对话应用服务；仓储缺失时返回 nil，由 HTTP Port 校验在启动期暴露。
+func buildOpsChatService(dependencies Dependencies) *opschatapp.Service {
+	// repository 是运营对话仓储适配器，未装配数据库时为 nil。
+	repository := newOpsChatRepository(dependencies.OpsChat)
+	if repository == nil {
+		return nil
+	}
+	return opschatapp.NewService(repository, dependencies.OpsChatSender)
 }
 
 // buildOrderServices 构造订单用例集合及其刷新 worker 门面，并把后台诊断限制在组合根。

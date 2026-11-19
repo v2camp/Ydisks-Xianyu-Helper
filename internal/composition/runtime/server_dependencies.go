@@ -222,6 +222,7 @@ func ServerDependencies(services *composition.Services, base HTTPDependencies, s
 			Cards: ports.Cards, APIRequestTester: ports.APICardTester, PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies,
 			Keywords: ports.Keywords, Settings: ports.Settings, Admin: ports.Admin,
 			MCPAdmin: ports.MCPAdmin, AgentSupport: newAgentSupportPort(ports.AgentSupport),
+			AgentConversation: ports.Chat, OpsAgent: ports.OpsChat,
 		}),
 	}, nil
 }

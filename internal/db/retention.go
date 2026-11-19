@@ -41,13 +41,18 @@ type RetentionReport struct {
 	AIGenerationLog int64
 	// AutomationRunSteps 是本次删除的超期发货步骤留痕行数。
 	AutomationRunSteps int64
+	// OpsMessages 是本次删除的超期运营消息行数。
+	OpsMessages int64
+	// OpsConversations 是本次删除的无消息超期运营会话行数。
+	OpsConversations int64
 }
 
 // Total 返回本次清理删除的总行数。
 func (r RetentionReport) Total() int64 {
 	return r.ChatMessages + r.ChatSessions + r.WSMessages + r.AccountLoginLogs +
 		r.RiskControlLogs + r.SecurityAuditLogs + r.MCPCallAudit + r.RenewalLogs +
-		r.AIDecisionLog + r.AIGenerationLog + r.AutomationRunSteps
+		r.AIDecisionLog + r.AIGenerationLog + r.AutomationRunSteps +
+		r.OpsMessages + r.OpsConversations
 }
 
 // CleanupRetention 按保留天数清理消息与全部日志表，返回逐表删除行数。
@@ -156,6 +161,22 @@ func (s *Store) CleanupRetention(ctx context.Context, retentionDays int) (Retent
 		return report, err
 	}
 	report.AutomationRunSteps = runSteps
+
+	// 运营消息按毫秒列删除；先删消息再删空会话，保证「无消息」判定读到删除后的真实消息集。
+	opsMessages, err := s.deleteBefore(ctx, `DELETE FROM ops_messages WHERE created_at < ?`, cutoffMillis)
+	if err != nil {
+		return report, err
+	}
+	report.OpsMessages = opsMessages
+	// 只删除「已无任何消息」且最后消息时间超期的运营会话，避免误删仍可回看的会话。
+	opsConversations, err := s.deleteBefore(ctx, `DELETE FROM ops_conversations
+ WHERE last_message_at > 0 AND last_message_at < ?
+   AND NOT EXISTS (SELECT 1 FROM ops_messages m
+                    WHERE m.conversation_id = ops_conversations.id)`, cutoffMillis)
+	if err != nil {
+		return report, err
+	}
+	report.OpsConversations = opsConversations
 	return report, nil
 }
 

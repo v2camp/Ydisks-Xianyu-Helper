@@ -19,6 +19,9 @@ import (
 // inboundReplyTimeout 是单次入站命令回复的最长等待时间。
 const inboundReplyTimeout = 15 * time.Second
 
+// inboundRecordTimeout 是单次会话留痕的最长等待时间；超时只放弃留痕，不阻断命令。
+const inboundRecordTimeout = 3 * time.Second
+
 // ErrGatewayNotConfigured 表示入站网关缺少 AppID 或 AppSecret，无法连接。
 var ErrGatewayNotConfigured = errors.New("qq 入站网关缺少 app_id/app_secret")
 
@@ -223,11 +226,21 @@ type Gateway struct {
 	replier Replier
 	// lifecycleCtx 是进程生命周期上下文，由 Run 注入供事件处理继承。
 	lifecycleCtx context.Context
+	// recorder 是可选的入站/出站会话留痕端口；nil 时不记录，命令行为保持不变。
+	recorder Recorder
 }
 
 // NewGateway 构造入站网关；service 为 nil 时 Run 会直接返回错误。
 func NewGateway(appID, appSecret string, service *Service) *Gateway {
 	return &Gateway{appID: strings.TrimSpace(appID), appSecret: strings.TrimSpace(appSecret), service: service}
+}
+
+// SetRecorder 注入会话留痕端口；由组合层在构造后调用，nil 表示不记录。
+// 该端点是可选运行时依赖：未装配时命令仍可执行，只缺少运营会话历史。
+func (g *Gateway) SetRecorder(recorder Recorder) {
+	if g != nil {
+		g.recorder = recorder
+	}
 }
 
 // Run 连接 WS 网关并阻塞消费事件，ctx 取消即退出。
@@ -270,6 +283,7 @@ func (g *Gateway) onGroupATMessage(event *dto.WSPayload, _ *dto.WSGroupATMessage
 }
 
 // handleEvent 把单个事件交给命令服务并把结果被动回复给发送者。
+// 解析出消息后先尽力记录入站；只有入站是新平台消息且回复成功时，才记录出站命令回复。
 func (g *Gateway) handleEvent(event *dto.WSPayload) error {
 	if event == nil {
 		return errors.New("qq 入站事件为空")
@@ -282,19 +296,69 @@ func (g *Gateway) handleEvent(event *dto.WSPayload) error {
 	if parseErr != nil {
 		return parseErr
 	}
+	// inboundIsNew 表示该消息在平台上是新消息；重复事件不重复记录出站，避免会话摘要抖动。
+	inboundIsNew := g.recordInbound(message)
 	// reply 是命令服务产出的回复文本；err 表示开关关闭、未授权或执行失败。
 	reply, err := g.service.Handle(g.lifecycleCtx, message.SenderOpenID, message.Content)
 	switch {
 	case err == nil:
-		return g.replyMessage(message, reply)
+		// replyErr 是本次被动回复的结果；只有发送成功才记录出站。
+		replyErr := g.replyMessage(message, reply)
+		if replyErr == nil && inboundIsNew {
+			g.recordOutbound(message, reply)
+		}
+		return replyErr
 	case errors.Is(err, ErrCommandsDisabled):
 		// 开关关闭时不回复任何内容，避免向无关发送者暴露机器人存在。
 		return nil
 	case errors.Is(err, ErrUnauthorized):
-		return g.replyMessage(message, FormatUnauthorized(message.SenderOpenID))
+		// notice 是未授权提示文本。
+		notice := FormatUnauthorized(message.SenderOpenID)
+		// replyErr 是未授权提示的被动回复结果；只有发送成功才记录出站。
+		replyErr := g.replyMessage(message, notice)
+		if replyErr == nil && inboundIsNew {
+			g.recordOutbound(message, notice)
+		}
+		return replyErr
 	default:
-		return g.replyMessage(message, FormatFailure())
+		// notice 是命令失败兜底文本。
+		notice := FormatFailure()
+		// replyErr 是失败提示的被动回复结果；只有发送成功才记录出站。
+		replyErr := g.replyMessage(message, notice)
+		if replyErr == nil && inboundIsNew {
+			g.recordOutbound(message, notice)
+		}
+		return replyErr
 	}
+}
+
+// recordInbound 尽力记录入站消息，返回它是否为新的平台消息；未装配端口或失败时返回 false。
+func (g *Gateway) recordInbound(message InboundMessage) bool {
+	if g.recorder == nil || g.lifecycleCtx == nil {
+		return false
+	}
+	// recordCtx、cancel 为留痕提供有界取消路径，失败不得阻断命令执行。
+	recordCtx, cancel := context.WithTimeout(g.lifecycleCtx, inboundRecordTimeout)
+	defer cancel()
+	// isNew、recordErr 表示消息是否新增及记录错误；记录错误按非新消息处理。
+	isNew, recordErr := g.recorder.RecordInbound(recordCtx, RecordedMessage{
+		MsgID: message.MsgID, Content: message.Content, SenderOpenID: message.SenderOpenID,
+		GroupOpenID: message.GroupOpenID, At: time.Now(),
+	})
+	return recordErr == nil && isNew
+}
+
+// recordOutbound 尽力记录一条命令回复；失败只影响留痕，不改变已发送结果。
+func (g *Gateway) recordOutbound(message InboundMessage, content string) {
+	if g.recorder == nil || g.lifecycleCtx == nil {
+		return
+	}
+	// recordCtx、cancel 为留痕提供有界取消路径。
+	recordCtx, cancel := context.WithTimeout(g.lifecycleCtx, inboundRecordTimeout)
+	defer cancel()
+	_ = g.recorder.RecordOutbound(recordCtx, RecordedMessage{
+		Content: content, SenderOpenID: message.SenderOpenID, GroupOpenID: message.GroupOpenID, At: time.Now(),
+	}, "command")
 }
 
 // replyMessage 依据入站场景选择单聊或群聊通道被动回复。

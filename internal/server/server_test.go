@@ -256,6 +256,8 @@ func newTestServerFromComposition(authentication *auth.Service, manager *account
 		UpdateRunningCookie:         updateRunningCookie,
 		SessionRecovery:             sessionRecovery,
 		LifecycleContext:            lifecycleCoordinator.Context,
+		// OpsChat 提供运营会话仓储；测试不注入发送端口，用 409 分支验证渠道未配置。
+		OpsChat: store.OpsChat,
 	})
 	if applicationsErr != nil {
 		return nil, applicationsErr
@@ -375,6 +377,7 @@ func testServerDependencies(authentication *auth.Service, databaseHealth Databas
 		PublishAutomationRules: ports.PublishAutomationRules, DefaultReplies: ports.DefaultReplies, Keywords: ports.Keywords,
 		Settings: ports.Settings, Admin: ports.Admin,
 		MCPAdmin: ports.MCPAdmin, AgentSupport: testAgentSupportAdapter{service: ports.AgentSupport},
+		AgentConversation: ports.Chat, OpsAgent: ports.OpsChat,
 	})}
 }
 
