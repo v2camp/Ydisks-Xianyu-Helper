@@ -75,7 +75,18 @@ cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cov
 > 本次未引入任何新的未覆盖语句。`account_network_retry.go` 自身的 2 条未覆盖语句已在
 > 下方例外登记表补录。
 
-最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
+> ⚠️ 2026-11-19 复核（Agent 控制台拆分：运营会话留痕 + 客服接管会话查询）：基线 `main`＝`9bbef527`，
+> 分支 `feature/agent-console-split`。执行环境：本机 macOS，口径 `-count=1 -covermode=set`，命令同上。
+>
+> 五个链路包（语句加权）：automation 90.1%→**90.1%**、engine 88.472%→**88.398%**（未触及该包，
+> 测试覆盖存在运行间抖动）、adapter 85.1%→**85.2%**、db 85.1%→**85.3%**、xianyu/ws 88.2%→**88.2%**；
+> 合计 86.910%→**86.927%**，未低于基线。
+>
+> 新增 `internal/db/ops_chat.go`（79.7%）与 `internal/db/chat_takeover.go`（90.2%）；未覆盖项
+> 全为存储故障返回、`rows.Err()` 中断、Postgres `RETURNING` 分支，属既有「仅外部环境」例外类别，
+> 已补测试覆盖成功路径、参数默认值、去重、游标、会话摘要与数据库关闭后的错误返回。
+>
+> 最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
 
 | 文件 | 链路职责 | 未覆盖/总语句 | 覆盖率 | 门槛 |
 |---|---|---|---|---|
