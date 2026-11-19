@@ -117,7 +117,7 @@
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
 |---|---|---|---|
-| F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `在树` | 合并提交 `b17ca6e2`（后端 `ae0468c7`、前端 `fb84666e`、产物 `27f42fbf`）。**差**运行镜像重建与 `/health` 核对；部署后改 `已发布` | `docs/architecture/agent-console-split-plan.md` |
+| F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `已发布` | 合并提交 `b17ca6e2`；运行镜像 `ydisks-xianyu-helper:local`（`1e7da7c9f4db`，`v1.0.42-local-20261120`，`build_time 2026-11-19T16:40:06Z`）已部署，`/health` 返回 `ok`，`/api/v1/agent/ops/conversations` 与 `/api/v1/agent/support/conversations` 均 200；发布前账号已停用、核对后已恢复 | `docs/architecture/agent-console-split-plan.md` |
 
 ## 2. 索引：方案与设计文档
 
@@ -135,7 +135,7 @@
 | `docs/architecture/agent-capability-kernel-plan.md` | 能力内核方案（含未决项） | 方案态 |
 | `docs/architecture/connector-page-plan.md` | 连接器页设计 | 已落地，留 2 项待决策 |
 | `docs/architecture/ai-agent-config-domain-plan.md` | AI 配置域设计 | 已落地，留 2 项待决策 |
-| `docs/architecture/agent-console-split-plan.md` | Agent 控制台拆分与运营 Agent 对话模块设计 | 分支已实现，待合并 |
+| `docs/architecture/agent-console-split-plan.md` | Agent 控制台拆分与运营 Agent 对话模块设计 | 已落地（v1.0.42-local-20261120） |
 | `docs/slider-captcha-frozen-spec.md` | 滑块验证码冻结规范 | 长期冻结，禁止改动 |
 
 ## 3. 索引：证据与复盘（只读，不再产出同类新文档）
