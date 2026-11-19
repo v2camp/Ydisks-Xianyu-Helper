@@ -117,7 +117,7 @@
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
 |---|---|---|---|
-| F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `未开始` | 分支 `feature/agent-console-split` 已提交 `ae0468c7`（后端）、`fb84666e`（前端）、`27f42fbf`（产物），未合并 main；合并后改 `在树` | `docs/architecture/agent-console-split-plan.md` |
+| F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `在树` | 合并提交 `b17ca6e2`（后端 `ae0468c7`、前端 `fb84666e`、产物 `27f42fbf`）。**差**运行镜像重建与 `/health` 核对；部署后改 `已发布` | `docs/architecture/agent-console-split-plan.md` |
 
 ## 2. 索引：方案与设计文档
 
