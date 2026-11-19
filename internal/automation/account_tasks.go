@@ -661,7 +661,9 @@ func (c *accountTaskCoordinator) persistTaskCredentialLocked(ctx context.Context
 		if mtop.SignTokenPresent(data.Value) {
 			c.logger.Warn("账号任务 Cookie 缺少签名令牌且库中已有令牌，拒绝降级写回",
 				"account", accountID, "source", "account-task")
-			return oldValue, errors.New("账号任务响应 Cookie 缺少签名令牌，已拒绝降级写回，保留库中已有令牌")
+			// 写回被拒只是凭证保护生效，本轮平台动作结果并未丢失：返回库中凭证且不报错，
+			// 否则调用方会把拒绝升级为 needs_review 并阻断自动重放。
+			return data.Value, nil
 		}
 		c.logger.Warn("账号任务写回的 Cookie 不含 MTOP 签名令牌", "account", accountID, "source", "account-task")
 	}

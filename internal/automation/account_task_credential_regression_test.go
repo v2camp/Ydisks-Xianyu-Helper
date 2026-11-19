@@ -167,3 +167,38 @@ func TestTaskCookiePersistenceFailures(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskCookieKeepsDatabaseTokenWhenResponseLacksSignToken 验证写回被拒只保留库中令牌，不升级为任务失败。
+func TestTaskCookieKeepsDatabaseTokenWhenResponseLacksSignToken(t *testing.T) {
+	// store、cleanup 提供独立账号数据和释放函数。
+	store, cleanup := newAutomationTestStore(t)
+	defer cleanup()
+	// ctx 控制本轮确定性数据库调用。
+	ctx := context.Background()
+	// err 保存虚构凭证初始化结果。
+	if err := store.Cookies.UpdateRenewalCookie(ctx, "cid", "_m_h5_tk=old_test", "", 1); err != nil {
+		t.Fatal(err)
+	}
+	// sender 记录运行时收到的凭证更新。
+	sender := &testSender{}
+	// coordinator 使用生产存储与账号凭证锁。
+	coordinator := &accountTaskCoordinator{repository: newStoreAccountTaskRepository(store), senders: testSenderProvider{sender: sender}, logger: slog.Default()}
+	// credential 捕获外部请求开始时的凭证版本。
+	credential, err := coordinator.openAccountTaskCredentialSession(ctx, "cid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// value、saveErr 保存响应只带回不含签名令牌的扁平 Cookie 时的写回结果。
+	value, saveErr := coordinator.persistTaskCookieSession(ctx, "cid", credential.cookieValue, "ordinary=response", &credential)
+	if saveErr != nil {
+		t.Fatalf("写回被拒不应报错，否则会被升级为 needs_review: %v", saveErr)
+	}
+	if !strings.Contains(value, "_m_h5_tk=old_test") {
+		t.Fatalf("写回被拒后应沿用库中令牌: %q", value)
+	}
+	// stored、err 验证库中凭证未被降级覆盖。
+	stored, err := store.Cookies.GetCookieRuntimeData(ctx, "cid")
+	if err != nil || !strings.Contains(stored.Value, "_m_h5_tk=old_test") {
+		t.Fatalf("库中签名令牌被覆盖: value=%q err=%v", stored.Value, err)
+	}
+}
