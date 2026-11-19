@@ -11,6 +11,7 @@ import (
 
 	"xianyu-go/internal/db"
 	"xianyu-go/internal/xianyu/mtop"
+	apirenew "xianyu-go/internal/xianyu/renew"
 )
 
 // apiRenewEnabled 读取 API Cookie 续期开关，并在设置缺失时保留安全默认值。
@@ -64,8 +65,24 @@ Cookie 更新后的重启和自动化唤醒逻辑保持原有顺序。
 Cookie 明文只在本次调用链中短暂存在。
 */
 
-// saveRenewedCookies 封装saveRenewedCookies业务协调。
-func (s *Scheduler) saveRenewedCookies(ctx context.Context, cookieID, cookieStr, metadata string) bool {
+// renewWriteOutcome 是续期凭证写回的结果分类。
+// 调用方据此把「守卫拒绝降级写回」与「持久化真失败」拆成两种日志状态，
+// 避免观测时把凭证保护误读成续期失效。
+type renewWriteOutcome string
+
+const (
+	// renewWriteStored 表示新凭证已成功写入数据库。
+	renewWriteStored renewWriteOutcome = "stored"
+	// renewWriteRejected 表示守卫按 fail-closed 拒绝覆盖，库中凭证保持不变。
+	renewWriteRejected renewWriteOutcome = "rejected"
+	// renewWriteFailed 表示读取或写入数据库失败，属于真正的持久化故障。
+	renewWriteFailed renewWriteOutcome = "failed"
+)
+
+// saveRenewedCookies 把续期响应 Cookie 写回账号凭证并返回写回分类。
+// ctx 是本次写回的生命周期；cookieID 是账号主键；cookieStr 是响应合并后的扁平 Cookie；
+// metadata 是浏览器快照。返回 renewWriteRejected 时凭证未变，调用方不得当成请求失败。
+func (s *Scheduler) saveRenewedCookies(ctx context.Context, cookieID, cookieStr, metadata string) renewWriteOutcome {
 	// 续期响应不经过 MTOP 签名流程，产出不含 _m_h5_tk 的 Cookie 属预期；但它会整体覆盖
 	// 数据库凭证，使依赖该凭证的定时任务失去签名能力。此处只在缺失时告警，据此定位来源。
 	// 库中凭证已带令牌时整体覆盖会把账号降级为无签名能力（定时任务报错、重连后必须重新登录），
@@ -77,13 +94,47 @@ func (s *Scheduler) saveRenewedCookies(ctx context.Context, cookieID, cookieStr,
 		if readErr == nil && mtop.SignTokenPresent(current) {
 			s.logger.Error("续期 Cookie 缺少签名令牌且库中已有令牌，拒绝降级写回",
 				"account", cookieID, "source", "renewal")
-			return false
+			return renewWriteRejected
 		}
 		s.logger.Warn("续期写入的 Cookie 不含 MTOP 签名令牌", "account", cookieID, "source", "renewal")
 	}
-	if // err 用于本次流程后续判断的err
-	err := s.store.Cookies.UpdateRenewalCookie(ctx, cookieID, cookieStr, metadata, time.Now().Unix()); err != nil {
+	// err 是本次凭证落库结果；失败属真实持久化故障，与守卫拒绝要分开上报。
+	if err := s.store.Cookies.UpdateRenewalCookie(ctx, cookieID, cookieStr, metadata, time.Now().Unix()); err != nil {
 		s.logger.Warn("保存续期 Cookie 失败", "account", cookieID, "err", err)
+		return renewWriteFailed
+	}
+	return renewWriteStored
+}
+
+// saveAndLogRenewedCredential 写回续期响应凭证，并把写回结果写入接口续期日志。
+// ctx 是本次写回的生命周期；batchID 是续期批次；cookieID 是账号主键；res 是续期响应；
+// updated 是发生变化的 Cookie 名；stepDetails 是本次步骤明细；metadata 是待落库的浏览器快照；
+// started 是本次续期起始时间。返回 false 表示凭证未写回且已留痕，调用方必须结束本次续期。
+func (s *Scheduler) saveAndLogRenewedCredential(ctx context.Context, batchID, cookieID string, res *apirenew.Result, updated, stepDetails []string, metadata string, started time.Time) bool {
+	// outcome 是凭证写回分类，决定本次日志记「写回被拒」还是「请求失败」。
+	outcome := s.saveRenewedCookies(ctx, cookieID, res.NewCookies, metadata)
+	// logEntry 是两种失败状态共用的日志载荷，只覆盖状态与错误说明。
+	logEntry := db.RenewalLog{
+		BatchID:            batchID,
+		CookieID:           cookieID,
+		UpdatedCookieNames: updated,
+		StepDetails:        strings.Join(stepDetails, " | "),
+		RenewMethod:        res.RenewMethod,
+		DurationMS:         time.Since(started).Milliseconds(),
+		RequestCount:       res.RequestCount,
+	}
+	switch outcome {
+	case renewWriteRejected:
+		logEntry.Status = "write_rejected"
+		logEntry.ErrorMessage = "响应缺少 MTOP 签名令牌，拒绝降级写回，库中凭证保持不变"
+		s.addAPILog(ctx, logEntry)
+		s.logger.Warn("接口续期凭证写回被拒，保留库中已有签名令牌", "account", cookieID, "method", res.RenewMethod)
+		return false
+	case renewWriteFailed:
+		logEntry.Status = "failed"
+		logEntry.ErrorMessage = "保存 Cookie 失败"
+		s.addAPILog(ctx, logEntry)
+		s.logger.Warn("接口续期任务失败", "account", cookieID, "method", res.RenewMethod, "err", "保存 Cookie 失败")
 		return false
 	}
 	return true
@@ -104,6 +155,15 @@ func (s *Scheduler) addLoginLog(ctx context.Context, batchID, cookieID, status, 
 	})
 }
 
+// renewStreakJustReachedThree 判断最新连续三次是否同为 want，且更早一次不是 want。
+// 用于让每个连续段落只通知一次，故障持续期间不重复打扰。
+func renewStreakJustReachedThree(statuses []string, want string) bool {
+	if len(statuses) < 3 || statuses[0] != want || statuses[1] != want || statuses[2] != want {
+		return false
+	}
+	return len(statuses) < 4 || statuses[3] != want
+}
+
 // addAPILog 封装addAPILog业务协调。
 func (s *Scheduler) addAPILog(ctx context.Context, log db.RenewalLog) {
 	if // err 用于本次流程后续判断的err
@@ -111,15 +171,17 @@ func (s *Scheduler) addAPILog(ctx context.Context, log db.RenewalLog) {
 		s.logger.Warn("记录 API Cookie 续期日志失败", "account", log.CookieID, "status", log.Status, "err", err)
 		return
 	}
-	if s.notifier == nil || log.Status != "failed" || s.store == nil || s.store.Renewal == nil {
+	// notifyStatus 是参与连续三次告警判定的状态；写回被拒与请求失败分开统计，其余状态不通知。
+	notifyStatus := log.Status
+	if notifyStatus != "failed" && notifyStatus != "write_rejected" {
+		return
+	}
+	if s.notifier == nil || s.store == nil || s.store.Renewal == nil {
 		return
 	}
 	// statuses、err 用于本次流程后续判断的statuses、err
 	statuses, err := s.store.Renewal.RecentAPICookieRenewStatuses(ctx, log.CookieID, 4)
-	if err != nil || len(statuses) < 3 || statuses[0] != "failed" || statuses[1] != "failed" || statuses[2] != "failed" {
-		return
-	}
-	if len(statuses) >= 4 && statuses[3] == "failed" {
+	if err != nil || !renewStreakJustReachedThree(statuses, notifyStatus) {
 		return
 	}
 	// reason 用于本次流程后续判断的原因
@@ -129,6 +191,12 @@ func (s *Scheduler) addAPILog(ctx context.Context, log db.RenewalLog) {
 	}
 	if reason == "" {
 		reason = "未知错误"
+	}
+	// 写回被拒是凭证保护生效而非续期中断：只发提示级通知，避免与真实故障同级刷屏。
+	if notifyStatus == "write_rejected" {
+		s.notifier.NotifyAccountEvent(log.CookieID, "token_renewal", "info", "闲鱼 Cookie 续期写回被拒",
+			fmt.Sprintf("账号 %s 的续期请求成功，但响应缺少 MTOP 签名令牌，已连续 3 次拒绝降级写回以保留库中凭证；若需刷新签名令牌请重新登录该账号", log.CookieID))
+		return
 	}
 	s.notifier.NotifyAccountEvent(log.CookieID, "token_renewal", "warn", "闲鱼 Cookie 自动续期连续失败", fmt.Sprintf("账号 %s 的 API 自动续期已连续失败 3 次，最近错误：%s", log.CookieID, reason))
 }

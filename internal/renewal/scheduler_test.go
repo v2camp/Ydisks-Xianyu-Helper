@@ -84,13 +84,15 @@ type schedulerFakePasswordRefresher struct {
 // schedulerFakeNotifier 用于本次流程后续判断的schedulerFakeNotifier
 type schedulerFakeNotifier struct {
 	calls   atomic.Int32
+	level   string
 	title   string
 	message string
 }
 
 // NotifyAccountEvent 封装Notify账号Event业务协调。
-func (f *schedulerFakeNotifier) NotifyAccountEvent(_ string, _ string, _ string, title, body string) {
+func (f *schedulerFakeNotifier) NotifyAccountEvent(_ string, _ string, level, title, body string) {
 	f.calls.Add(1)
+	f.level = level
 	f.title = title
 	f.message = body
 }
