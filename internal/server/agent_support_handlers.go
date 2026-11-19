@@ -67,6 +67,8 @@ func (s *Server) mountVersionedAgentSupportRoutes(r chi.Router) {
 		r.Put("/api/v1/agent/support/settings", s.updateAgentSupportSettings)
 		r.Get("/api/v1/agent/support/accounts/{cookie_id}", s.agentSupportAccount)
 		r.Put("/api/v1/agent/support/accounts/{cookie_id}", s.updateAgentSupportAccount)
+		// 客服接管会话只读回放与配置同属客服 Agent 登录组；归属校验在应用用例内完成。
+		s.mountVersionedAgentConversationRoutes(r)
 	})
 }
 

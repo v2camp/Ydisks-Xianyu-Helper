@@ -14,6 +14,7 @@ import (
 	automationapp "xianyu-go/internal/application/automation"
 	chatapp "xianyu-go/internal/application/chat"
 	"xianyu-go/internal/application/lifecycle"
+	opschatapp "xianyu-go/internal/application/opschat"
 	"xianyu-go/internal/capability"
 	composition "xianyu-go/internal/composition"
 	"xianyu-go/internal/db"
@@ -63,6 +64,8 @@ type QQBotDependencies struct {
 	Logger *slog.Logger
 	// Clock 返回当前时刻，便于测试固定时间。
 	Clock func() time.Time
+	// OpsChat 是运营对话应用服务，用于记录入站/出站消息；nil 时只执行命令不留痕。
+	OpsChat *opschatapp.Service
 }
 
 // qqSalesReader 把订单分析服务适配为 QQ 入站命令的当日销量端口。
@@ -467,7 +470,13 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 		qqbot.NewCatalogPolicy(catalog),
 	)
 	service.SetClock(clock)
-	return qqbot.NewGateway(appID, appSecret, service)
+	// gateway 是装配完成的入站网关。
+	gateway := qqbot.NewGateway(appID, appSecret, service)
+	// 运营对话服务已装配时注入留痕端口；未装配时保持 nil，命令行为不变。
+	if dependencies.OpsChat != nil {
+		gateway.SetRecorder(opsChatRecorder{service: dependencies.OpsChat, logger: dependencies.Logger})
+	}
+	return gateway
 }
 
 // addQQBotGatewayComponent 在入站命令启用时把 QQ 网关登记为生命周期组件。
@@ -487,7 +496,7 @@ func addQQBotGatewayComponent(coordinator *lifecycle.Coordinator, infrastructure
 	gateway := NewQQBotGateway(ctx, QQBotDependencies{
 		Store: infrastructure.Store, Analytics: ports.Analytics, Summaries: ports.AccountSummaries,
 		Chat: ports.Chat, AccountRuntime: ports.AccountRuntime, Issues: ports.AutomationIssues,
-		DatabaseHealth: ping, Logger: infrastructure.Logger,
+		DatabaseHealth: ping, Logger: infrastructure.Logger, OpsChat: ports.OpsChat,
 	})
 	if gateway == nil {
 		return nil

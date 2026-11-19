@@ -93,7 +93,7 @@ export interface ConnectorMeta {
   powersChannelTypes: NotificationChannelType[];
 }
 
-/** qqBotConnector 是 QQ 官方机器人连接器：系统级凭据供通知渠道复用，并承载入站只读命令。 */
+/** qqBotConnector 是 QQ 官方机器人连接器：系统级凭据供通知渠道复用；入站命令开关与白名单已迁至运营 Agent 页。 */
 export const qqBotConnector: ConnectorMeta = {
   id: 'qqbot',
   label: 'QQ 机器人',
@@ -108,18 +108,7 @@ export const qqBotConnector: ConnectorMeta = {
       configuredHelp: '服务端已保存 AppSecret 且仅本地加密存储，页面不会回显明文；留空保存表示保持原值。',
     },
   ],
-  capabilities: [
-    {
-      id: 'inbound-commands',
-      label: '启用入站命令',
-      description: '开启后服务会连接 QQ 网关，接收「销量 / 健康 / 会话 / 帮助」四类只读命令并回复结果。关闭时不产生任何对外连接。',
-      toggleKey: 'qqbot.commands_enabled',
-      allowlistKey: 'qqbot.command_openids',
-      allowlistLabel: '命令发送者白名单（openid）',
-      allowlistPlaceholder: '留空表示拒绝所有发送者。每行一个或用逗号分隔，例如：\n0A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P',
-      allowlistHelp: '机器人一旦上线，任何找到它的人都能发消息；只有白名单内的 openid 才能触发命令。未授权者会收到含其 openid 的提示，把该标识粘贴到这里即可开通。',
-    },
-  ],
+  capabilities: [],
   guide: {
     title: '如何获取 AppID 与 AppSecret',
     steps: QQ_CONNECTOR_GUIDE_STEPS,

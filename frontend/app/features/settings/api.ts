@@ -1,4 +1,4 @@
-import type { AgentPresetOption,AgentSupportSettings,AgentSupportSettingsUpdate,MCPAuditPage,MCPAuditRecord,MCPServiceStatus,OperationResponse,SystemSettings } from './models';
+import type { AgentConversationMessage,AgentConversationMessagePage,AgentPresetOption,AgentSupportSettings,AgentSupportSettingsUpdate,AgentTakeoverConversationPage,AgentTakeoverSession,MCPAuditPage,MCPAuditRecord,MCPServiceStatus,OperationResponse,OpsConversation,OpsConversationPage,OpsMessage,OpsMessagePage,OpsSendMessageResult,SystemSettings } from './models';
 import { contractClient, runContractRequest } from '../../../shared/api-contract/client';
 import { isQQConnectorReady,normalizeSystemSettingsUpdate,SENSITIVE_SYSTEM_SETTING_KEYS } from '../../../shared/api-contract/settings';
 import { type RequestControlOptions } from '../../../shared/http/client';
@@ -270,3 +270,253 @@ export const updateAgentSupportSettings = async (update: AgentSupportSettingsUpd
 
 /** 判断 QQ 机器人凭据是否足以启用运营 Agent；Hook 只能经本 feature adapter 使用该判定，不得直接依赖 transport 模块。 */
 export const isQQBotConnectorReady = isQQConnectorReady;
+
+/** 把客服接管会话 DTO 归一为 UI 模型；缺失字段按空串或 0 回落。 */
+const toAgentTakeoverSession = (row: {
+  /** 账号标识。 */
+  account_id?: string;
+  /** 会话标识。 */
+  chat_id?: string;
+  /** 对端平台标识。 */
+  peer_user_id?: string;
+  /** 对端展示名称。 */
+  peer_name?: string;
+  /** 对端头像地址。 */
+  peer_avatar_url?: string;
+  /** 当前账号角色。 */
+  account_role?: string;
+  /** 买家平台标识。 */
+  buyer_user_id?: string;
+  /** 卖家平台标识。 */
+  seller_user_id?: string;
+  /** 角色结论绑定的商品标识。 */
+  role_item_id?: string;
+  /** 角色证据来源。 */
+  role_source?: string;
+  /** 会话商品标识。 */
+  item_id?: string;
+  /** 会话商品标题。 */
+  item_title?: string;
+  /** 会话商品主图地址。 */
+  item_image_url?: string;
+  /** 最近消息摘要。 */
+  last_message?: string;
+  /** 最近消息毫秒时间。 */
+  last_message_at?: number;
+  /** 未读数量。 */
+  unread_count?: number;
+  /** AI 生成轮次近似计数。 */
+  takeover_count?: number;
+}): AgentTakeoverSession => ({
+  accountId: String(row.account_id ?? ''),
+  chatId: String(row.chat_id ?? ''),
+  peerUserId: String(row.peer_user_id ?? ''),
+  peerName: String(row.peer_name ?? ''),
+  peerAvatarUrl: String(row.peer_avatar_url ?? ''),
+  accountRole: String(row.account_role ?? ''),
+  buyerUserId: String(row.buyer_user_id ?? ''),
+  sellerUserId: String(row.seller_user_id ?? ''),
+  roleItemId: String(row.role_item_id ?? ''),
+  roleSource: String(row.role_source ?? ''),
+  itemId: String(row.item_id ?? ''),
+  itemTitle: String(row.item_title ?? ''),
+  itemImageUrl: String(row.item_image_url ?? ''),
+  lastMessage: String(row.last_message ?? ''),
+  lastMessageAt: Number(row.last_message_at) || 0,
+  unreadCount: Number(row.unread_count) || 0,
+  takeoverCount: Number(row.takeover_count) || 0,
+});
+
+/** 把聊天消息 DTO 归一为接管历史 UI 模型；字段名从 snake_case 转到 camelCase。 */
+const toAgentConversationMessage = (row: {
+  /** 本地消息主键。 */
+  id?: number;
+  /** 账号标识。 */
+  account_id?: string;
+  /** 会话标识。 */
+  chat_id?: string;
+  /** 消息幂等键。 */
+  message_key?: string;
+  /** 消息方向。 */
+  direction?: string;
+  /** 发送者标识。 */
+  sender_id?: string;
+  /** 发送者名称。 */
+  sender_name?: string;
+  /** 消息类型。 */
+  message_type?: string;
+  /** 文本或媒体地址。 */
+  content?: string;
+  /** 语音时长。 */
+  media_duration?: number;
+  /** 投递状态。 */
+  status?: string;
+  /** 已读状态。 */
+  read_status?: number;
+  /** 已读时间毫秒。 */
+  read_at?: number;
+  /** 发送时间毫秒。 */
+  sent_at?: number;
+}): AgentConversationMessage => ({
+  id: Number(row.id) || 0,
+  accountId: String(row.account_id ?? ''),
+  chatId: String(row.chat_id ?? ''),
+  messageKey: String(row.message_key ?? ''),
+  direction: String(row.direction ?? ''),
+  senderId: String(row.sender_id ?? ''),
+  senderName: String(row.sender_name ?? ''),
+  messageType: String(row.message_type ?? ''),
+  content: String(row.content ?? ''),
+  mediaDuration: Number(row.media_duration) || 0,
+  status: String(row.status ?? ''),
+  readStatus: Number(row.read_status) || 0,
+  readAt: Number(row.read_at) || 0,
+  sentAt: Number(row.sent_at) || 0,
+});
+
+/** 把运营会话 DTO 归一为 UI 模型。 */
+const toOpsConversation = (row: {
+  /** 会话主键。 */
+  id?: number;
+  /** 通道标识。 */
+  channel?: string;
+  /** 目标 openid。 */
+  target_openid?: string;
+  /** 是否群聊。 */
+  is_group?: boolean;
+  /** 最近消息毫秒时间。 */
+  last_message_at?: number;
+  /** 最近消息预览。 */
+  last_message_preview?: string;
+}): OpsConversation => ({
+  id: Number(row.id) || 0,
+  channel: String(row.channel ?? ''),
+  targetOpenid: String(row.target_openid ?? ''),
+  isGroup: row.is_group === true,
+  lastMessageAt: Number(row.last_message_at) || 0,
+  lastMessagePreview: String(row.last_message_preview ?? ''),
+});
+
+/** 把运营消息 DTO 归一为 UI 模型。 */
+const toOpsMessage = (row: {
+  /** 消息主键。 */
+  id?: number;
+  /** 会话主键。 */
+  conversation_id?: number;
+  /** 消息方向。 */
+  direction?: string;
+  /** 消息来源。 */
+  source?: string;
+  /** 纯文本内容。 */
+  content?: string;
+  /** 消息毫秒时间。 */
+  created_at?: number;
+}): OpsMessage => ({
+  id: Number(row.id) || 0,
+  conversationId: Number(row.conversation_id) || 0,
+  direction: String(row.direction ?? ''),
+  source: String(row.source ?? ''),
+  content: String(row.content ?? ''),
+  createdAt: Number(row.created_at) || 0,
+});
+
+/** 读取 AI 接管过的会话；游标由上一页最后一条的最近消息时间与会话标识组成。 */
+export const getAgentTakeoverConversations = async (
+  query: { /** 单页数量。 */ limit?: number; /** 上一页最后一条的最近消息毫秒时间。 */ beforeLastMessageAt?: number; /** 上一页最后一条的会话标识。 */ beforeChatId?: string } = {},
+  options?: RequestControlOptions,
+): Promise<AgentTakeoverConversationPage> => {
+  // response 是 OpenAPI 约束的接管会话分页响应。
+  const response = await runContractRequest(/* signal 控制接管会话读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/support/conversations', {
+    params: {
+      query: {
+        limit: query.limit,
+        before_last_message_at: query.beforeLastMessageAt,
+        before_chat_id: query.beforeChatId,
+      },
+    },
+    signal,
+  }), options);
+  // sessions 是归一后的会话列表。
+  const sessions = Array.isArray(response.sessions) ? response.sessions.map(toAgentTakeoverSession) : [];
+  return {
+    sessions,
+    hasMore: response.has_more === true,
+    nextBeforeLastMessageAt: typeof response.next_before_last_message_at === 'number' ? response.next_before_last_message_at : undefined,
+    nextBeforeChatId: typeof response.next_before_chat_id === 'string' ? response.next_before_chat_id : undefined,
+  };
+};
+
+/** 读取指定账号与会话的消息；复用聊天接口的归属校验，只读。 */
+export const getAgentTakeoverMessages = async (
+  query: { /** 账号标识。 */ accountId: string; /** 会话标识。 */ chatId: string; /** 更早消息游标。 */ beforeId?: number; /** 单页数量。 */ limit?: number },
+  options?: RequestControlOptions,
+): Promise<AgentConversationMessagePage> => {
+  // response 是 OpenAPI 约束的聊天消息分页响应。
+  const response = await runContractRequest(/* signal 控制接管会话消息读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/support/conversations/messages', {
+    params: {
+      query: {
+        account_id: query.accountId,
+        chat_id: query.chatId,
+        before_id: query.beforeId,
+        limit: query.limit,
+      },
+    },
+    signal,
+  }), options);
+  return {
+    messages: Array.isArray(response.messages) ? response.messages.map(toAgentConversationMessage) : [],
+    hasMore: response.has_more === true,
+  };
+};
+
+/** 分页读取运营会话；按最近消息时间倒序。 */
+export const getOpsConversations = async (
+  query: { /** 从 1 开始的页码。 */ page?: number; /** 每页条数。 */ pageSize?: number } = {},
+  options?: RequestControlOptions,
+): Promise<OpsConversationPage> => {
+  // response 是 OpenAPI 约束的运营会话分页响应。
+  const response = await runContractRequest(/* signal 控制运营会话读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/ops/conversations', {
+    params: { query: { page: query.page, page_size: query.pageSize } },
+    signal,
+  }), options);
+  // conversations 是归一后的会话列表。
+  const conversations = Array.isArray(response.conversations) ? response.conversations.map(toOpsConversation) : [];
+  return {
+    conversations,
+    total: Number(response.total) || 0,
+    page: Number(response.page) || 1,
+    pageSize: Number(response.page_size) || conversations.length,
+    totalPages: Number(response.total_pages) || 0,
+  };
+};
+
+/** 读取指定运营会话的消息；beforeId 用于加载更早消息。 */
+export const getOpsMessages = async (
+  conversationId: number,
+  query: { /** 更早消息游标。 */ beforeId?: number; /** 单页数量。 */ limit?: number } = {},
+  options?: RequestControlOptions,
+): Promise<OpsMessagePage> => {
+  // response 是 OpenAPI 约束的运营消息分页响应。
+  const response = await runContractRequest(/* signal 控制运营消息读取的取消和超时。 */ signal => contractClient.GET('/api/v1/agent/ops/conversations/{id}/messages', {
+    params: { path: { id: conversationId }, query: { before_id: query.beforeId, limit: query.limit } },
+    signal,
+  }), options);
+  return {
+    messages: Array.isArray(response.messages) ? response.messages.map(toOpsMessage) : [],
+    hasMore: response.has_more === true,
+  };
+};
+
+/** 从 Web 向运营会话发送一条人工文本；服务端先发 QQ，成功后落库并返回消息与会话摘要。 */
+export const sendOpsMessage = async (conversationId: number, content: string, options?: RequestControlOptions): Promise<OpsSendMessageResult> => {
+  // response 是 OpenAPI 约束的发送成功响应。
+  const response = await runContractRequest(/* signal 控制运营消息发送的取消和超时。 */ signal => contractClient.POST('/api/v1/agent/ops/conversations/{id}/messages', {
+    params: { path: { id: conversationId } },
+    body: { content },
+    signal,
+  }), options);
+  return {
+    message: toOpsMessage(response.message),
+    conversation: toOpsConversation(response.conversation),
+  };
+};

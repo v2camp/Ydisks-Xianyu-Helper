@@ -48,7 +48,8 @@ describe('frontend navigation routing', () => {
     expect(app).toContain('<Suspense fallback={<PageLoading />}>');
     expect(app).not.toContain("import Dashboard from '../../components/Dashboard'");
     expect(app).toContain("import('../features/dashboard/pages/Dashboard')");
-    expect(app).toContain("import('../features/settings/pages/AISettings')");
+    expect(app).toContain("import('../features/settings/pages/CustomerAgent')");
+    expect(app).toContain("import('../features/settings/pages/OpsAgent')");
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);
 
   test('authenticated shell owns sidebar and page composition', () => {
@@ -107,16 +108,16 @@ describe('frontend navigation routing', () => {
 
     expect(app).toContain('const { isLoggedIn, isAdmin, signOut } = useSession();');
     expect(sessionProvider).toContain('setIsAdmin(response.is_admin === true)');
-    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'ai-settings', 'agent-center'];");
+    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent', 'ops-agent'];");
     expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
     expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AISettings onNavigate={onNavigate} /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <AgentCenter onNavigate={onNavigate} /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <CustomerAgent /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <OpsAgent onNavigate={onNavigate} /> : <Dashboard />');
     expect(sidebar).toContain('isAdmin = false');
     expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
-    expect(sidebar).toContain("{ id: 'ai-settings', icon: Sparkles, label: 'AI 设置' }");
-    expect(sidebar).toContain("{ id: 'agent-center', icon: Bot, label: 'Agent 中心' }");
+    expect(sidebar).toContain("{ id: 'customer-agent', icon: Bot, label: '客服 Agent' }");
+    expect(sidebar).toContain("{ id: 'ops-agent', icon: Radio, label: '运营 Agent' }");
     expect(settingsHook).toContain('setLoadError');
     expect(settingsHook).toContain("scope === 'ai'");
     expect(settingsHook).toContain('buildPersistableSettings(settings, scope)');
@@ -125,22 +126,23 @@ describe('frontend navigation routing', () => {
   test('admin configuration pages each own a distinct route mapping', () => {
     const routes = readFrontendFile('app/router/routes.ts'); /* routes 表示路由映射源码。 */
 
-    expect(routes).toContain("'ai-settings'");
-    expect(routes).toContain("'/app/ai-settings': 'ai-settings'");
+    expect(routes).toContain("'customer-agent'");
+    expect(routes).toContain("'/app/customer-agent': 'customer-agent'");
     expect(routes).toContain("'/app/settings': 'settings'");
-    expect(routes).toContain("'/app/agent-center': 'agent-center'");
-  } /* 测试回调断言系统设置、AI 设置与 Agent 中心各自拥有独立路由映射。 */);
+    expect(routes).toContain("'/app/ops-agent': 'ops-agent'");
+  } /* 测试回调断言系统设置、客服 Agent 与运营 Agent 各自拥有独立路由映射。 */);
 
-  test('inbound MCP service card is mounted on the agent center page instead of system settings', () => {
-    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示系统设置页源码，用于确认入站 MCP 卡片已迁出。 */
-    const agentCenter = readFrontendFile('app/features/settings/pages/AgentCenter.tsx'); /* agentCenter 表示 Agent 中心页源码，用于确认入站 MCP 卡片已就地挂载。 */
+  test('inbound MCP service card is mounted on the system settings page', () => {
+    const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示系统设置页源码，用于确认入站 MCP 卡片已回归。 */
+    const customerAgent = readFrontendFile('app/features/settings/pages/CustomerAgent.tsx'); /* customerAgent 表示客服 Agent 页源码，用于确认入站卡片不再挂载。 */
 
-    expect(settings).not.toContain('MCPServiceCard');
-    expect(agentCenter).toContain("import { MCPServiceCard } from '../components/MCPServiceCard'");
-    expect(agentCenter).toContain('<MCPServiceCard />');
-    expect(agentCenter).toContain('对外 MCP 服务（入站）');
-    expect(agentCenter).toContain('方向相反');
-  } /* 测试回调断言入站 MCP 服务卡挂在 Agent 中心页、不再出现在系统设置页，并与出站客户端配置区分方向。 */);
+    expect(settings).toContain("import { MCPServiceCard } from '../components/MCPServiceCard'");
+    expect(settings).toContain('<MCPServiceCard />');
+    expect(settings).toContain('对外 MCP 服务（入站）');
+    expect(customerAgent).toContain('<MCPServerList');
+    expect(customerAgent).toContain('mcp.servers');
+    expect(customerAgent).not.toContain('<MCPServiceCard');
+  } /* 测试回调断言入站 MCP 服务卡回归系统设置页，客服 Agent 页只保留出站工具配置。 */);
 
   test('captcha remote settings expose the reference privacy and fallback semantics', () => {
     const settings = readFrontendFile('app/features/settings/pages/Settings.tsx'); /* settings 表示settings。 */
@@ -177,20 +179,21 @@ describe('frontend navigation routing', () => {
     expect(card).toContain('connector.fields.map');
   } /* 测试回调断言连接器页引导管理员前往 QQ 开放平台配置官方机器人凭据。 */);
 
-  test('QQ connector gates inbound commands behind an openid allowlist', () => {
+  test('QQ inbound commands are configured on the ops agent page instead of the connector', () => {
     const registry = readFrontendFile('app/features/connectors/registry.ts'); /* registry 表示连接器注册表源码。 */
-    const card = readFrontendFile('app/features/connectors/components/ConnectorCard.tsx'); /* card 表示注册表驱动的连接器卡源码。 */
-    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示系统设置页字段白名单。 */
+    const opsAgent = readFrontendFile('app/features/settings/pages/OpsAgent.tsx'); /* opsAgent 表示运营 Agent 页源码。 */
+    const settingsConstants = readFrontendFile('app/features/settings/constants.ts'); /* settingsConstants 表示设置页字段白名单。 */
 
-    expect(registry).toContain('启用入站命令');
-    expect(registry).toContain('命令发送者白名单（openid）');
-    expect(registry).toContain("'qqbot.commands_enabled'");
-    expect(registry).toContain("'qqbot.command_openids'");
-    expect(registry).toContain('销量 / 健康 / 会话 / 帮助');
-    expect(card).toContain('capability.allowlistKey');
-    expect(settingsConstants).not.toContain("'qqbot.commands_enabled'");
-    expect(settingsConstants).not.toContain("'qqbot.command_openids'");
-  } /* 测试回调断言入站命令默认关闭、由注册表声明且必须经 openid 白名单授权。 */);
+    expect(registry).not.toContain('启用入站命令');
+    expect(registry).not.toContain("'qqbot.commands_enabled'");
+    expect(registry).not.toContain("'qqbot.command_openids'");
+    expect(settingsConstants).toContain('OPS_AGENT_SETTING_KEYS');
+    expect(settingsConstants).toContain("'qqbot.commands_enabled'");
+    expect(settingsConstants).toContain("'qqbot.command_openids'");
+    expect(opsAgent).toContain("'qqbot.commands_enabled'");
+    expect(opsAgent).toContain("'qqbot.command_openids'");
+    expect(opsAgent).toContain('启用运营 Agent（QQ 入站）');
+  } /* 测试回调断言 QQ 入站命令开关与白名单已从连接器迁到运营 Agent 页。 */);
 
   test('email notification config separates system and custom SMTP modes', () => {
     const notifications = readFrontendFile('app/features/connectors/pages/Connectors.tsx'); /* notifications 表示连接器页源码。 */

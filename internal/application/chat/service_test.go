@@ -237,6 +237,17 @@ func (r *fakeRepository) ListSessionPage(_ context.Context, _ int64, _ string, _
 	return SessionPage{Sessions: r.sessions}, r.sessionErr
 }
 
+// ListTakeoverSessions 把测试会话包装为接管会话分页，满足仓储端口契约。
+func (r *fakeRepository) ListTakeoverSessions(_ context.Context, _ int64, _ *SessionCursor, _ int) (TakeoverSessionPage, error) {
+	// sessions 保存转换为接管会话的测试会话列表。
+	sessions := make([]TakeoverSession, 0, len(r.sessions))
+	// session 是当前待转换的测试会话。
+	for _, session := range r.sessions {
+		sessions = append(sessions, TakeoverSession{Session: session, TakeoverCount: 1})
+	}
+	return TakeoverSessionPage{Sessions: sessions}, r.sessionErr
+}
+
 // DeleteEmptySessions 返回预设清理结果并记录端口已被调用。
 func (r *fakeRepository) DeleteEmptySessions(_ context.Context, _ string) error {
 	return r.deleteErr
@@ -367,6 +378,11 @@ func (historyOnlyRepository) ListSessions(context.Context, int64, string, int) (
 // ListSessionPage 返回空本地会话页，使仅历史消息测试满足完整仓储端口。
 func (historyOnlyRepository) ListSessionPage(context.Context, int64, string, *SessionCursor, int) (SessionPage, error) {
 	return SessionPage{}, nil
+}
+
+// ListTakeoverSessions 返回空接管会话页，满足完整仓储端口契约。
+func (historyOnlyRepository) ListTakeoverSessions(context.Context, int64, *SessionCursor, int) (TakeoverSessionPage, error) {
+	return TakeoverSessionPage{}, nil
 }
 
 // Resolve 返回预设的非敏感身份结果。

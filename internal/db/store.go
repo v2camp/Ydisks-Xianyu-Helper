@@ -48,6 +48,8 @@ type Store struct {
 	Analytics     *AnalyticsQueries
 	// MCP 保存对外开放 MCP 服务的开关、令牌哈希与调用审计仓储。
 	MCP *MCPAuthStore
+	// OpsChat 保存运营 Agent 的 QQ 会话与消息仓储。
+	OpsChat *OpsChatStore
 
 	credentialMu    sync.Mutex
 	credentialLocks map[string]*credentialLockEntry
@@ -112,6 +114,7 @@ func NewStore(db *sql.DB, dialect Dialect) *Store {
 		Admin:             &AdminQueries{DB: db},
 		Analytics:         &AnalyticsQueries{DB: db, Dialect: dialect},
 		MCP:               NewMCPAuthStore(db, dialect),
+		OpsChat:           &OpsChatStore{DB: db, Dialect: dialect},
 		credentialLocks:   make(map[string]*credentialLockEntry),
 	}
 }

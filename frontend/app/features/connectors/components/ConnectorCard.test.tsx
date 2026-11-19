@@ -24,10 +24,6 @@ function ConnectorHarness({ initial, loading }: ConnectorHarnessProps) {
     <div>
       <ConnectorCard connector={qqBotConnector} settings={settings} loading={loading} onChange={/* patch 合并进测试草稿状态。 */ patch => setSettings(/* prev 是合并补丁前的草稿，返回合并后的新草稿。 */ prev => ({ ...prev, ...patch }))} />
       <pre data-testid="draft">{JSON.stringify({ app_id: settings['qqbot.app_id'] ?? null, app_secret: settings['qqbot.app_secret'] ?? null })}</pre>
-      <pre data-testid="settings">{JSON.stringify({
-        'qqbot.commands_enabled': settings['qqbot.commands_enabled'] ?? null,
-        'qqbot.command_openids': settings['qqbot.command_openids'] ?? null,
-      })}</pre>
     </div>
   );
 }
@@ -37,12 +33,7 @@ function readDraft(): Record<string, string | null> {
   return JSON.parse(screen.getByTestId('draft').textContent || '{}');
 }
 
-// readSettings 读取测试容器底部展示的入站命令设置草稿对象。
-function readSettings(): Record<string, string | boolean | null> {
-  return JSON.parse(screen.getByTestId('settings').textContent || '{}');
-}
-
-describe('ConnectorCard', /* 当前测试组验证注册表驱动的凭据输入、能力开关与平台提示。 */ () => {
+describe('ConnectorCard', /* 当前测试组验证注册表驱动的凭据输入、平台引导与提示；入站命令配置已迁至运营 Agent 页。 */ () => {
   test('未配置时展示未配置状态并引导前往 QQ 开放平台', /* 当前测试验证空配置的引导文案与入口链接。 */ () => {
     render(<ConnectorHarness initial={{}} />);
     expect(screen.getByTestId('connector-status-qqbot').textContent).toBe('未配置');
@@ -90,26 +81,9 @@ describe('ConnectorCard', /* 当前测试组验证注册表驱动的凭据输入
     expect((screen.getByLabelText('机器人 AppSecret') as HTMLInputElement).getAttribute('type')).toBe('password');
   });
 
-  test('入站命令开关默认关闭且白名单输入不展示', /* 当前测试验证入站命令默认不开放，避免开启即裸奔。 */ () => {
+  test('入站命令开关与白名单已从连接器卡迁出', /* 当前测试验证能力声明清空后卡片不再渲染入站命令控件。 */ () => {
     render(<ConnectorHarness initial={{ 'qqbot.app_id': '102012345' }} />);
-    // toggle 是入站命令开关，默认应为关闭。
-    const toggle = screen.getByLabelText('启用 QQ 机器人 入站命令') as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
-    expect(screen.queryByLabelText('命令发送者白名单（openid）')).toBeNull();
-  });
-
-  test('开启入站命令写回开关并在关闭时收起白名单', /* 当前测试验证开关往返与白名单输入的条件渲染。 */ () => {
-    render(<ConnectorHarness initial={{}} />);
-    // toggle 是入站命令开关。
-    const toggle = screen.getByLabelText('启用 QQ 机器人 入站命令') as HTMLInputElement;
-    fireEvent.click(toggle);
-    expect(toggle.checked).toBe(true);
-    // openids 是开启后才出现的白名单输入。
-    const openids = screen.getByLabelText('命令发送者白名单（openid）') as HTMLTextAreaElement;
-    fireEvent.change(openids, { target: { value: 'openid-a, openid-b' } });
-    expect(readSettings()).toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' });
-    fireEvent.click(toggle);
-    expect(toggle.checked).toBe(false);
+    expect(screen.queryByLabelText('启用 QQ 机器人 入站命令')).toBeNull();
     expect(screen.queryByLabelText('命令发送者白名单（openid）')).toBeNull();
   });
 

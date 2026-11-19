@@ -57,6 +57,10 @@ func TestOpenAPISuccessContractCoverage(t *testing.T) {
 		{name: "remaining-versioned-success", run: TestOpenAPIRemainingVersionedSuccessResponses},
 		{name: "mcp-admin", run: TestOpenAPIMCPAdminResponses},
 		{name: "agent-support", run: TestOpenAPIAgentSupportResponses},
+		{name: "agent-takeover-conversations", run: TestAgentTakeoverConversationsContract},
+		{name: "agent-takeover-messages", run: TestAgentTakeoverMessagesContract},
+		{name: "ops-agent-real", run: TestOpsAgentRealServerFlow},
+		{name: "ops-agent-send", run: TestOpsSendSuccessShape},
 	}
 	// scenario 是当前执行的领域真实响应场景。
 	for _, scenario := range scenarios {

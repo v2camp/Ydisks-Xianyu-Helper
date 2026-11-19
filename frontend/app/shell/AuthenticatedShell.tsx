@@ -53,10 +53,10 @@ const PublishSpecsEditor = lazy(/* 规格编辑器随商品页面路由加载。
 const PublishImagesEditor = lazy(/* 图片编辑器随商品页面路由加载。 */ () => import('../features/items/components/PublishImagesEditor').then(/* module 提供图片编辑器的具名导出。 */ module => ({ default: module.PublishImagesEditor })));
 // Settings 是按需加载的系统设置页面，仅在管理员访问时加载。
 const Settings = lazy(/* Settings 页面按路由激活时加载。 */ () => import('../features/settings/pages/Settings'));
-// AISettings 是按需加载的 AI 设置页面，仅在管理员访问时加载。
-const AISettings = lazy(/* AISettings 页面按路由激活时加载。 */ () => import('../features/settings/pages/AISettings'));
-// AgentCenter 是按需加载的 Agent 中心页面，仅在管理员访问时加载。
-const AgentCenter = lazy(/* AgentCenter 页面按路由激活时加载。 */ () => import('../features/settings/pages/AgentCenter'));
+// CustomerAgent 是按需加载的客服 Agent 页面，仅在管理员访问时加载。
+const CustomerAgent = lazy(/* CustomerAgent 页面按路由激活时加载。 */ () => import('../features/settings/pages/CustomerAgent'));
+// OpsAgent 是按需加载的运营 Agent 页面，仅在管理员访问时加载。
+const OpsAgent = lazy(/* OpsAgent 页面按路由激活时加载。 */ () => import('../features/settings/pages/OpsAgent'));
 // Rules 是按需加载的自动化规则页面，避免首屏载入规则编辑器代码。
 const Rules = lazy(/* Rules 页面按路由激活时加载。 */ () => import('../features/rules/pages/Rules'));
 // DeliveryTemplates 是按需加载的发货模板管理页面。
@@ -123,8 +123,8 @@ export const AppContent: React.FC<AppContentProps> = ({
       case 'delivery-templates': return <DeliveryTemplates />;
       case 'connectors': return <Connectors isAdmin={isAdmin} />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
-      case 'ai-settings': return isAdmin ? <AISettings onNavigate={onNavigate} /> : <Dashboard />;
-      case 'agent-center': return isAdmin ? <AgentCenter onNavigate={onNavigate} /> : <Dashboard />;
+      case 'customer-agent': return isAdmin ? <CustomerAgent /> : <Dashboard />;
+      case 'ops-agent': return isAdmin ? <OpsAgent onNavigate={onNavigate} /> : <Dashboard />;
       default: return <Dashboard />;
     }
   };

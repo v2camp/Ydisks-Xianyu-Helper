@@ -263,6 +263,39 @@ func TestRunPropagatesSessionError(t *testing.T) {
 // 返回已启动的网关；事件分发失败会直接标记测试失败。
 func runGatewayWithFake(t *testing.T, service *Service, replier *replierFake, payload string) *Gateway {
 	t.Helper()
+	return runGatewayWithFakeAndRecorder(t, service, replier, nil, payload)
+}
+
+// recorderFake 是会话留痕端口的测试替身，记录入站与出站调用。
+type recorderFake struct {
+	// inbound 保存收到的入站消息。
+	inbound []RecordedMessage
+	// outbound 保存收到的出站消息。
+	outbound []RecordedMessage
+	// sources 保存出站消息的来源标签。
+	sources []string
+	// inserted 是入站记录返回的新增标记。
+	inserted bool
+	// inboundErr、outboundErr 是预设的书写错误。
+	inboundErr, outboundErr error
+}
+
+// RecordInbound 记录入站消息并返回预设结果。
+func (f *recorderFake) RecordInbound(_ context.Context, message RecordedMessage) (bool, error) {
+	f.inbound = append(f.inbound, message)
+	return f.inserted, f.inboundErr
+}
+
+// RecordOutbound 记录出站消息与来源。
+func (f *recorderFake) RecordOutbound(_ context.Context, message RecordedMessage, source string) error {
+	f.outbound = append(f.outbound, message)
+	f.sources = append(f.sources, source)
+	return f.outboundErr
+}
+
+// runGatewayWithFakeAndRecorder 在可选记录器注入后跑一次网关并分发事件。
+func runGatewayWithFakeAndRecorder(t *testing.T, service *Service, replier *replierFake, recorder Recorder, payload string) *Gateway {
+	t.Helper()
 	// originalClient 是原工厂，用于用例结束后还原。
 	originalClient := newGatewayClient
 	// originalStart 是原会话启动函数，用于用例结束后还原。
@@ -273,6 +306,8 @@ func runGatewayWithFake(t *testing.T, service *Service, replier *replierFake, pa
 	}
 	// dispatchErr 保存事件分发过程中的首个错误。
 	var dispatchErr error
+	// isGroupEvent 表示样本是否为群 @ 消息事件，避免同一载荷被两种处理器重复消费。
+	isGroupEvent := strings.Contains(payload, "GROUP_AT_MESSAGE_CREATE")
 	startInboundSession = func(_ context.Context, _ gatewayClient, handlers ...any) error {
 		// handler 是当前注册的事件处理器。
 		for _, handler := range handlers {
@@ -281,11 +316,17 @@ func runGatewayWithFake(t *testing.T, service *Service, replier *replierFake, pa
 			// typed 是按 botgo 具名 handler 类型断言后的处理器。
 			switch typed := handler.(type) {
 			case event.C2CMessageEventHandler:
+				if isGroupEvent {
+					continue
+				}
 				// callErr 是单聊处理器返回的错误。
 				if callErr := typed(payloadStruct, nil); callErr != nil && dispatchErr == nil {
 					dispatchErr = callErr
 				}
 			case event.GroupATMessageEventHandler:
+				if !isGroupEvent {
+					continue
+				}
 				// callErr 是群处理器返回的错误。
 				if callErr := typed(payloadStruct, nil); callErr != nil && dispatchErr == nil {
 					dispatchErr = callErr
@@ -296,6 +337,7 @@ func runGatewayWithFake(t *testing.T, service *Service, replier *replierFake, pa
 	}
 	// gateway 是待测入站网关。
 	gateway := NewGateway("id", "secret", service)
+	gateway.SetRecorder(recorder)
 	// runErr 是网关启动错误。
 	if runErr := gateway.Run(context.Background()); runErr != nil {
 		t.Fatalf("网关启动失败: %v", runErr)
@@ -327,5 +369,90 @@ func TestInboundMessageJSONShapeMatchesOfficialSamples(t *testing.T) {
 		if _, exists := data["id"]; !exists {
 			t.Fatal("事件负载缺少消息标识 id")
 		}
+	}
+}
+
+// TestGatewayRecordsInboundAndOutbound 验证命令成功时先记录入站、再记录出站命令回复。
+func TestGatewayRecordsInboundAndOutbound(t *testing.T) {
+	// service 是注入替身的命令服务。
+	service, _, _, _ := newFixtureService()
+	// recorder 是记录入站与出站的替身。
+	recorder := &recorderFake{inserted: true}
+	// replier 是回复替身。
+	replier := &replierFake{}
+	runGatewayWithFakeAndRecorder(t, service, replier, recorder, c2cEventPayload)
+	if len(recorder.inbound) != 1 {
+		t.Fatalf("应记录一条入站消息，实际 %d", len(recorder.inbound))
+	}
+	if recorder.inbound[0].MsgID != "msg-1" || recorder.inbound[0].SenderOpenID != "user-openid-1" || recorder.inbound[0].GroupOpenID != "" {
+		t.Fatalf("入站记录字段不符，实际 %+v", recorder.inbound[0])
+	}
+	if len(recorder.outbound) != 1 || len(recorder.sources) != 1 || recorder.sources[0] != "command" {
+		t.Fatalf("应记录一条命令回复出站消息，实际 outbound=%d sources=%v", len(recorder.outbound), recorder.sources)
+	}
+	if recorder.outbound[0].Content == "" {
+		t.Fatal("出站记录不得为空回复")
+	}
+}
+
+// TestGatewayRecordsGroupTarget 验证群聊记录保留群 openid。
+func TestGatewayRecordsGroupTarget(t *testing.T) {
+	// service 是注入替身的命令服务。
+	service, _, _, _ := newFixtureService()
+	// recorder 是记录入站与出站的替身。
+	recorder := &recorderFake{inserted: true}
+	runGatewayWithFakeAndRecorder(t, service, &replierFake{}, recorder, groupEventPayload)
+	if len(recorder.inbound) != 1 || recorder.inbound[0].GroupOpenID != "group-openid-1" {
+		t.Fatalf("群聊入站记录应保留 group_openid，实际 %+v", recorder.inbound)
+	}
+}
+
+// TestGatewaySkipsOutboundForDuplicateInbound 验证重复入站不重复记录出站回复。
+func TestGatewaySkipsOutboundForDuplicateInbound(t *testing.T) {
+	// service 是注入替身的命令服务。
+	service, _, _, _ := newFixtureService()
+	// recorder 是报告非新消息的替身。
+	recorder := &recorderFake{inserted: false}
+	runGatewayWithFakeAndRecorder(t, service, &replierFake{}, recorder, c2cEventPayload)
+	if len(recorder.inbound) != 1 {
+		t.Fatalf("重复事件仍应尝试记录入站，实际 %d", len(recorder.inbound))
+	}
+	if len(recorder.outbound) != 0 {
+		t.Fatalf("重复事件不得记录出站，实际 %d", len(recorder.outbound))
+	}
+}
+
+// TestGatewayKeepsInboundWhenReplyFails 验证被动回复失败时入站记录仍然保留。
+func TestGatewayKeepsInboundWhenReplyFails(t *testing.T) {
+	// service 是注入替身的命令服务。
+	service, _, _, _ := newFixtureService()
+	// recorder 是记录入站与出站的替身。
+	recorder := &recorderFake{inserted: true}
+	// gateway 是手工装配的网关，便于直接观察 handleEvent 的返回错误。
+	gateway := NewGateway("id", "secret", service)
+	gateway.lifecycleCtx = context.Background()
+	gateway.replier = &replierFake{err: errors.New("reply failed")}
+	gateway.SetRecorder(recorder)
+	// err 是回复失败产生的错误。
+	if err := gateway.handleEvent(&dto.WSPayload{RawMessage: []byte(c2cEventPayload)}); err == nil {
+		t.Fatal("回复失败应返回错误")
+	}
+	if len(recorder.inbound) != 1 {
+		t.Fatalf("回复失败仍应保留入站记录，实际 %d", len(recorder.inbound))
+	}
+	if len(recorder.outbound) != 0 {
+		t.Fatalf("回复失败不得记录出站，实际 %d", len(recorder.outbound))
+	}
+}
+
+// TestGatewayWithoutRecorderKeepsCommandWorking 验证未装配记录端口时命令行为不变。
+func TestGatewayWithoutRecorderKeepsCommandWorking(t *testing.T) {
+	// service 是注入替身的命令服务。
+	service, _, _, _ := newFixtureService()
+	// replier 是回复替身。
+	replier := &replierFake{}
+	runGatewayWithFake(t, service, replier, c2cEventPayload)
+	if replier.c2cContent == "" {
+		t.Fatal("未装配记录端口时命令仍应正常回复")
 	}
 }

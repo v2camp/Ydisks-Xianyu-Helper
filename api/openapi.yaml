@@ -1696,6 +1696,266 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/support/conversations":
+    get:
+      operationId: getApiV1AgentSupportConversations
+      summary: getApiV1AgentSupportConversations
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer}
+        - name: before_last_message_at
+          in: query
+          required: false
+          schema: {type: integer}
+        - name: before_chat_id
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTakeoverConversationPage'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/support/conversations/messages":
+    get:
+      operationId: getApiV1AgentSupportConversationMessages
+      summary: getApiV1AgentSupportConversationMessages
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema: {type: string}
+        - name: chat_id
+          in: query
+          required: true
+          schema: {type: string}
+        - name: before_id
+          in: query
+          required: false
+          schema: {type: integer}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessagePage'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/ops/conversations":
+    get:
+      operationId: getApiV1AgentOpsConversations
+      summary: getApiV1AgentOpsConversations
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: {type: integer}
+        - name: page_size
+          in: query
+          required: false
+          schema: {type: integer}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsConversationPage'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/agent/ops/conversations/{id}/messages":
+    get:
+      operationId: getApiV1AgentOpsConversationMessages
+      summary: getApiV1AgentOpsConversationMessages
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+        - name: before_id
+          in: query
+          required: false
+          schema: {type: integer}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsMessagePage'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      operationId: postApiV1AgentOpsConversationMessage
+      summary: postApiV1AgentOpsConversationMessage
+      security: [{cookieAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpsSendMessageRequest'
+      responses:
+        '201':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsSendMessageResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/v1/admin/tasks":
     get:
       operationId: getApiV1AdminTasks
@@ -7694,6 +7954,75 @@ components:
       required: [preset]
       properties:
         preset: {type: string, nullable: true, description: 账号级档位覆盖；null 表示继承租户默认；不属于 presets 名单时返回 400}
+    AgentTakeoverSession:
+      allOf:
+        - $ref: '#/components/schemas/ChatSession'
+        - type: object
+          required: [takeover_count]
+          properties:
+            takeover_count:
+              type: integer
+              description: 该会话中 AI 生成过回复的轮次近似值；不表达决策层 takeover=false
+    AgentTakeoverConversationPage:
+      type: object
+      required: [sessions, has_more]
+      properties:
+        sessions:
+          type: array
+          items: {$ref: '#/components/schemas/AgentTakeoverSession'}
+        has_more: {type: boolean}
+        next_before_last_message_at: {type: integer}
+        next_before_chat_id: {type: string}
+    OpsConversation:
+      type: object
+      required: [id, channel, target_openid, is_group, last_message_at, last_message_preview]
+      properties:
+        id: {type: integer}
+        channel: {type: string, enum: [qq]}
+        target_openid: {type: string}
+        is_group: {type: boolean}
+        last_message_at: {type: integer}
+        last_message_preview: {type: string}
+    OpsMessage:
+      type: object
+      required: [id, conversation_id, direction, source, content, created_at]
+      properties:
+        id: {type: integer}
+        conversation_id: {type: integer}
+        direction: {type: string, enum: [inbound, outbound]}
+        source: {type: string, enum: [inbound, command, operator]}
+        content: {type: string}
+        created_at: {type: integer}
+    OpsConversationPage:
+      type: object
+      required: [conversations, total, page, page_size, total_pages]
+      properties:
+        conversations:
+          type: array
+          items: {$ref: '#/components/schemas/OpsConversation'}
+        total: {type: integer}
+        page: {type: integer}
+        page_size: {type: integer}
+        total_pages: {type: integer}
+    OpsMessagePage:
+      type: object
+      required: [messages, has_more]
+      properties:
+        messages:
+          type: array
+          items: {$ref: '#/components/schemas/OpsMessage'}
+        has_more: {type: boolean}
+    OpsSendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content: {type: string, maxLength: 1500, description: 纯文本；去空白后 1-1500 字符，超限返回 400}
+    OpsSendMessageResponse:
+      type: object
+      required: [message, conversation]
+      properties:
+        message: {$ref: '#/components/schemas/OpsMessage'}
+        conversation: {$ref: '#/components/schemas/OpsConversation'}
     ApiResponse:
       type: object
       required: [success]

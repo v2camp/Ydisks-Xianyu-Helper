@@ -17,10 +17,16 @@ vi.mock('../features/settings/pages/Settings', /* settingsMockFactory 提供设�
   return { default: SettingsMock };
 });
 
-vi.mock('../features/settings/pages/AISettings', /* aiSettingsMockFactory 提供 AI 设置页面的轻量替身。 */ () => {
-  // AISettingsMock 渲染 AI 设置页面标识，验证管理员权限分支。
-  const AISettingsMock: React.FC = () => <div data-testid="ai-settings-page">AI 设置</div>;
-  return { default: AISettingsMock };
+vi.mock('../features/settings/pages/CustomerAgent', /* customerAgentMockFactory 提供客服 Agent 页面的轻量替身。 */ () => {
+  // CustomerAgentMock 渲染客服 Agent 页面标识，验证管理员权限分支。
+  const CustomerAgentMock: React.FC = () => <div data-testid="customer-agent-page">客服 Agent</div>;
+  return { default: CustomerAgentMock };
+});
+
+vi.mock('../features/settings/pages/OpsAgent', /* opsAgentMockFactory 提供运营 Agent 页面的轻量替身。 */ () => {
+  // OpsAgentMock 渲染运营 Agent 页面标识，验证管理员权限分支。
+  const OpsAgentMock: React.FC = () => <div data-testid="ops-agent-page">运营 Agent</div>;
+  return { default: OpsAgentMock };
 });
 
 vi.mock('../features/items/pages/ItemList', /* itemListMockFactory 提供商品页面的联动替身。 */ () => {
@@ -97,14 +103,14 @@ describe('AuthenticatedShell 页面组合行为', /* 当前回调验证权限回
     await waitFor(/* settingsAssertion 等待设置页面懒加载完成。 */ () => expect(screen.getByTestId('settings-page')).toBeTruthy());
   });
 
-  test('非管理员访问 AI 设置页时回退到仪表盘', /* 当前回调验证非管理员的 AI 设置页权限回退。 */ async () => {
+  test('非管理员访问客服 Agent 页时回退到仪表盘', /* 当前回调验证非管理员的客服 Agent 页权限回退。 */ async () => {
     // appContentModule 表示动态加载的页面组合模块。
     const appContentModule = await loadAppContent();
     // AppContentComponent 表示动态模块导出的页面组合组件。
     const AppContentComponent = appContentModule.AppContent;
     render(
       <AppContentComponent
-        activeTab="ai-settings"
+        activeTab="customer-agent"
         isAdmin={false}
         onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
         onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
@@ -112,24 +118,60 @@ describe('AuthenticatedShell 页面组合行为', /* 当前回调验证权限回
     );
 
     await waitFor(/* dashboardAssertion 等待仪表盘懒加载完成。 */ () => expect(screen.getByTestId('dashboard-page')).toBeTruthy());
-    expect(screen.queryByTestId('ai-settings-page')).toBeNull();
+    expect(screen.queryByTestId('customer-agent-page')).toBeNull();
   });
 
-  test('管理员访问 AI 设置页时加载 AI 设置页面', /* 当前回调验证管理员 AI 设置页面加载。 */ async () => {
+  test('管理员访问客服 Agent 页时加载页面', /* 当前回调验证管理员客服 Agent 页面加载。 */ async () => {
     // appContentModule 表示动态加载的页面组合模块。
     const appContentModule = await loadAppContent();
     // AppContentComponent 表示动态模块导出的页面组合组件。
     const AppContentComponent = appContentModule.AppContent;
     render(
       <AppContentComponent
-        activeTab="ai-settings"
+        activeTab="customer-agent"
         isAdmin
         onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
         onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
       />,
     );
 
-    await waitFor(/* aiSettingsAssertion 等待 AI 设置页面懒加载完成。 */ () => expect(screen.getByTestId('ai-settings-page')).toBeTruthy());
+    await waitFor(/* customerAgentAssertion 等待客服 Agent 页面懒加载完成。 */ () => expect(screen.getByTestId('customer-agent-page')).toBeTruthy());
+    expect(screen.queryByTestId('settings-page')).toBeNull();
+  });
+
+  test('非管理员访问运营 Agent 页时回退到仪表盘', /* 当前回调验证非管理员的运营 Agent 页权限回退。 */ async () => {
+    // appContentModule 表示动态加载的页面组合模块。
+    const appContentModule = await loadAppContent();
+    // AppContentComponent 表示动态模块导出的页面组合组件。
+    const AppContentComponent = appContentModule.AppContent;
+    render(
+      <AppContentComponent
+        activeTab="ops-agent"
+        isAdmin={false}
+        onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
+        onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
+      />,
+    );
+
+    await waitFor(/* dashboardAssertion 等待仪表盘懒加载完成。 */ () => expect(screen.getByTestId('dashboard-page')).toBeTruthy());
+    expect(screen.queryByTestId('ops-agent-page')).toBeNull();
+  });
+
+  test('管理员访问运营 Agent 页时加载页面', /* 当前回调验证管理员运营 Agent 页面加载。 */ async () => {
+    // appContentModule 表示动态加载的页面组合模块。
+    const appContentModule = await loadAppContent();
+    // AppContentComponent 表示动态模块导出的页面组合组件。
+    const AppContentComponent = appContentModule.AppContent;
+    render(
+      <AppContentComponent
+        activeTab="ops-agent"
+        isAdmin
+        onConfigureDelivery={/* configureTargetAction 接收商品规则目标。 */ () => undefined}
+        onDeliveryTargetHandled={/* handledAction 表示规则目标已消费。 */ () => undefined}
+      />,
+    );
+
+    await waitFor(/* opsAgentAssertion 等待运营 Agent 页面懒加载完成。 */ () => expect(screen.getByTestId('ops-agent-page')).toBeTruthy());
     expect(screen.queryByTestId('settings-page')).toBeNull();
   });
 

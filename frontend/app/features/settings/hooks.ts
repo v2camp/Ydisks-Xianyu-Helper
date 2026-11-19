@@ -7,6 +7,13 @@ import { buildPersistableSettings,createCredentials,createCredentialsMessage,isC
 import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 
+/** SCOPE_SAVED_LABELS 是各保存范围对应的成功提示文案，避免新增范围时回落到错误文案。 */
+const SCOPE_SAVED_LABELS: Readonly<Record<SettingsScope, string>> = {
+  system: '系统配置已保存',
+  ai: 'AI 配置已保存',
+  ops: '运营 Agent 配置已保存',
+};
+
 /** 保存系统配置的可选行为开关。 */
 export interface SettingsSaveOptions {
   /** silentSuccess 为真时跳过成功弹窗，由调用方用内联提示自反馈（如 AI 设置页的保存条）；缺省保持弹窗反馈。 */
@@ -302,7 +309,7 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
       await updateSystemSettings(buildPersistableSettings(settings, scope), { signal: controller.signal });
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return false;
       // 保存成功后按当前范围给出对应的中文成功提示；页面自管提示时跳过弹窗以免两次反馈。
-      if (!options?.silentSuccess) await appDialog.alert(scope === 'system' ? '系统配置已保存' : 'AI 配置已保存', { variant: 'success' });
+      if (!options?.silentSuccess) await appDialog.alert(SCOPE_SAVED_LABELS[scope], { variant: 'success' });
       return true;
     } catch (/* error 保存系统设置提交请求的失败原因；过期响应不会覆盖当前表单。 */ error) {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return false;

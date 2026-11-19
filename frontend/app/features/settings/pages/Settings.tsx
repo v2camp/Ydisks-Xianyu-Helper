@@ -3,6 +3,7 @@ import {
   Eye,EyeOff,
   Hourglass,
   LockKeyhole,
+  PlugZap,
   RefreshCw,
   Settings as SettingsIcon,
   ShieldCheck,
@@ -13,9 +14,10 @@ import { SaveBar } from '../../../../shared/ui/SaveBar';
 import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import { BACKUP_INTERVAL_OPTIONS, LOG_LEVELS } from '../constants';
 import { DeliveryGuardCard } from '../components/DeliveryGuardCard';
+import { MCPServiceCard } from '../components/MCPServiceCard';
 import { useSettings } from '../hooks';
 
-// Settings 展示系统配置与登录凭据编辑页面；AI 相关配置与对外 MCP 服务已分别迁至 AI 设置页与 Agent 中心。
+// Settings 展示系统配置与登录凭据编辑页面；对外 MCP 服务（入站）即时保存，AI 相关配置在客服 Agent 页。
 const Settings: React.FC = () => {
   // featureState 是 Settings Hook 提供的状态与动作集合，scope=system 只保存系统白名单字段。
   const {
@@ -349,6 +351,18 @@ const Settings: React.FC = () => {
                 {credentialsSaving ? '正在更新...' : '更新登录凭据'}
               </button>
             </form>
+          </section>
+
+          {/* 对外 MCP 服务（入站）：与客服 Agent 页的外部 MCP 工具（出站）方向相反；卡片操作即时保存，不随本页草稿提交。 */}
+          <section className="space-y-4">
+            <h3 className="text-lg font-extrabold text-gray-800 flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-accent-500 text-white">
+                <PlugZap className="w-4 h-4" />
+              </div>
+              对外 MCP 服务（入站）
+            </h3>
+            <p className="text-xs leading-5 text-gray-500">操作即时保存；出站外部工具在客服 Agent 页。</p>
+            <MCPServiceCard />
           </section>
 
           {/* SMTP 配置与平台连接器已移至「连接器」页面 */}

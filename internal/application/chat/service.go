@@ -196,6 +196,24 @@ type SessionPage struct {
 	NextCursor *SessionCursor
 }
 
+// TakeoverSession 是客服 Agent 接管过的会话摘要，内嵌普通会话并附带接管轮次近似值。
+type TakeoverSession struct {
+	// Session 是会话的非敏感摘要，字段语义与聊天列表一致。
+	Session
+	// TakeoverCount 是该会话中 AI 生成过回复的轮次数；只表达「生成过回复」，不表达决策层结论。
+	TakeoverCount int64
+}
+
+// TakeoverSessionPage 是客服接管会话分页结果。
+type TakeoverSessionPage struct {
+	// Sessions 是当前页经过用户归属隔离的接管会话。
+	Sessions []TakeoverSession
+	// HasMore 表示是否还有下一页。
+	HasMore bool
+	// NextCursor 是下一页使用的键集排序键；没有下一页时为 nil。
+	NextCursor *SessionCursor
+}
+
 // Repository 定义聊天历史用例需要的最小持久化能力。
 type Repository interface {
 	// ListMessages 按用户归属查询指定账号和会话的消息。
@@ -204,6 +222,8 @@ type Repository interface {
 	ListSessions(ctx context.Context, userID int64, accountID string, limit int) ([]Session, error)
 	// ListSessionPage 按用户归属读取账号本地会话的稳定键集分页页面。
 	ListSessionPage(ctx context.Context, userID int64, accountID string, cursor *SessionCursor, limit int) (SessionPage, error)
+	// ListTakeoverSessions 按用户归属读取被 AI 回复过的会话，附带接管轮次近似值。
+	ListTakeoverSessions(ctx context.Context, userID int64, cursor *SessionCursor, limit int) (TakeoverSessionPage, error)
 }
 
 // SessionRepository 定义会话列表之外的清理、身份写入和账号归属能力。
@@ -333,6 +353,23 @@ func (s *Service) ListSessionPage(ctx context.Context, userID int64, accountID s
 	page, pageErr := s.repository.ListSessionPage(ctx, userID, accountID, cursor, limit)
 	if pageErr != nil {
 		return SessionPage{}, pageErr
+	}
+	return page, nil
+}
+
+// ListTakeoverSessions 查询当前用户范围内被 AI 回复过的会话。
+// userID 用于归属过滤；cursor 为空时读取首页；limit 由仓储收敛页大小。
+func (s *Service) ListTakeoverSessions(ctx context.Context, userID int64, cursor *SessionCursor, limit int) (TakeoverSessionPage, error) {
+	if s == nil || s.repository == nil || userID <= 0 {
+		return TakeoverSessionPage{}, ErrInvalidInput
+	}
+	if cursor != nil && strings.TrimSpace(cursor.ChatID) == "" {
+		return TakeoverSessionPage{}, ErrInvalidInput
+	}
+	// page 和 pageErr 保存归属过滤后的接管会话分页及其查询错误。
+	page, pageErr := s.repository.ListTakeoverSessions(ctx, userID, cursor, limit)
+	if pageErr != nil {
+		return TakeoverSessionPage{}, pageErr
 	}
 	return page, nil
 }

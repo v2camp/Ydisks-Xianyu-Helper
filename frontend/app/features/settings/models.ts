@@ -194,3 +194,155 @@ export interface AgentSupportSettingsUpdate {
   /** 保存后的租户默认档位稳定标识。 */
   preset: string;
 }
+
+/** AI 接管过的会话 UI 模型；在聊天会话摘要上附带 AI 生成轮次的近似计数。 */
+export interface AgentTakeoverSession {
+  /** 会话所属账号标识。 */
+  accountId: string;
+  /** 平台会话标识。 */
+  chatId: string;
+  /** 会话对端平台标识。 */
+  peerUserId: string;
+  /** 会话对端展示名称。 */
+  peerName: string;
+  /** 会话对端头像地址。 */
+  peerAvatarUrl: string;
+  /** 当前账号在会话中的角色。 */
+  accountRole: string;
+  /** 买家平台标识。 */
+  buyerUserId: string;
+  /** 卖家平台标识。 */
+  sellerUserId: string;
+  /** 角色结论绑定的商品标识。 */
+  roleItemId: string;
+  /** 角色证据来源。 */
+  roleSource: string;
+  /** 会话关联商品标识。 */
+  itemId: string;
+  /** 会话关联商品标题。 */
+  itemTitle: string;
+  /** 会话关联商品主图地址。 */
+  itemImageUrl: string;
+  /** 最近消息摘要。 */
+  lastMessage: string;
+  /** 最近消息时间的 Unix 毫秒。 */
+  lastMessageAt: number;
+  /** 未读消息数量。 */
+  unreadCount: number;
+  /** AI 生成过回复的轮次近似值；不表达决策层 takeover=false。 */
+  takeoverCount: number;
+}
+
+/** 客服接管会话的分页结果。 */
+export interface AgentTakeoverConversationPage {
+  /** 当前页会话，按最近消息时间倒序。 */
+  sessions: AgentTakeoverSession[];
+  /** 是否还有下一页。 */
+  hasMore: boolean;
+  /** 下一页游标：上一页最后一条的最近消息毫秒时间；无下一页时缺省。 */
+  nextBeforeLastMessageAt?: number;
+  /** 下一页游标：上一页最后一条的会话标识；无下一页时缺省。 */
+  nextBeforeChatId?: string;
+}
+
+/** 客服接管会话中的单条聊天消息 UI 模型。 */
+export interface AgentConversationMessage {
+  /** 本地消息主键。 */
+  id: number;
+  /** 账号标识。 */
+  accountId: string;
+  /** 会话标识。 */
+  chatId: string;
+  /** 消息幂等键。 */
+  messageKey: string;
+  /** 消息方向：incoming 或 outgoing。 */
+  direction: string;
+  /** 发送者平台标识。 */
+  senderId: string;
+  /** 发送者展示名称。 */
+  senderName: string;
+  /** 消息类型。 */
+  messageType: string;
+  /** 文本内容或媒体地址。 */
+  content: string;
+  /** 语音消息时长（秒）。 */
+  mediaDuration: number;
+  /** 投递状态。 */
+  status: string;
+  /** 已读回执状态。 */
+  readStatus: number;
+  /** 已读时间的 Unix 毫秒。 */
+  readAt: number;
+  /** 发送时间的 Unix 毫秒。 */
+  sentAt: number;
+}
+
+/** 客服接管会话消息的分页结果。 */
+export interface AgentConversationMessagePage {
+  /** 当前页消息，按时间正序。 */
+  messages: AgentConversationMessage[];
+  /** 是否还有更早消息。 */
+  hasMore: boolean;
+}
+
+/** 运营会话 UI 模型；首版只含 QQ 通道。 */
+export interface OpsConversation {
+  /** 会话主键。 */
+  id: number;
+  /** 通道标识，首版固定为 qq。 */
+  channel: string;
+  /** 通道目标 openid：群聊为群 openid，单聊为用户 openid。 */
+  targetOpenid: string;
+  /** 是否群聊会话。 */
+  isGroup: boolean;
+  /** 最近消息时间的 Unix 毫秒。 */
+  lastMessageAt: number;
+  /** 最近消息预览，单行截断。 */
+  lastMessagePreview: string;
+}
+
+/** 运营会话消息 UI 模型。 */
+export interface OpsMessage {
+  /** 消息主键。 */
+  id: number;
+  /** 所属会话主键。 */
+  conversationId: number;
+  /** 方向：inbound 或 outbound。 */
+  direction: string;
+  /** 来源：inbound、command 或 operator。 */
+  source: string;
+  /** 纯文本内容。 */
+  content: string;
+  /** 消息时间的 Unix 毫秒。 */
+  createdAt: number;
+}
+
+/** 运营会话分页结果。 */
+export interface OpsConversationPage {
+  /** 当前页会话。 */
+  conversations: OpsConversation[];
+  /** 会话总数。 */
+  total: number;
+  /** 当前页码。 */
+  page: number;
+  /** 当前页大小。 */
+  pageSize: number;
+  /** 总页数。 */
+  totalPages: number;
+}
+
+/** 运营会话消息分页结果。 */
+export interface OpsMessagePage {
+  /** 当前页消息，按时间正序。 */
+  messages: OpsMessage[];
+  /** 是否还有更早消息。 */
+  hasMore: boolean;
+}
+
+/** Web 人工发送成功后的消息与会话摘要。 */
+export interface OpsSendMessageResult {
+  /** 已落库的出站消息。 */
+  message: OpsMessage;
+  /** 更新后的会话摘要。 */
+  conversation: OpsConversation;
+}

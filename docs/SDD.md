@@ -113,6 +113,12 @@
 | O9 | 删人工确认前的线上原值确认（是否真有人用） | 只能查生产库，需用户授权执行；**E6 已按产品决定先删**，本项转为事后核对：若线上原值为开，则删后开始外发 | 同上 §5.2 |
 | O10 | 存量 `ai_enabled=0` 的行有多少是旧版写档位误伤 | 需在生产库跑只读诊断（`docs/sql/ai-enabled-zero-audit.sql`）。**本机 `~/Library/Application Support/YdisksXianyuHelper` 只有 `data-key`、没有库文件**，桌面包从未在此初始化本地库，故不能靠本机副本代替；且 `ai_decision_log` 仅留 30 天，「查不到 account-off」不等于「从未关闭」 | 同上 §2 |
 
+### 1.7 F 组：Agent 控制台拆分（工作区实现中）
+
+| 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
+|---|---|---|---|
+| F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `未开始` | 分支 `feature/agent-console-split` 已提交 `ae0468c7`（后端）、`fb84666e`（前端）、`27f42fbf`（产物），未合并 main；合并后改 `在树` | `docs/architecture/agent-console-split-plan.md` |
+
 ## 2. 索引：方案与设计文档
 
 | 文档 | 作用 | 状态 |
@@ -129,6 +135,7 @@
 | `docs/architecture/agent-capability-kernel-plan.md` | 能力内核方案（含未决项） | 方案态 |
 | `docs/architecture/connector-page-plan.md` | 连接器页设计 | 已落地，留 2 项待决策 |
 | `docs/architecture/ai-agent-config-domain-plan.md` | AI 配置域设计 | 已落地，留 2 项待决策 |
+| `docs/architecture/agent-console-split-plan.md` | Agent 控制台拆分与运营 Agent 对话模块设计 | 分支已实现，待合并 |
 | `docs/slider-captcha-frozen-spec.md` | 滑块验证码冻结规范 | 长期冻结，禁止改动 |
 
 ## 3. 索引：证据与复盘（只读，不再产出同类新文档）

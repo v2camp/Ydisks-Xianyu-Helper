@@ -6,11 +6,15 @@
 //     适配器在 composition 层完成；
 //   - 命令执行前必须先经策略求值放行；未装配求值器时一律不执行（fail-closed），
 //     判定规则本身不在本包，由能力内核给出；
-//   - 命令一律只读，不得产生任何写库或对外副作用；
+//   - 命令一律只读，不得产生任何写库或对外副作用；入站会话记录由注入的记录端口
+//     在传输层完成，不改变命令本身的只读语义；
 //   - 命令格式化是纯函数，时间由调用方注入，便于聚焦测试。
 package qqbot
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // AccountSales 是单个账号在统计区间内的销量汇总。
 type AccountSales struct {
@@ -134,4 +138,29 @@ type Authorizer interface {
 	Enabled(ctx context.Context) bool
 	// Allowed 表示指定 openid 是否在命令白名单内。
 	Allowed(ctx context.Context, openID string) bool
+}
+
+// RecordedMessage 是一条待留痕的 QQ 消息，字段取自入站事件或命令回复。
+type RecordedMessage struct {
+	// MsgID 是平台消息标识；命令回复没有平台回执时为空。
+	MsgID string
+	// Content 是消息正文，属于业务内容而非凭证。
+	Content string
+	// SenderOpenID 是发送者 openid；群聊场景为群成员 openid。
+	SenderOpenID string
+	// GroupOpenID 是群标识；非空表示群聊，空表示单聊。
+	GroupOpenID string
+	// At 是消息发生时间，由传输层注入。
+	At time.Time
+}
+
+// Recorder 定义入站与出站会话留痕端口，由组合层实现并写库。
+//
+// 传输层在解析出入站消息后、以及命令回复成功后调用；记录失败只影响留痕，
+// 不得阻断命令执行或改变回复结果。
+type Recorder interface {
+	// RecordInbound 记录一条入站消息，返回它是否为新的平台消息。
+	RecordInbound(ctx context.Context, message RecordedMessage) (bool, error)
+	// RecordOutbound 记录一条出站消息；source 区分命令回复与人工发送。
+	RecordOutbound(ctx context.Context, message RecordedMessage, source string) error
 }
