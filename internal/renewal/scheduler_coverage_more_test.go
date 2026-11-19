@@ -121,11 +121,15 @@ func TestSchedulerCredentialUpdateHelpers(t *testing.T) {
 	}
 	// validAccount 是用于验证 Cookie 持久化的本地账号。
 	validAccount := createSchedulerAccount(t, store, "credential-helper", "unb=1")
-	if !scheduler.saveRenewedCookies(context.Background(), validAccount.ID, "unb=2", `{}`) {
-		t.Fatal("有效账号 Cookie 保存失败")
+	// stored 是有效账号的凭证写回结果分类。
+	stored := scheduler.saveRenewedCookies(context.Background(), validAccount.ID, "unb=2", `{}`)
+	if stored != renewWriteStored {
+		t.Fatalf("有效账号 Cookie 保存失败: outcome=%s", stored)
 	}
-	if scheduler.saveRenewedCookies(context.Background(), "missing-account", "unb=2", `{}`) {
-		t.Fatal("不存在账号 Cookie 保存不应成功")
+	// missing 是不存在账号的凭证写回结果分类。
+	missing := scheduler.saveRenewedCookies(context.Background(), "missing-account", "unb=2", `{}`)
+	if missing != renewWriteFailed {
+		t.Fatalf("不存在账号 Cookie 保存不应成功: outcome=%s", missing)
 	}
 	// saved、err 保存更新后的账号 Cookie。
 	saved, err := store.Cookies.GetValue(context.Background(), validAccount.ID)

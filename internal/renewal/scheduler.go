@@ -565,12 +565,12 @@ func (s *Scheduler) apiCookieRenewOne(ctx context.Context, batchID string, accou
 		// 扁平 Cookie 的排序和尾分号不是凭证变化；只有字段值变化才需要
 		// 写回和重启。完整 Jar 则还要比较 Domain/Path/Expires 等 metadata。
 		credentialChanged = len(updated) > 0 || metadata != account.MetadataJSON
-		if credentialChanged && !s.saveRenewedCookies(ctx, account.ID, res.NewCookies, metadata) {
-			s.addAPILog(ctx, db.RenewalLog{BatchID: batchID, CookieID: account.ID, Status: "failed", ErrorMessage: "保存 Cookie 失败", UpdatedCookieNames: updated, StepDetails: strings.Join(stepDetails, " | "), RenewMethod: res.RenewMethod, DurationMS: time.Since(started).Milliseconds(), RequestCount: res.RequestCount})
-			s.logger.Warn("接口续期任务失败", "account", account.ID, "method", res.RenewMethod, "err", "保存 Cookie 失败")
-			return
+		if credentialChanged {
+			if !s.saveAndLogRenewedCredential(ctx, batchID, account.ID, res, updated, stepDetails, metadata, started) {
+				return
+			}
+			credentialPersisted = true
 		}
-		credentialPersisted = credentialChanged
 	}
 	if callErr != nil {
 		s.addAPILog(ctx, db.RenewalLog{
