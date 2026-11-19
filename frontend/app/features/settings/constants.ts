@@ -71,3 +71,9 @@ export const AI_SETTING_KEYS = new Set([
   'ai_policy_config',
   'mcp.servers',
 ]);
+
+/** 运营 Agent 页允许保存的字段白名单；QQ 凭据仍由连接器页维护，不在此列。 */
+export const OPS_AGENT_SETTING_KEYS = new Set([
+  'qqbot.commands_enabled',
+  'qqbot.command_openids',
+]);

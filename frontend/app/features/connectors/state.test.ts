@@ -101,8 +101,9 @@ test('连接器保存载荷收窄到注册表键并保留未改动的敏感值',
       .toEqual({ 'qqbot.app_id': '102012345' });
     expect(buildConnectorSettings([qqBotConnector], { 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'bot-secret-plain' }))
       .toEqual({ 'qqbot.app_id': '102012345', 'qqbot.app_secret': 'bot-secret-plain' });
+    // 入站命令开关与白名单已迁出连接器注册表，草稿里残留的历史值不再随连接器保存提交。
     expect(buildConnectorSettings([qqBotConnector], { 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' }))
-      .toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a, openid-b' });
+      .toEqual({});
     expect(buildConnectorSettings([qqBotConnector], {})).toEqual({});
   });
 

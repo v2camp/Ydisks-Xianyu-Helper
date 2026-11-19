@@ -1,12 +1,19 @@
 import type { SystemSettings } from './api';
-import { AI_SETTING_KEYS, SETTINGS_SAVE_OMIT_KEYS, SYSTEM_SETTING_KEYS } from './constants';
+import { AI_SETTING_KEYS, OPS_AGENT_SETTING_KEYS, SETTINGS_SAVE_OMIT_KEYS, SYSTEM_SETTING_KEYS } from './constants';
 import type { MCPServiceMessage } from './models';
 import type { CredentialsForm,CredentialsMessage,SettingsScope } from './types';
 
+/** SETTING_KEYS_BY_SCOPE 是每个保存范围允许写回的字段白名单，防止不同页面互相覆盖。 */
+const SETTING_KEYS_BY_SCOPE: Readonly<Record<SettingsScope, Set<string>>> = {
+  system: SYSTEM_SETTING_KEYS,
+  ai: AI_SETTING_KEYS,
+  ops: OPS_AGENT_SETTING_KEYS,
+};
+
 /** 将配置草稿裁剪为当前 scope 允许保存到后端的字段：先剔除兼容字段与空值，再按保存范围白名单过滤。 */
 export const buildPersistableSettings = (settings: SystemSettings, scope: SettingsScope): Partial<SystemSettings> => {
-  // allowedKeys 是本次保存范围允许写回的字段白名单，防止两页互相覆盖。
-  const allowedKeys = scope === 'system' ? SYSTEM_SETTING_KEYS : AI_SETTING_KEYS;
+  // allowedKeys 是本次保存范围允许写回的字段白名单。
+  const allowedKeys = SETTING_KEYS_BY_SCOPE[scope];
   return Object.fromEntries(
     Object.entries(settings).filter(
       // entry 是配置键值对：仅保留白名单内、且未列入省略键、且非空的字段。

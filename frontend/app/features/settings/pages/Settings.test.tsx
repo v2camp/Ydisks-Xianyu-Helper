@@ -2,14 +2,19 @@
 import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,test,vi } from 'vitest';
 import Settings from './Settings';
-import { getSystemSettings,updateSystemSettings,verifySession } from '../api';
-import type { SystemSettings } from '../api';
+import { getMCPAudit,getMCPServiceStatus,getSystemSettings,updateSystemSettings,verifySession } from '../api';
+import type { MCPAuditPage,MCPServiceStatus,SystemSettings } from '../api';
 
 vi.mock('../api', /* mockSettingsApi 用可断言的替身替换系统设置页依赖的适配层，避免测试触网。 */ () => ({
   fetchAIModels: vi.fn(),
+  generateMCPToken: vi.fn(),
+  getMCPAudit: vi.fn(),
+  getMCPServiceStatus: vi.fn(),
   getSystemSettings: vi.fn(),
+  revokeMCPToken: vi.fn(),
   testAIConnection: vi.fn(),
   updateLoginCredentials: vi.fn(),
+  updateMCPServiceSettings: vi.fn(),
   updateSystemSettings: vi.fn(),
   verifySession: vi.fn(),
 }));
@@ -20,6 +25,25 @@ const getSettingsMock = vi.mocked(getSystemSettings);
 const updateSettingsMock = vi.mocked(updateSystemSettings);
 // verifySessionMock 是会话校验的替身，系统设置页只消费其中的用户名。
 const verifySessionMock = vi.mocked(verifySession);
+// mcpStatusMock 是 MCP 服务状态读取的替身，MCP 卡片挂载时会立即拉取。
+const mcpStatusMock = vi.mocked(getMCPServiceStatus);
+// mcpAuditMock 是 MCP 调用审计分页的替身，MCP 卡片挂载时会立即拉取首页。
+const mcpAuditMock = vi.mocked(getMCPAudit);
+
+// DISABLED_MCP_STATUS 是未启用 MCP 服务时卡片读取到的最小状态。
+const DISABLED_MCP_STATUS: MCPServiceStatus = {
+  enabled: false,
+  allowNonLoopback: false,
+  hasToken: false,
+  tokenCreatedAt: 0,
+  tokenLastUsedAt: 0,
+  hasPreviousToken: false,
+  previousTokenExpiresAt: 0,
+  endpoint: '',
+};
+
+// EMPTY_MCP_AUDIT 是尚无调用记录时的审计首页，用于让 MCP 卡片渲染空态。
+const EMPTY_MCP_AUDIT: MCPAuditPage = { records: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
 
 // SYSTEM_SETTINGS_FIXTURE 是系统设置页渲染所需的最小配置快照。
 const SYSTEM_SETTINGS_FIXTURE: SystemSettings = {
@@ -44,6 +68,8 @@ beforeEach(/* 当前回调为每个用例重置适配器替身与弹窗监视。
   getSettingsMock.mockResolvedValue(SYSTEM_SETTINGS_FIXTURE);
   verifySessionMock.mockResolvedValue({ authenticated: true, username: 'admin' });
   updateSettingsMock.mockResolvedValue({ success: true });
+  mcpStatusMock.mockResolvedValue(DISABLED_MCP_STATUS);
+  mcpAuditMock.mockResolvedValue(EMPTY_MCP_AUDIT);
   vi.spyOn(window, 'alert').mockImplementation(/* 当前回调屏蔽并记录可能的浏览器弹窗。 */ () => undefined);
 });
 
@@ -73,5 +99,15 @@ describe('Settings 保存范式', /* 当前测试组验证系统配置保存改�
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await waitFor(/* 当前回调等待重试再次提交。 */ () => expect(updateSettingsMock).toHaveBeenCalledTimes(2));
     expect(window.alert).not.toHaveBeenCalled();
+  });
+
+  test('回收对外 MCP 服务（入站）区块并说明保存语义', /* 当前测试验证 MCP 卡片回到系统设置页且即时保存语义可见。 */ async () => {
+    render(<Settings />);
+    // card 是系统设置页唯一挂载的 MCP 服务卡；状态读取完成前只渲染标题，因此等待开关文案出现。
+    const card = await screen.findByTestId('mcp-service-card');
+    expect(card.textContent).not.toBe('');
+    expect(await screen.findByText('启用 MCP 服务')).toBeTruthy();
+    expect(screen.getByText('对外 MCP 服务（入站）')).toBeTruthy();
+    expect(screen.getByText('操作即时保存；出站外部工具在客服 Agent 页。')).toBeTruthy();
   });
 });
