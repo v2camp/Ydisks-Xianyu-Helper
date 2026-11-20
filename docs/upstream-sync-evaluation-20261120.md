@@ -6,6 +6,7 @@
 - 未合入上游提交：**152 个**（其中 4 个已于 2026-10-05 摘取，见 `upstream-sync-evaluation-20261004.md`；git 仍显示未合因为走的是 cherry-pick）
 - 本次新评估：**148 个**
 - 本地领先：447 个本地提交（含 MCP、QQ 渠道、Agent 内核、评测链路等自建能力）
+- **执行状态（2026-11-20 晚）**：本地多商品关键词回归已修；A 档第 1 批（`848a5267`、`623e1a2f`、`5a1d50a5`）已合入 `main`，详见第十节。
 
 ## 一、结论摘要
 
@@ -152,3 +153,23 @@
 2. `24819f83`（#91 付款规则缺确认发货动作）由 B 档上调为 A 档：`event_pipeline.go:146-163` 只收集已启用的 confirm 动作，经 API/MCP 创建的付款规则不会自动补隐式确认发货步，订单永远停在待发货——属功能缺陷而非口径分歧。
 3. 同时明确 `5d0e18ff`/`d999ddd5`/`0e14127a` 是同一函数的四次迭代，只能按终态重写，不可逐条 cherry-pick。
 
+
+## 十、执行记录
+
+### 第 1 批（2026-11-20）
+
+| 项 | 内容 | 结果 |
+|---|---|---|
+| 本地回归 | `internal/engine/reply.go` 补回 `containsItemID`，新增两个回归用例 | 已合入，`internal/engine` 全量测试通过；旧代码下新增用例稳定失败 |
+| A-1 | `848a5267` 凭证锁自死锁 | 已摘取，仅 `docs/architecture/refactoring-master-plan.md` 冲突（保留本地版本）；新增用例在旧代码下打印「持有凭证锁时同步运行时 Cookie: 1 次」 |
+| A-2 | `623e1a2f` 自动评价候选窗口 | 零冲突摘取，用本地 `NoRetryErrorPrefix`/`accountTaskMaxAttempts` 常量；旧 SQL 下用例复现 200 条 done-* 占满窗口 |
+| A-3 | `5a1d50a5` 自动评价已评价/不可评价 | 仅文档冲突；旧代码下「已评价」被计失败、`next_retry_at` 仍被排期 |
+
+验证：`go build ./...`、`go vet`、`go run ./tools/commentlint -mode check -root .`、
+`go run ./tools/architecturecheck` 全部通过；回归包
+`internal/db`、`internal/automation`、`internal/application/orders`、`internal/xianyu/mtop` 全量测试通过。
+
+### 待办（下一批）
+
+- A 档 4-8：`4e435035`（凭证超时误报重登）、`6ab1204b`（uncertain 误判）、`39f4627c`（SMTP LOGIN）、`bc1617fb`（幂等键重试）、`0d9bfad5`（退款中状态迁移，A-10~12 的前提）
+- A 档 9-14：`8993a8c9`、`07453c1e`+`6295dab9`+`0d750f8f`（整组）、`3d9cbd04`、`24819f83`
