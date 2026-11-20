@@ -1,4 +1,4 @@
-import { History,Loader2,RefreshCw } from 'lucide-react';
+import { Loader2,RefreshCw } from 'lucide-react';
 import React,{ useCallback,useEffect,useRef,useState } from 'react';
 import { formatLocalDateTime } from '../../../../dateTime';
 import { getAgentTakeoverConversations,getAgentTakeoverMessages } from '../api';
@@ -196,144 +196,151 @@ export const AgentTakeoverHistory: React.FC = () => {
   }, [loadMessages, messages, selected]);
 
   return (
-    <div className="ios-card rounded-xl bg-white p-0" data-testid="agent-takeover-history">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-4">
-        <div className="flex items-center gap-2">
-          <div className="rounded-lg bg-brand-50 p-1.5 text-brand">
-            <History className="h-4 w-4" />
+    <div className="ios-card overflow-hidden rounded-xl bg-white" data-testid="agent-takeover-history">
+      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr]">
+        {/* 会话列表：窄屏上下堆叠，桌面固定约 280px 左栏。 */}
+        <aside className="flex min-h-0 flex-col border-b border-gray-100 md:border-b-0 md:border-r">
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <span className="text-sm font-bold text-gray-800">会话</span>
+            <button
+              type="button"
+              onClick={/* 点击重新读取首屏会话列表。 */ () => loadSessions(false)}
+              disabled={sessionsLoading}
+              className="flex items-center gap-1 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
+            >
+              <RefreshCw className={`h-3 w-3 ${sessionsLoading ? 'animate-spin' : ''}`} />
+              刷新
+            </button>
           </div>
-          <div>
-            <div className="text-sm font-bold text-gray-800">AI 接管过的会话</div>
-            <p className="mt-0.5 text-xs text-gray-500">只读回放，点开会话查看消息；接管次数为 AI 生成过回复的近似值。</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={/* 点击重新读取首屏会话列表。 */ () => loadSessions(false)}
-          disabled={sessionsLoading}
-          className="flex items-center gap-1 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
-        >
-          <RefreshCw className={`h-3 w-3 ${sessionsLoading ? 'animate-spin' : ''}`} />
-          刷新
-        </button>
-      </div>
 
-      {sessionsError && (
-        <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-700" role="alert">
-          <span>{sessionsError}</span>
-          <button type="button" className="font-bold underline" onClick={/* 点击重试首屏会话列表。 */ () => loadSessions(false)}>重新加载</button>
-        </div>
-      )}
+          {sessionsError && (
+            <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg border border-danger-100 bg-danger-50 px-3 py-2 text-xs text-danger-700" role="alert">
+              <span>{sessionsError}</span>
+              <button type="button" className="font-bold underline" onClick={/* 点击重试首屏会话列表。 */ () => loadSessions(false)}>重新加载</button>
+            </div>
+          )}
 
-      {sessionsLoading && sessions.length === 0 && !sessionsError && (
-        <div className="flex items-center gap-2 px-5 py-6 text-sm text-gray-500" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          加载接管会话中...
-        </div>
-      )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {sessionsLoading && sessions.length === 0 && !sessionsError && (
+              <div className="flex items-center gap-2 px-4 py-6 text-sm text-gray-500" role="status">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                加载接管会话中...
+              </div>
+            )}
 
-      {!sessionsLoading && !sessionsError && sessions.length === 0 && (
-        <div className="px-5 py-6 text-sm text-gray-400">暂无 AI 接管过的会话</div>
-      )}
+            {!sessionsLoading && !sessionsError && sessions.length === 0 && (
+              <div className="px-4 py-6 text-sm text-gray-400">暂无 AI 接管过的会话</div>
+            )}
 
-      {sessions.length > 0 && (
-        <ul className="divide-y divide-gray-100">
-          {sessions.map(/* session 是当前渲染的接管会话摘要。 */ session => {
-            // active 表示该会话是否已展开消息流。
-            const active = selected !== null && sessionKey(selected) === sessionKey(session);
-            return (
-              <li key={sessionKey(session)}>
+            <ul className="divide-y divide-gray-100">
+              {sessions.map(/* session 是当前渲染的接管会话摘要。 */ session => {
+                // active 表示该会话是否已被选中。
+                const active = selected !== null && sessionKey(selected) === sessionKey(session);
+                return (
+                  <li key={sessionKey(session)}>
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      onClick={/* 点击切换当前会话并读取其最新消息。 */ () => handleSelectSession(session)}
+                      className={`w-full px-4 py-3 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-300 ${active ? 'bg-brand-50' : 'hover:bg-gray-50'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-bold text-gray-900">{session.peerName.trim() || '未知买家'}</span>
+                        <span className="shrink-0 text-[10px] text-gray-500">{formatLocalDateTime(session.lastMessageAt)}</span>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-gray-500">商品 {session.itemTitle.trim() || '未关联商品'}</div>
+                      <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                        <span className="truncate">账号 {session.accountId}</span>
+                        <span className="shrink-0 font-bold text-brand">接管 {session.takeoverCount} 次</span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {sessionsHasMore && (
+              <div className="px-3 py-2">
                 <button
                   type="button"
-                  aria-pressed={active}
-                  onClick={/* 点击展开该会话的只读消息流。 */ () => handleSelectSession(session)}
-                  className={`w-full px-5 py-3 text-left transition-colors ${active ? 'bg-brand-50' : 'hover:bg-gray-50'}`}
+                  onClick={/* 点击按游标追加下一页会话。 */ () => loadSessions(true)}
+                  disabled={sessionsLoading}
+                  className="w-full rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-bold text-gray-900">{session.peerName.trim() || '未知买家'}</span>
-                    <span className="text-xs text-gray-500">{formatLocalDateTime(session.lastMessageAt)}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                    <span>账号 {session.accountId}</span>
-                    <span className="truncate">商品 {session.itemTitle.trim() || '未关联商品'}</span>
-                    <span className="font-bold text-brand">接管 {session.takeoverCount} 次</span>
-                  </div>
+                  {sessionsLoading ? '加载中...' : '加载更多'}
                 </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {sessionsHasMore && (
-        <div className="border-t border-gray-100 px-5 py-3">
-          <button
-            type="button"
-            onClick={/* 点击按游标追加下一页会话。 */ () => loadSessions(true)}
-            disabled={sessionsLoading}
-            className="w-full rounded-lg bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
-          >
-            {sessionsLoading ? '加载中...' : '加载更多'}
-          </button>
-        </div>
-      )}
-
-      {selected && (
-        <div className="border-t border-gray-100 px-5 py-4" data-testid="agent-takeover-messages">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-bold text-gray-800">
-              {selected.peerName.trim() || '未知买家'} · {selected.itemTitle.trim() || '未关联商品'}
-            </div>
-            <span className="text-xs text-gray-500">只读</span>
+              </div>
+            )}
           </div>
+        </aside>
 
-          {messagesError && (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-700" role="alert">
-              <span>{messagesError}</span>
-              <button type="button" className="font-bold underline" onClick={handleMessagesRetry}>重试</button>
+        {/* 消息区：只读回放；未选中会话时给出选择提示。 */}
+        <section className="flex min-h-[26rem] flex-col">
+          {!selected ? (
+            <div className="flex flex-1 items-center justify-center px-6 py-10 text-sm text-gray-400">
+              选择左侧会话查看消息
             </div>
-          )}
-
-          {messagesHasMore && !messagesError && (
-            <div className="mt-3">
-              <button
-                type="button"
-                onClick={handleLoadEarlier}
-                disabled={messagesLoading}
-                className="w-full rounded-lg bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
-              >
-                {messagesLoading ? '加载中...' : '加载更早'}
-              </button>
-            </div>
-          )}
-
-          {messagesLoading && messages.length === 0 && !messagesError && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-gray-500" role="status">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              加载消息中...
-            </div>
-          )}
-
-          {!messagesLoading && !messagesError && messages.length === 0 && (
-            <div className="mt-3 text-sm text-gray-400">该会话暂无消息</div>
-          )}
-
-          <div className="mt-3 space-y-2">
-            {messages.map(/* message 是当前渲染的单条只读消息。 */ message => {
-              // outgoing 表示消息由卖家侧发出，展示在右侧；其余方向展示在左侧。
-              const outgoing = message.direction === 'outgoing';
-              return (
-                <div key={message.id} className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${outgoing ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-800'}`}>
-                    <div className="whitespace-pre-wrap break-words">{messageText(message)}</div>
-                    <div className={`mt-1 text-[10px] ${outgoing ? 'text-white/70' : 'text-gray-500'}`}>{formatLocalDateTime(message.sentAt)}</div>
+          ) : (
+            <>
+              <div className="border-b border-gray-100 px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-sm font-bold text-gray-800">
+                    {selected.peerName.trim() || '未知买家'} · {selected.itemTitle.trim() || '未关联商品'}
                   </div>
+                  <span className="shrink-0 text-xs text-gray-500">只读</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                <p className="mt-0.5 text-xs text-gray-500">账号 {selected.accountId} · 最近消息 {formatLocalDateTime(selected.lastMessageAt)}</p>
+              </div>
+
+              {messagesHasMore && !messagesError && (
+                <div className="px-4 pt-3">
+                  <button
+                    type="button"
+                    onClick={handleLoadEarlier}
+                    disabled={messagesLoading}
+                    className="w-full rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40"
+                  >
+                    {messagesLoading ? '加载中...' : '加载更早'}
+                  </button>
+                </div>
+              )}
+
+              {messagesError && (
+                <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-danger-100 bg-danger-50 px-3 py-2 text-xs text-danger-700" role="alert">
+                  <span>{messagesError}</span>
+                  <button type="button" className="font-bold underline" onClick={handleMessagesRetry}>重试</button>
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3" data-testid="agent-takeover-messages">
+                {messagesLoading && messages.length === 0 && !messagesError && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500" role="status">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    加载消息中...
+                  </div>
+                )}
+
+                {!messagesLoading && !messagesError && messages.length === 0 && (
+                  <div className="text-sm text-gray-400">该会话暂无消息</div>
+                )}
+
+                {messages.map(/* message 是当前渲染的单条只读消息。 */ message => {
+                  // outgoing 表示消息由卖家侧发出，展示在右侧；其余方向展示在左侧。
+                  const outgoing = message.direction === 'outgoing';
+                  return (
+                    <div key={message.id} className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${outgoing ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-800'}`}>
+                        <div className="whitespace-pre-wrap break-words">{messageText(message)}</div>
+                        <div className={`mt-1 text-[10px] ${outgoing ? 'text-white/70' : 'text-gray-500'}`}>{formatLocalDateTime(message.sentAt)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 };

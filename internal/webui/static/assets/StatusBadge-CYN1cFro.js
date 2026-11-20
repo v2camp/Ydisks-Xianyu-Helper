@@ -1,1 +1,0 @@
-import{j as a}from"./react-vendor-Bf9ELcll.js";import{k as o}from"./chat-items-CXMmtqFF.js";const r=({tone:t,children:e,testId:s})=>a.jsx("span",{"data-testid":s,className:`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${o[t]}`,children:e});export{r as S};
