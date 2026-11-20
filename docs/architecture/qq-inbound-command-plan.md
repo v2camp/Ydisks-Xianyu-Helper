@@ -1,5 +1,7 @@
 # QQ 机器人入站命令 需求与技术设计（Spec）
 
+> **归属更新（2026-11-21）**：入站命令改为每个本地用户独立网关与白名单，见 `tenant-integration-assets-plan.md`。
+
 > 状态：设计草案，待评审；实现进行中。
 > 上游文档：`docs/architecture/qq-notification-channel-plan.md`（出站通知渠道，已交付草稿基线）。
 

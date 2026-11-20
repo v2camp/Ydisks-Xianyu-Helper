@@ -202,12 +202,6 @@
 | `notification_channel_update` | 只读（本地写入）；更新渠道 |
 | `notification_channel_delete` | 破坏性；删除渠道 |
 | `notification_channel_test` | 破坏性；测试发送 |
-| `notification_binding_list` | 只读；账号渠道绑定 |
-| `notification_binding_get` | 只读；单账号绑定 |
-| `notification_binding_set` | 只读（本地写入）；整组设置绑定 |
-| `notification_binding_toggle` | 只读（本地写入）；单条切换绑定 |
-| `notification_binding_delete` | 破坏性；删除绑定 |
-| `notification_binding_clear_account` | 破坏性；清空账号绑定 |
 | `notification_uncertain_list` | 只读；不确定通知（用户视图） |
 | `notification_uncertain_list_all` | 只读；不确定通知（管理员视图） |
 

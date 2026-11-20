@@ -119,6 +119,15 @@
 |---|---|---|---|
 | F1 | AI 设置 + Agent 中心重拆为系统设置 / 客服 Agent / 运营 Agent，并补运营 QQ 会话与客服接管历史 | `已发布` | 合并提交 `b17ca6e2`；运行镜像 `ydisks-xianyu-helper:local`（`1e7da7c9f4db`，`v1.0.42-local-20261120`，`build_time 2026-11-19T16:40:06Z`）已部署，`/health` 返回 `ok`，`/api/v1/agent/ops/conversations` 与 `/api/v1/agent/support/conversations` 均 200；发布前账号已停用、核对后已恢复 | `docs/architecture/agent-console-split-plan.md` |
 
+### 1.8 T 组：租户级集成资产（工作区实现中）
+
+| 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
+|---|---|---|---|
+| T1 | 通知渠道归属本地用户，删除 `message_notifications`，账号级只保留静音 | `在树` | 实现与迁移已提交 `106da63b`；Go/前端门禁通过，待合并 main 后转 `已发布` |
+| T2 | 用户级 QQ 与 SMTP 集成配置，迁移全局与渠道级凭据 | `在树` | 实现与 00069 迁移已提交 `106da63b`；待合并 main 后转 `已发布` |
+| T3 | AI 模型与密钥按用户，保留实例级 AI 总闸 | `在树` | 实现与测试已提交 `106da63b`；待合并 main 后转 `已发布` |
+| T4 | 运营 Agent QQ 网关、白名单与会话按用户隔离 | `在树` | 实现与测试已提交 `106da63b`；Web UI e2e 因磁盘余量不足未执行，待补跑 |
+
 ## 2. 索引：方案与设计文档
 
 | 文档 | 作用 | 状态 |
@@ -136,6 +145,7 @@
 | `docs/architecture/connector-page-plan.md` | 连接器页设计 | 已落地，留 2 项待决策 |
 | `docs/architecture/ai-agent-config-domain-plan.md` | AI 配置域设计 | 已落地，留 2 项待决策 |
 | `docs/architecture/agent-console-split-plan.md` | Agent 控制台拆分与运营 Agent 对话模块设计 | 已落地（v1.0.42-local-20261120） |
+| `docs/architecture/tenant-integration-assets-plan.md` | 租户级集成资产归属与迁移方案 | `在树`（实现提交 `106da63b`，待合并） |
 | `docs/slider-captcha-frozen-spec.md` | 滑块验证码冻结规范 | 长期冻结，禁止改动 |
 
 ## 3. 索引：证据与复盘（只读，不再产出同类新文档）
