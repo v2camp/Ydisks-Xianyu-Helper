@@ -11,14 +11,14 @@
 
 | 档位 | 数量 | 含义 |
 |---|---|---|
-| **A 立即合入** | 13 | 本地同源缺陷确认存在，改动小、与本地结构不冲突 |
-| **B 需决策** | 36 | 口径分歧、结构冲突或新功能前置，需先定方案 |
+| **A 立即合入** | 14 | 本地同源缺陷确认存在，改动可独立落地、与本地结构不冲突 |
+| **B 需决策** | 35 | 口径分歧、结构冲突或新功能前置，需先定方案 |
 | **C 不合** | 60 | 已处置 / 已被本地等价实现覆盖 / 不适用（MySQL 已删、冻结项、产物与文案） |
 | **D 新功能** | 43 | 本地无对应模块，整包含入不可行，按需另立项 |
 
 **不要 `git merge origin/main`。** 上游这段时间大量重做了前端（运行日志页、销售统计、资源库、卡密台账、移动端），并新增商品级 AI 配置、外部 Agent 连接器、外部 API 管理；这些与本地自建的前端结构与能力正面冲突。仍按「逐个 cherry-pick」执行。
 
-## 二、A 档：建议立即合入（13）
+## 二、A 档：建议立即合入（14）
 
 均已在本地代码中实测到同源缺陷（非据标题推断）。
 
@@ -31,22 +31,29 @@
 | 5 | `6ab1204b` | 免拼/改价成功后 Cookie 写回冲突误判结果未知（#106） | `internal/automation/action_executor.go:403`、`free_shipping_action.go:94` 仍 `uncertainAction("…但响应凭证保存失败")` | 低 |
 | 6 | `39f4627c` | 仅支持 SMTP LOGIN 的服务器认证失败 | `internal/notify/notifier_channels.go:322` 只有 `smtp.PlainAuth` | 低 |
 | 7 | `bc1617fb` | 缺幂等键不得重试 API 卡 | `internal/adapter/api_delivery_client.go:256-257` `RetryEnabled` 即 `attempts=apiDeliveryRetryLimit`，未校验出站载荷是否真的带幂等键 | 低 |
-| 8 | `0d9bfad5` | 退款中/已取消状态迁移不一致 | `internal/db/orders.go:430` `shouldUpdateOrderStatus` 仅拦 `incoming=="shipped"` 对 `completed/cancelled`，`refunding` 仍可被改回 `shipped` | 低 |
+| 8 | `0d9bfad5` | 退款中/已取消状态迁移不一致 | `internal/db/orders.go:430` `shouldUpdateOrderStatus` 无条件拒绝 `refunding→pending_ship`：买家撤回退款后平台已回待发货，本地永远停在退款中，兜底补发货与失败恢复都跳过该单（漏发货）；同时放行 `cancelled→refunding/completed`，迟到事件可把已关闭订单改回退款中。修法是新增 `PlatformSnapshot` 区分「平台快照」与事件推断 | 中 |
 | 9 | `8993a8c9` | 成交金额门禁，修 ¥0 服务预约单误发卡密（#104） | 本地无 `paidAmountBlockedReason`；`db.Order.Amount` 存在但付款链路不做正数校验 | 中 |
 | 10 | `07453c1e` | 退款撤回后安全取消的运行不再永久阻断发货 | 同源判定存在 | 低 |
 | 11 | `6295dab9` | 退款撤回续跑保留已发卡密的发货凭证 | 同上 | 低 |
 | 12 | `0d750f8f` | 缺发货凭证续跑转人工核对，不提交空凭证 | 同上 | 低 |
 | 13 | `3d9cbd04` | 扫码人脸/人工验证后长登录凭证收尾遗漏（#98） | 本地 `internal/renewal` 无对应收尾分支 | 中 |
+| 14 | `24819f83` | 付款规则缺确认发货动作导致订单不转已发货（#91） | `internal/automation/event_pipeline.go:146-163` 只收集**已启用**的 confirm 动作、不补隐式步；`internal/application/automation/rules.go:708` 也不强制该动作 ⇒ 经 API/MCP 创建的付款规则永不停留在待发货；另 `run_coordinator.go:368` 的 `tryContinueAfterUncertain` 缺 `ctx.Err()` 前置检查 | 中 |
 
-第 10-12 项必须**整组摘取**（同一缺陷的三层递进：先解阻断、再保留凭证、最后缺凭证转人工），单独摘任一条都会留下不一致状态。
+第 10-12 项必须**整组摘取**（同一缺陷的三层递进：先解阻断、再保留凭证、最后缺凭证转人工），单独摘任一条都会留下不一致状态。它们同时依赖第 8 项：不退 `refunding→pending_ship`，退款撤回后订单根本回不到待发货，续跑逻辑全部空转。
 
 ## 三、B 档：需决策（36）
 
-### 3.1 付款发货门禁与兜底窗口（9）
+### 3.1 付款发货门禁与兜底窗口（8）
 
-`5d0e18ff`、`24819f83`(#91)、`7c32178d`、`d999ddd5`、`0e14127a`、`2dbdd690`、`cf2d2d42`、`d5687134`、`2d24a67a`
+`5d0e18ff`、`7c32178d`、`d999ddd5`、`0e14127a`、`2dbdd690`、`cf2d2d42`、`d5687134`、`2d24a67a`
 
-上游把「缺订单号不猜订单、金额未确认不发货、已有进度遇已发货即取消」收成一套门禁。本地在同一链路上已有**不同口径**的自建实现（`c4989a2a`、`1943df93`、`17311db5`、`f02a9a47`、`a0dc4da1`、`259d4bdf`）。整组摘取会推翻本地「未知角色事件用会话订单归属收口」的策略，需先定口径再动。
+上游在 `prepareRuleRun` 上做了四次迭代（`5d0e18ff`→`d999ddd5`→`0e14127a`），逐个 cherry-pick 会连续冲突并留下被后一条删掉的中间代码，**必须按 `0e14127a` 的终态一次性重写**。
+
+其中只有一处缺口值得先做小改：`internal/automation/run_coordinator.go:105-121` 的 `paidRunObsoleteReason` 未把平台侧 `shipped` 纳入拦截集合（`order_role_gate.go:217` 的 `isOrderTerminalWithoutDelivery` 不含 shipped），迟到付款事件仍会再发卡；续跑路径 `pending_ship_scheduler.go:47` 的 `isPendingShipOrder` 已能拦，所以只需补这一个集合。
+
+`7c32178d` 剩下来的只有 `partial_success/partial_pending_finalize` 两个状态未进 `advanced`，而本地没有这两状态的写入方，实际价值低，可暂缓。
+
+`2dbdd690`/`cf2d2d42`/`d5687134`/`2d24a67a` 是「不凭会话猜订单」的一组：本地 `task_preparation.go:38-41` 仍用 `FindLatestPendingByChat` 回填，但本地另有 `order_role_gate.go:98-129` 的会话归属收口（`1943df93`/`c4989a2a`），改法会与它交互，需先确认口径不打架。`d5687134`+`2d24a67a` 本身冲突最低（`order_role_gate.go:46-48` 显式 seller 直接放行，跳过了 `:77-83` 的 `missing_order_id` 检查；`:229` 仍把 `missing_order_id` 列为可重试，重放耗尽后误发人工告警），可作为这组的第一批。
 
 ### 3.2 MTOP 节流与风控（3）
 
@@ -126,7 +133,7 @@
 
 1. **先修本地回归**：`reply.go` 补 `containsItemID`（半天，纯本地）
 2. **A 档第 1-8 项**：单文件小改，逐条 cherry-pick，每条独立编译+跑受影响包测试
-3. **A 档第 9-13 项**：`8993a8c9` 与退款续跑三项需先看 `order_role_gate.go` 现状再摘
+3. **A 档第 9-14 项**：`8993a8c9`、`24819f83` 与退款续跑三项（10-12）需先看 `order_role_gate.go`/`event_pipeline.go` 现状再摘；`0d9bfad5` 是 10-12 的前提，必须先行
 4. **B 档**：按 3.1 → 3.2 → 3.3 顺序开专项，每项单独出设计方案，不与 A 档混提交
 5. **D 档**：只按产品优先级立项，不跟随上游节奏
 
@@ -136,3 +143,12 @@
 - 每批一条中文提交，提交前跑受影响包测试 + Commentlint + 架构门禁
 - 前端若改动，必须重建嵌入产物，否则 Web UI 与后端不一致
 - 冻结项（`internal/browser/slider*.go`、`token_captcha*.go`）未经授权一律不动
+
+## 九、修订记录（复核后更正）
+
+初版有两处判断不准，已在本版更正：
+
+1. `0d9bfad5` 原写作「refunding 可被改回 shipped」，实际缺陷是**反向**的：本地无条件拒绝 `refunding→pending_ship`，导致买家撤回退款后订单卡在退款中、兜底补发货永久跳过（漏发货）；顺带放行 `cancelled→refunding/completed`。冲突风险由「低」上调为「中」（要新增 `PlatformSnapshot` 并贯穿 `OrderUpsertOpts`/`UpsertOptions`）。
+2. `24819f83`（#91 付款规则缺确认发货动作）由 B 档上调为 A 档：`event_pipeline.go:146-163` 只收集已启用的 confirm 动作，经 API/MCP 创建的付款规则不会自动补隐式确认发货步，订单永远停在待发货——属功能缺陷而非口径分歧。
+3. 同时明确 `5d0e18ff`/`d999ddd5`/`0e14127a` 是同一函数的四次迭代，只能按终态重写，不可逐条 cherry-pick。
+
