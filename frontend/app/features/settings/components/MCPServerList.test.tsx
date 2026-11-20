@@ -33,6 +33,8 @@ function parseDraft(): unknown {
 describe('MCPServerList', /* 当前测试组验证 MCP 服务器列表编辑、序列化与行内校验。 */ () => {
   test('解析已有 JSON 并支持编辑、新增与删除后序列化回写', /* 当前测试验证 JSON 往返与增删改主路径。 */ () => {
     render(<MCPServerHarness initial={{ 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]' }} />);
+    // 列表默认收起，先展开 MCP 工具设置区块。
+    fireEvent.click(screen.getByRole('button', { name: /外部 MCP 工具/ }));
     // nameInput 是第一行名称输入框。
     const nameInput = screen.getByLabelText('第 1 行名称') as HTMLInputElement;
     expect(nameInput.value).toBe('find_stuff');
@@ -46,6 +48,8 @@ describe('MCPServerList', /* 当前测试组验证 MCP 服务器列表编辑、�
 
   test('名称必填且不重复、URL 须 http(s) 就地红字提示', /* 当前测试验证重复名与非法 URL 的行内校验。 */ () => {
     render(<MCPServerHarness initial={{ 'mcp.servers': '[{"name":"a","url":"http://a.example/mcp"},{"name":"a","url":"ftp://bad"},{"name":"","url":""}]' }} />);
+    // 列表默认收起，先展开 MCP 工具设置区块。
+    fireEvent.click(screen.getByRole('button', { name: /外部 MCP 工具/ }));
     expect(screen.getAllByText('名称不能与本页其他服务器重复').length).toBe(2);
     expect(screen.getAllByText('地址须以 http:// 或 https:// 开头').length).toBe(1);
     expect(screen.getAllByText('名称必填').length).toBeGreaterThan(0);
@@ -54,9 +58,13 @@ describe('MCPServerList', /* 当前测试组验证 MCP 服务器列表编辑、�
 
   test('空状态示范 find_stuff 且未知键在编辑后原样保留', /* 当前测试验证空态文案与未知键保留。 */ () => {
     render(<MCPServerHarness initial={{ 'mcp.servers': '' }} />);
+    // 列表默认收起，先展开 MCP 工具设置区块。
+    fireEvent.click(screen.getByRole('button', { name: /外部 MCP 工具/ }));
     expect(screen.getByText('名称填 find_stuff + 找书找短剧服务地址')).toBeTruthy();
     cleanup();
     render(<MCPServerHarness initial={{ 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp","timeout_ms":30}]' }} />);
+    // 重新渲染后仍需再次展开设置区块。
+    fireEvent.click(screen.getByRole('button', { name: /外部 MCP 工具/ }));
     fireEvent.change(screen.getByLabelText('第 1 行名称'), { target: { value: 'find_stuff2' } });
     expect(parseDraft()).toEqual([{ name: 'find_stuff2', url: 'http://127.0.0.1:59190/mcp', timeout_ms: 30 }]);
   });

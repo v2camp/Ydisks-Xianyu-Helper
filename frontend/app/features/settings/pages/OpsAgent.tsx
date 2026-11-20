@@ -9,6 +9,7 @@ import { SectionHeader } from '../../../../shared/ui/SectionHeader';
 import { useSettings } from '../hooks';
 import { isQQBotConnectorReady } from '../api';
 import { OpsConversationPanel } from '../components/OpsConversationPanel';
+import { SettingsDisclosure } from '../components/SettingsDisclosure';
 
 /** OpsAgentProps 描述运营 Agent 页可选的跨页跳转能力。 */
 export interface OpsAgentProps {
@@ -76,15 +77,25 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
         )}
       />
 
-      {/* 设置区：只保存入站命令开关与白名单，QQ 凭据仍由连接器页唯一维护。 */}
+      {/* 会话区是页面主体：左会话列表、右消息与人工发送，优先占据第一屏。 */}
       <section className="space-y-4">
         <SectionHeader
-          icon={ShieldCheck}
+          icon={Radio}
           tone="violet"
-          title="QQ 入站命令"
-          description="开启后服务会连接 QQ 网关，只接收与回复白名单内发送者的只读指令"
+          title="QQ 会话"
+          description="手动刷新，不轮询；发送成功后才落库，失败会保留输入原文"
         />
-        <div className="ios-card rounded-xl p-6 bg-white space-y-5">
+        <OpsConversationPanel credentialsReady={credentialsReady} />
+      </section>
+
+      {/* 设置区是附属配件：默认收起，展开后才占用空间。 */}
+      <SettingsDisclosure
+        icon={ShieldCheck}
+        tone="violet"
+        title="QQ 入站命令"
+        description="开启后服务会连接 QQ 网关，只接收与回复白名单内发送者的只读指令"
+      >
+        <div className="space-y-5">
           <label className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-4 cursor-pointer">
             <input
               type="checkbox"
@@ -137,18 +148,7 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
             onSettled={settleSaveBar}
           />
         </div>
-      </section>
-
-      {/* 对话区：即时操作，不参与上面的草稿保存；凭据未就绪时输入禁用并给出配置指引。 */}
-      <section className="space-y-4">
-        <SectionHeader
-          icon={Radio}
-          tone="violet"
-          title="QQ 会话"
-          description="手动刷新，不轮询；发送成功后才落库，失败会保留输入原文"
-        />
-        <OpsConversationPanel credentialsReady={credentialsReady} />
-      </section>
+      </SettingsDisclosure>
     </PageShell>
   );
 };

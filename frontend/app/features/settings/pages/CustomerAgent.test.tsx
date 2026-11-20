@@ -115,6 +115,8 @@ describe('CustomerAgent', /* 当前测试组验证客服 Agent 页头、能力�
 
   test('能力档位保存只提交档位', /* 当前测试验证档位保存走区块级保存条且载荷只有档位。 */ async () => {
     render(<CustomerAgent />);
+    // 能力档位默认收起，先展开设置区块再操作档位。
+    fireEvent.click(await screen.findByRole('button', { name: /能力档位/ }));
     fireEvent.click(await screen.findByRole('button', { name: /高级/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(/* 当前回调等待档位保存请求发出。 */ () => expect(agentSettingsUpdateMock).toHaveBeenCalledWith({ preset: 'advanced' }));

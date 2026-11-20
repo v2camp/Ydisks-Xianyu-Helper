@@ -79,6 +79,8 @@ describe('OpsAgent', /* 当前测试组验证运营 Agent 页头、入站配置�
 
   test('保存只提交入站开关与白名单两个键', /* 当前测试验证运营页保存范围隔离。 */ async () => {
     render(<OpsAgent />);
+    // 设置区默认收起，先展开 QQ 入站命令。
+    fireEvent.click(await screen.findByRole('button', { name: /QQ 入站命令/ }));
     // toggle 是入站命令开关复选框。
     const toggle = await screen.findByLabelText('启用运营 Agent（QQ 入站）') as HTMLInputElement;
     expect(toggle.checked).toBe(false);
@@ -96,6 +98,8 @@ describe('OpsAgent', /* 当前测试组验证运营 Agent 页头、入站配置�
 
   test('QQ 凭据就绪时依赖行显示已配置且输入可用', /* 当前测试验证凭据状态来自系统设置快照。 */ async () => {
     render(<OpsAgent />);
+    // 设置区默认收起，先展开 QQ 入站命令。
+    fireEvent.click(await screen.findByRole('button', { name: /QQ 入站命令/ }));
     // row 是 QQ 机器人凭据依赖行。
     const row = await screen.findByTestId('dependency-qq-connector');
     expect(row.textContent).toContain('已配置');
@@ -108,6 +112,8 @@ describe('OpsAgent', /* 当前测试组验证运营 Agent 页头、入站配置�
   test('QQ 凭据未就绪时禁用发送并提示配置位置', /* 当前测试验证凭据缺失不会放开人工发送。 */ async () => {
     getSettingsMock.mockResolvedValue(MISSING_CREDENTIALS_SETTINGS);
     render(<OpsAgent />);
+    // 设置区默认收起，先展开 QQ 入站命令。
+    fireEvent.click(await screen.findByRole('button', { name: /QQ 入站命令/ }));
     // row 是 QQ 机器人凭据依赖行，缺失时应显示未配置。
     const row = await screen.findByTestId('dependency-qq-connector');
     expect(row.textContent).toContain('未配置');
