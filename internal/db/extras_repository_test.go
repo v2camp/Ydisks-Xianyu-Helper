@@ -92,14 +92,10 @@ func TestExtraRepositoriesCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if // err 用于本次流程后续判断的err
-	err := store.Notifications.SetBindings(ctx, "acc1", []int64{channelID}); err != nil {
-		t.Fatal(err)
-	}
-	// bindings 用于本次流程后续判断的bindings
-	bindings, _ := store.Notifications.AccountBindings(ctx, "acc1")
-	if len(bindings) != 1 || bindings[0] != channelID {
-		t.Fatalf("bindings = %#v", bindings)
+	// channelsForAccount 保存账号所有者解析出的启用渠道。
+	channelsForAccount, _ := store.Notifications.AccountChannels(ctx, "acc1")
+	if len(channelsForAccount) != 1 || channelsForAccount[0].ID != channelID {
+		t.Fatalf("account channels = %#v", channelsForAccount)
 	}
 	// channels 用于本次流程后续判断的渠道列表
 	channels, _ := store.Notifications.AllChannelsForUser(ctx, user.ID)

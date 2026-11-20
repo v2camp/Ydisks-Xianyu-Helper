@@ -118,13 +118,13 @@ type updateCookieSettingsRequest struct {
 	AutoConsign *bool   `json:"auto_consign"`
 	AutoBargain *bool   `json:"auto_bargain"`
 	// BargainSootheTemplate 是账号级砍价免拼前安抚模板；空串表示不发送。
-	BargainSootheTemplate *string  `json:"bargain_soothe_template"`
-	PauseDuration         *int     `json:"pause_duration"`
-	Username              *string  `json:"username"`
-	LoginPassword         *string  `json:"login_password"`
-	ClearPassword         bool     `json:"clear_password"`
-	ShowBrowser           *bool    `json:"show_browser"`
-	ChannelIDs            *[]int64 `json:"channel_ids"`
+	BargainSootheTemplate *string `json:"bargain_soothe_template"`
+	PauseDuration         *int    `json:"pause_duration"`
+	Username              *string `json:"username"`
+	LoginPassword         *string `json:"login_password"`
+	ClearPassword         bool    `json:"clear_password"`
+	ShowBrowser           *bool   `json:"show_browser"`
+	NotificationsDisabled *bool   `json:"notifications_disabled"`
 }
 
 // longLoginSettingsRequest 是更新账号长登录开关的 HTTP 请求 DTO。
@@ -231,7 +231,7 @@ func (s *Server) updateCookieSettings(w http.ResponseWriter, r *http.Request) {
 		UserID: ownedDetail.UserID, AccountID: cid, Cookie: req.Cookie, Remark: req.Remark,
 		AutoConfirm: req.AutoConfirm, AutoConsign: req.AutoConsign, AutoBargain: req.AutoBargain,
 		BargainSootheTemplate: req.BargainSootheTemplate, PauseDuration: req.PauseDuration, Username: req.Username,
-		Password: password, ShowBrowser: req.ShowBrowser, ChannelIDs: req.ChannelIDs,
+		Password: password, ShowBrowser: req.ShowBrowser, NotificationsDisabled: req.NotificationsDisabled,
 	})
 	if err != nil {
 		switch {

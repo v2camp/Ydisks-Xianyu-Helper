@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestNotificationsBindingRepositoryPaths 覆盖通知绑定的归属校验、增删改和批量清理路径。
-func TestNotificationsBindingRepositoryPaths(t *testing.T) {
+// TestNotificationsAccountChannelsPaths 覆盖用户级通知渠道查询、静音过滤与缺失账号错误。
+func TestNotificationsAccountChannelsPaths(t *testing.T) {
 	// store、cleanup 保存带完整迁移的临时数据库及关闭责任。
 	store, cleanup := newTestDB(t)
 	defer cleanup()
@@ -24,12 +24,19 @@ func TestNotificationsBindingRepositoryPaths(t *testing.T) {
 	if otherUserErr != nil {
 		t.Fatal(otherUserErr)
 	}
-	// ownedChannel、ownedErr 保存当前用户通知渠道及创建错误。
+	// ownedChannel、ownedErr 保存当前用户启用通知渠道及创建错误。
 	ownedChannel, ownedErr := store.Notifications.CreateChannel(ctx, &NotificationChannelRow{
 		Name: "owned", Type: "webhook", Config: `{}`, EventTypes: "message", Enabled: true, UserID: userID,
 	})
 	if ownedErr != nil {
 		t.Fatal(ownedErr)
+	}
+	// disabledChannel、disabledErr 保存当前用户停用通知渠道及创建错误。
+	disabledChannel, disabledErr := store.Notifications.CreateChannel(ctx, &NotificationChannelRow{
+		Name: "disabled", Type: "webhook", Config: `{}`, Enabled: false, UserID: userID,
+	})
+	if disabledErr != nil {
+		t.Fatal(disabledErr)
 	}
 	// foreignChannel、foreignErr 保存其他用户通知渠道及创建错误。
 	foreignChannel, foreignErr := store.Notifications.CreateChannel(ctx, &NotificationChannelRow{
@@ -48,56 +55,23 @@ func TestNotificationsBindingRepositoryPaths(t *testing.T) {
 	if foreignOwnsErr != nil || foreignOwns {
 		t.Fatalf("foreign channel check: owns=%v err=%v", foreignOwns, foreignOwnsErr)
 	}
-	// setErr 保存启用绑定的数据库错误。
-	if setErr := store.Notifications.SetSingleBinding(ctx, cookieID, ownedChannel, true); setErr != nil {
-		t.Fatal(setErr)
+	// channels、channelsErr 保存账号应接收的启用渠道及查询错误；停用渠道与其他用户渠道都被排除。
+	channels, channelsErr := store.Notifications.AccountChannels(ctx, cookieID)
+	if channelsErr != nil || len(channels) != 1 || channels[0].ID != ownedChannel {
+		t.Fatalf("channels=%#v disabled=%d err=%v", channels, disabledChannel, channelsErr)
 	}
-	// bindings、listErr 保存当前用户绑定列表及查询错误。
-	bindings, listErr := store.Notifications.ListBindingsForUser(ctx, userID)
-	if listErr != nil || len(bindings) != 1 || bindings[0].ChannelID != ownedChannel || !bindings[0].Enabled {
-		t.Fatalf("bindings=%#v err=%v", bindings, listErr)
+	// muteErr 保存账号级静音开关写入错误。
+	if _, muteErr := store.Cookies.UpdateSettings(ctx, cookieID, AccountSettingsUpdate{UserID: userID, NotificationsDisabled: boolPtr(true)}); muteErr != nil {
+		t.Fatal(muteErr)
 	}
-	// bindingID 保存后续删除操作使用的绑定主键。
-	bindingID := bindings[0].ID
-	// deleteErr 保存错误用户删除绑定时的数据库错误；归属过滤应使该操作无副作用。
-	if deleteErr := store.Notifications.DeleteBinding(ctx, otherUser.ID, bindingID); deleteErr != nil {
-		t.Fatal(deleteErr)
+	// mutedChannels、mutedErr 保存静音后的账号渠道及查询错误。
+	mutedChannels, mutedErr := store.Notifications.AccountChannels(ctx, cookieID)
+	if mutedErr != nil || len(mutedChannels) != 0 {
+		t.Fatalf("muted channels=%#v err=%v", mutedChannels, mutedErr)
 	}
-	// bindingsAfterWrongDelete、wrongDeleteErr 保存错误用户删除后的绑定列表及查询错误。
-	bindingsAfterWrongDelete, wrongDeleteErr := store.Notifications.ListBindingsForUser(ctx, userID)
-	if wrongDeleteErr != nil || len(bindingsAfterWrongDelete) != 1 {
-		t.Fatalf("wrong-user delete changed bindings=%#v err=%v", bindingsAfterWrongDelete, wrongDeleteErr)
-	}
-	// disableErr 保存关闭单个绑定的数据库错误。
-	if disableErr := store.Notifications.SetSingleBinding(ctx, cookieID, ownedChannel, false); disableErr != nil {
-		t.Fatal(disableErr)
-	}
-	// bindingsAfterDisable、disableListErr 保存关闭绑定后的列表及查询错误。
-	bindingsAfterDisable, disableListErr := store.Notifications.ListBindingsForUser(ctx, userID)
-	if disableListErr != nil || len(bindingsAfterDisable) != 0 {
-		t.Fatalf("disabled binding remains: bindings=%#v err=%v", bindingsAfterDisable, disableListErr)
-	}
-	// rebindErr 保存重新启用绑定的数据库错误。
-	if rebindErr := store.Notifications.SetSingleBinding(ctx, cookieID, ownedChannel, true); rebindErr != nil {
-		t.Fatal(rebindErr)
-	}
-	// cleanupErr 保存错误用户批量清理时的数据库错误；归属过滤应保留当前用户绑定。
-	if cleanupErr := store.Notifications.DeleteAccountBindings(ctx, otherUser.ID, cookieID); cleanupErr != nil {
-		t.Fatal(cleanupErr)
-	}
-	// bindingsAfterWrongCleanup、wrongCleanupErr 保存错误用户批量清理后的绑定列表及查询错误。
-	bindingsAfterWrongCleanup, wrongCleanupErr := store.Notifications.ListBindingsForUser(ctx, userID)
-	if wrongCleanupErr != nil || len(bindingsAfterWrongCleanup) != 1 {
-		t.Fatalf("wrong-user account cleanup changed bindings=%#v err=%v", bindingsAfterWrongCleanup, wrongCleanupErr)
-	}
-	// finalCleanupErr 保存当前用户批量清理时的数据库错误。
-	if finalCleanupErr := store.Notifications.DeleteAccountBindings(ctx, userID, cookieID); finalCleanupErr != nil {
-		t.Fatal(finalCleanupErr)
-	}
-	// finalBindings、finalListErr 保存最终绑定列表及查询错误。
-	finalBindings, finalListErr := store.Notifications.ListBindingsForUser(ctx, userID)
-	if finalListErr != nil || len(finalBindings) != 0 {
-		t.Fatalf("account bindings remain: bindings=%#v err=%v", finalBindings, finalListErr)
+	// 未知账号必须返回未找到，避免调用方误判为空渠道。
+	if _, missingErr := store.Notifications.AccountChannels(ctx, "missing-account"); missingErr != ErrNotFound {
+		t.Fatalf("missing account err=%v", missingErr)
 	}
 }
 

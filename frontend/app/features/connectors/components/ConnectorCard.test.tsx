@@ -94,9 +94,9 @@ describe('ConnectorCard', /* 当前测试组验证注册表驱动的凭据输入
     expect(screen.getByText(/单聊 60 分钟、群聊 5 分钟/)).toBeTruthy();
   });
 
-  test('提示凭据与开关需重启生效且网关会自动重连', /* 当前测试验证生效时机与自愈行为被显式告知，避免误判保存即已连上。 */ () => {
+  test('提示保存后自动对齐网关且断线会自动重连', /* 当前测试验证生效时机与自愈行为被显式告知，避免误判保存即已连上。 */ () => {
     render(<ConnectorHarness initial={{}} />);
-    expect(screen.getByText(/凭据与开关在下次服务重启后生效/)).toBeTruthy();
+    expect(screen.getByText(/保存后系统会自动对齐该用户的 QQ 网关连接/)).toBeTruthy();
     expect(screen.getByText(/按指数退避自动重连/)).toBeTruthy();
   });
 

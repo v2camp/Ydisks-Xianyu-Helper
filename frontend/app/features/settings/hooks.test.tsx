@@ -1,25 +1,19 @@
 // @vitest-environment jsdom
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
-import type { AIConnectionTestResult,OperationResponse,SystemSettings } from './api';
-import { fetchAIModels,getSystemSettings,testAIConnection,updateLoginCredentials,updateSystemSettings,verifySession } from './api';
+import type { OperationResponse,SystemSettings } from './api';
+import { getSystemSettings,updateLoginCredentials,updateSystemSettings,verifySession } from './api';
 import { useSettings } from './hooks';
 
 vi.mock('./api', /* settingsApiMockFactory 提供设置 Hook 的确定性 API 替身。 */ () => ({
-  fetchAIModels: vi.fn(),
   getSystemSettings: vi.fn(),
-  testAIConnection: vi.fn(),
   updateLoginCredentials: vi.fn(),
   updateSystemSettings: vi.fn(),
   verifySession: vi.fn(),
 }));
 
-// fetchModelsMock 是模型发现请求的可控替身。
-const fetchModelsMock = vi.mocked(fetchAIModels);
 // getSettingsMock 是系统设置读取请求的可控替身。
 const getSettingsMock = vi.mocked(getSystemSettings);
-// testConnectionMock 是 AI chat completion 连通性测试请求的可控替身。
-const testConnectionMock = vi.mocked(testAIConnection);
 // updateCredentialsMock 是登录凭据更新请求的可控替身。
 const updateCredentialsMock = vi.mocked(updateLoginCredentials);
 // updateSettingsMock 是系统设置保存请求的可控替身。
@@ -27,22 +21,20 @@ const updateSettingsMock = vi.mocked(updateSystemSettings);
 // verifySessionMock 是会话校验请求的可控替身。
 const verifySessionMock = vi.mocked(verifySession);
 
-// settingsFixture 是覆盖 AI、验证码和日志字段的系统配置。
-const settingsFixture: SystemSettings = { ai_api_url: 'https://ai.example.com', ai_api_key: 'secret', ai_model: '', ai_master_enabled: true, 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]', 'captcha.remote_service_url': 'https://captcha.example.com', log_level: 'info', global_send_daily_limit: 5 };
+// settingsFixture 是覆盖 AI 行为、验证码和日志字段的实例级系统配置。
+const settingsFixture: SystemSettings = { ai_master_enabled: true, ai_scope_config: '{"enabled":true}', 'mcp.servers': '[{"name":"find_stuff","url":"http://127.0.0.1:59190/mcp"}]', 'captcha.remote_service_url': 'https://captcha.example.com', log_level: 'info', global_send_daily_limit: 5 };
 // noopReload 是设置凭据成功后定时重载页面的浏览器行为替身。
 const noopReload = vi.fn();
 // renderSystemSettingsHook 是 system 保存范围的设置 Hook 渲染回调，只保存系统白名单字段。
 const renderSystemSettingsHook = () => useSettings('system');
-// renderAISettingsHook 是 ai 保存范围的设置 Hook 渲染回调，启用模型发现与连接测试。
+// renderAISettingsHook 是 ai 保存范围的设置 Hook 渲染回调，只保存 AI 行为字段。
 const renderAISettingsHook = () => useSettings('ai');
 
-describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请求状态。 */ () => {
+describe('useSettings', /* 当前回调处理设置草稿和凭据请求状态。 */ () => {
   beforeEach(/* 当前回调重置设置 API 替身和浏览器副作用。 */ () => {
     vi.clearAllMocks();
     getSettingsMock.mockResolvedValue(settingsFixture);
     verifySessionMock.mockResolvedValue({ authenticated: true, username: 'admin' });
-    fetchModelsMock.mockResolvedValue(['model-a', 'model-b']);
-    testConnectionMock.mockResolvedValue({ success: true, model: 'model-a', latency_ms: 42, reply: '你好' });
     updateSettingsMock.mockResolvedValue({ success: true });
     updateCredentialsMock.mockResolvedValue({ success: true, message: '凭据已更新' });
     vi.spyOn(window, 'alert').mockImplementation(
@@ -52,22 +44,21 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, reload: noopReload } });
   });
 
-  test('ai 范围加载设置和模型后可以保存配置', /* 当前回调验证 AI 范围加载模型并保存 AI 字段的路径。 */ async () => {
+  test('ai 范围加载设置后可以保存 AI 行为字段', /* 当前回调验证 AI 范围加载并保存白名单字段的路径。 */ async () => {
     // hook 是 AI 范围设置 Hook 的渲染结果。
     const hook = renderHook(renderAISettingsHook);
     await waitFor(
       // statusAssertion 等待系统设置加载成功。
       () => expect(hook.result.current.requestStatus).toBe('success'),
     );
-    expect(hook.result.current.settings).toMatchObject({ ...settingsFixture, ai_model: 'model-a' });
-    expect(hook.result.current.aiModels).toEqual(['model-a', 'model-b']);
+    expect(hook.result.current.settings).toMatchObject(settingsFixture);
     expect(hook.result.current.credentials.new_username).toBe('admin');
 
     await act(
       // saveAction 执行 AI 配置保存动作。
       async () => hook.result.current.handleSave(),
     );
-    expect(updateSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ ai_api_url: settingsFixture.ai_api_url }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(updateSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ ai_master_enabled: true }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(window.alert).toHaveBeenCalledWith('AI 配置已保存');
   });
 
@@ -87,10 +78,8 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     expect(payload.log_level).toBe('info');
     expect(payload.global_send_daily_limit).toBe(5);
     expect(payload['captcha.remote_service_url']).toBe('https://captcha.example.com');
-    expect(payload.ai_api_url).toBeUndefined();
-    expect(payload.ai_api_key).toBeUndefined();
-    expect(payload.ai_model).toBeUndefined();
     expect(payload.ai_master_enabled).toBeUndefined();
+    expect(payload.ai_scope_config).toBeUndefined();
     expect(payload['mcp.servers']).toBeUndefined();
     expect(window.alert).toHaveBeenCalledWith('系统配置已保存');
   });
@@ -108,99 +97,12 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     );
     // payload 是 AI 范围实际提交的设置载荷。
     const payload = updateSettingsMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.ai_api_url).toBe('https://ai.example.com');
-    expect(payload['mcp.servers']).toBe(settingsFixture['mcp.servers']);
-    // 总闸属于 AI 白名单，AI 页保存时必须随载荷一起提交，否则改动会被静默丢弃。
     expect(payload.ai_master_enabled).toBe(true);
+    expect(payload.ai_scope_config).toBe('{"enabled":true}');
+    expect(payload['mcp.servers']).toBe(settingsFixture['mcp.servers']);
     expect(payload.log_level).toBeUndefined();
     expect(payload.global_send_daily_limit).toBeUndefined();
     expect(payload['captcha.remote_service_url']).toBeUndefined();
-  });
-
-  test('system 范围不发起模型发现请求', /* 当前回调验证系统范围加载与保存都不触发模型发现。 */ async () => {
-    // hook 是系统范围设置 Hook 的渲染结果。
-    const hook = renderHook(renderSystemSettingsHook);
-    await waitFor(
-      // statusAssertion 等待系统设置加载成功。
-      () => expect(hook.result.current.requestStatus).toBe('success'),
-    );
-    expect(fetchModelsMock).not.toHaveBeenCalled();
-    await act(
-      // loadModelsAction 显式调用模型加载入口，system 范围也应短路。
-      async () => hook.result.current.loadAIModels(settingsFixture, true),
-    );
-    expect(fetchModelsMock).not.toHaveBeenCalled();
-    await act(
-      // testAction 显式调用连接测试入口，system 范围也应短路。
-      async () => hook.result.current.testConnection(),
-    );
-    expect(testConnectionMock).not.toHaveBeenCalled();
-  });
-
-  test('模型发现失败时清空列表并展示错误', /* 当前回调验证模型接口错误路径。 */ async () => {
-    fetchModelsMock.mockRejectedValue(new Error('模型服务不可用'));
-    // hook 是模型发现失败场景下的 AI 范围设置 Hook 渲染结果。
-    const hook = renderHook(renderAISettingsHook);
-    await waitFor(
-      // statusAssertion 等待初始系统设置请求完成。
-      () => expect(hook.result.current.requestStatus).toBe('success'),
-    );
-    await act(
-      // loadModelsAction 触发失败的模型发现请求。
-      async () => hook.result.current.loadAIModels(settingsFixture, true),
-    );
-    expect(hook.result.current.aiModels).toEqual([]);
-    expect(hook.result.current.modelDropdownOpen).toBe(false);
-    expect(hook.result.current.modelError).toBe('模型服务不可用');
-  });
-
-  test('连接测试展示真实模型回复并使用当前未保存配置', /* 当前回调验证 AI 连接测试与设置草稿使用相同的端点、密钥和模型。 */ async () => {
-    // hook 是连接测试成功场景的 AI 范围设置 Hook 渲染结果。
-    const hook = renderHook(renderAISettingsHook);
-    await waitFor(
-      // statusAssertion 等待初始设置和自动模型选择完成。
-      () => expect(hook.result.current.settings?.ai_model).toBe('model-a'),
-    );
-    await act(
-      // testAction 发起一次真实功能等价的连接测试操作。
-      async () => hook.result.current.testConnection(),
-    );
-    expect(testConnectionMock).toHaveBeenCalledWith('https://ai.example.com', 'secret', 'model-a', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(hook.result.current.connectionTestMessage).toEqual({ type: 'success', text: '连接正常 · 模型 model-a · 耗时 0.0s · 回复：你好' });
-    hook.unmount();
-  });
-
-  test('配置编辑后丢弃旧连接测试结果', /* 当前回调验证慢速连接测试不能覆盖已编辑的端点、密钥或模型。 */ async () => {
-    // resolveConnection 是延迟 chat completion 请求的完成控制器。
-    let resolveConnection: (value: AIConnectionTestResult) => void = () => undefined;
-    // pendingConnection 模拟仍在等待推理模型响应的连接测试请求。
-    const pendingConnection = new Promise<AIConnectionTestResult>(/* connectionExecutor 保存连接测试完成函数。 */ resolve => { resolveConnection = resolve; });
-    testConnectionMock.mockReturnValueOnce(pendingConnection);
-    // hook 是连接测试与配置编辑并发场景的 AI 范围设置 Hook 渲染结果。
-    const hook = renderHook(renderAISettingsHook);
-    await waitFor(
-      // statusAssertion 等待初始设置和默认模型选择完成。
-      () => expect(hook.result.current.settings?.ai_model).toBe('model-a'),
-    );
-    // testAction 发起尚未完成的连接测试，不等待远端结果。
-    let testAction: Promise<void> = Promise.resolve();
-    act(/* startTestAction 启动连接测试以便随后编辑配置。 */ () => { testAction = (hook.result.current.testConnection as () => Promise<void>)(); });
-    await waitFor(
-      // loadingAssertion 等待连接测试进入忙碌状态。
-      () => expect(hook.result.current.connectionTestLoading).toBe(true),
-    );
-    await act(
-      // editSettingsAction 更换模型，令旧测试结果不再对应当前草稿。
-      () => hook.result.current.setSettings(/* previous 是编辑前的设置草稿，仅替换本次测试关联的模型字段。 */ previous => previous ? { ...previous, ai_model: 'new-model' } : previous),
-    );
-    resolveConnection({ success: true, model: 'model-a', latency_ms: 42, reply: '旧回复' });
-    await act(
-      // completeTestAction 完成已过期连接测试请求。
-      async () => testAction,
-    );
-    expect(hook.result.current.connectionTestMessage).toBeNull();
-    expect(hook.result.current.connectionTestLoading).toBe(false);
-    hook.unmount();
   });
 
   test('凭据校验失败和服务拒绝都写入错误提示', /* 当前回调验证登录凭据校验和后端拒绝路径。 */ async () => {
@@ -306,28 +208,6 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
     hook.unmount();
   });
 
-  test('点击模型选择器外部会关闭下拉框', /* 当前回调验证模型选择器的文档事件边界。 */ async () => {
-    // hook 是模型选择器外部点击场景的 AI 范围设置 Hook 渲染结果。
-    const hook = renderHook(renderAISettingsHook);
-    await waitFor(
-      // statusAssertion 等待设置加载完成后再操作下拉框。
-      () => expect(hook.result.current.requestStatus).toBe('success'),
-    );
-    // picker 是模型选择器根节点替身。
-    const picker = document.createElement('div');
-    hook.result.current.modelPickerRef.current = picker;
-    await act(
-      // openAction 打开模型下拉框。
-      () => hook.result.current.setModelDropdownOpen(true),
-    );
-    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    await waitFor(
-      // closeAssertion 等待外部点击关闭下拉框。
-      () => expect(hook.result.current.modelDropdownOpen).toBe(false),
-    );
-    hook.unmount();
-  });
-
   test('重复加载设置时丢弃先发出的旧响应', /* 当前回调验证系统设置请求代次隔离。 */ async () => {
     // resolveFirst 是旧设置请求的完成控制器。
     let resolveFirst: (value: SystemSettings) => void = () => undefined;
@@ -351,49 +231,7 @@ describe('useSettings', /* 当前回调处理设置草稿、模型和凭据请�
       // staleResolveAction 完成已过期的首次设置响应。
       async () => { await firstRequest; },
     );
-    expect(hook.result.current.settings).toMatchObject({ ...settingsFixture, ai_model: 'model-a' });
-    hook.unmount();
-  });
-
-  test('保存新配置时取消并丢弃旧配置发起的模型响应', /* 当前回调验证保存动作隔离旧模型发现请求。 */ async () => {
-    // resolveModels 是旧模型请求的完成控制器。
-    let resolveModels: (value: string[]) => void = () => undefined;
-    // staleModelsRequest 模拟使用旧地址和旧密钥发出的延迟模型请求。
-    const staleModelsRequest = new Promise<string[]>(/* staleModelsExecutor 保存旧模型请求完成函数。 */ resolve => { resolveModels = resolve; });
-    fetchModelsMock.mockReset();
-    fetchModelsMock.mockReturnValueOnce(staleModelsRequest);
-    // hook 是保存配置与模型发现竞态场景的 Hook 渲染结果。
-    const hook = renderHook(renderAISettingsHook);
-    await waitFor(
-      // statusAssertion 等待设置读取成功并发出旧模型请求。
-      () => expect(hook.result.current.requestStatus).toBe('success'),
-    );
-    expect(fetchModelsMock).toHaveBeenCalledTimes(1);
-    // staleSignal 是旧模型发现请求使用的取消信号。
-    const staleSignal = fetchModelsMock.mock.calls[0]?.[2]?.signal;
-    await act(
-      // editSettingsAction 将配置草稿切换到新的模型服务凭据。
-      () => hook.result.current.setSettings(
-        // settingsUpdater 基于现有草稿替换模型服务地址和密钥。
-        previous => previous ? { ...previous, ai_api_url: 'https://new-ai.example.com', ai_api_key: 'new-secret' } : previous,
-      ),
-    );
-    await act(
-      // saveAction 保存新配置并使旧模型请求失效。
-      async () => hook.result.current.handleSave(),
-    );
-    expect(staleSignal?.aborted).toBe(true);
-    expect(updateSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ ai_api_url: 'https://new-ai.example.com', ai_api_key: 'new-secret' }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(hook.result.current.aiModels).toEqual([]);
-    expect(hook.result.current.modelsLoading).toBe(false);
-
-    resolveModels(['stale-model']);
-    await act(
-      // staleResolveAction 完成被保存动作取消的旧模型响应。
-      async () => { await staleModelsRequest; },
-    );
-    expect(hook.result.current.aiModels).toEqual([]);
-    expect(hook.result.current.settings?.ai_model).toBe('');
+    expect(hook.result.current.settings).toMatchObject(settingsFixture);
     hook.unmount();
   });
 

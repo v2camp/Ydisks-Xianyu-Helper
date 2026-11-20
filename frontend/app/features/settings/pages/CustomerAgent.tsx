@@ -1,8 +1,5 @@
 import {
   Bot,
-  Check,
-  ChevronDown,
-  Eye,EyeOff,
   RefreshCw,
   Sparkles,
   Zap
@@ -13,7 +10,6 @@ import { PageShell } from '../../../../shared/ui/PageShell';
 import { SaveBar } from '../../../../shared/ui/SaveBar';
 import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import { SectionHeader } from '../../../../shared/ui/SectionHeader';
-import { COMMON_AI_SERVICES,DEFAULT_AI_API_URL } from '../constants';
 import { useSettings } from '../hooks';
 import { useCustomerAgent } from '../customerAgentHooks';
 import { AIConfigEditor } from '../components/AIConfigEditor';
@@ -21,14 +17,19 @@ import { AgentTakeoverHistory } from '../components/AgentTakeoverHistory';
 import { MCPServerList } from '../components/MCPServerList';
 import { SettingsDisclosure } from '../components/SettingsDisclosure';
 
-// CustomerAgent 汇总客服 Agent 的 AI 引擎、接管范围、出站 MCP 工具、能力档位与接管历史；
-// 页级保存只提交 AI 白名单字段，能力档位走自己的区块级保存条。
-const CustomerAgent: React.FC = () => {
-  // featureState 是 Settings Hook 提供的状态与动作集合，scope=ai 只保存 AI 白名单字段并启用模型发现与连接测试。
+/** CustomerAgentProps 描述客服 Agent 页可选的跨页跳转能力。 */
+export interface CustomerAgentProps {
+  /** onNavigate 由外层提供时，模型与凭据依赖行可跳转到连接器页。 */
+  onNavigate?: (tab: string) => void;
+}
+
+// CustomerAgent 汇总客服 Agent 的 AI 总闸、接管范围、出站 MCP 工具、能力档位与接管历史；
+// 页级保存只提交 AI 行为字段，能力档位走自己的区块级保存条。模型与密钥在连接器页维护。
+const CustomerAgent: React.FC<CustomerAgentProps> = ({ onNavigate }) => {
+  // featureState 是 Settings Hook 提供的状态与动作集合，scope=ai 只保存 AI 行为字段。
   const {
-    settings, loading, loadError, saveError, aiModels, modelsLoading, modelError, modelDropdownOpen,
-    showApiKey, modelPickerRef, loadSettings, loadAIModels, testConnection, connectionTestLoading,
-    connectionTestMessage, handleSave, setSettings, setModelDropdownOpen, setShowApiKey,
+    settings, loading, loadError, saveError,
+    loadSettings, handleSave, setSettings,
   } = useSettings('ai');
 
   // agent 是能力档位区块的草稿与保存状态；是否运行仍由 AI 总闸统一决定。
@@ -83,11 +84,6 @@ const CustomerAgent: React.FC = () => {
     );
   }
 
-  // currentModel 是当前配置中的模型名称。
-  const currentModel = settings.ai_model || '';
-  // visibleAIModels 是模型下拉框当前展示的候选列表。
-  const visibleAIModels = aiModels;
-
   return (
     <PageShell>
       <PageHeader
@@ -122,134 +118,20 @@ const CustomerAgent: React.FC = () => {
         <SettingsDisclosure
           icon={Sparkles}
           title="模型与凭据"
-          description="API 地址、密钥、模型名称与连接测试"
+          description="按本地用户归属，已迁移到连接器页"
           tone="brand"
         >
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <label className="block text-sm font-bold text-gray-800">API 地址</label>
-              <input
-                type="text"
-                value={settings.ai_api_url || DEFAULT_AI_API_URL}
-                onChange={/* 输入变化更新 AI 服务基础地址草稿。 */ e => setSettings({...settings, ai_api_url: e.target.value})}
-                className="w-full ios-input px-4 py-3 rounded-xl text-sm"
-                placeholder="https://api.openai.com/v1"
-              />
-              <p className="text-xs text-gray-500">无需补全 /chat/completions</p>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-bold text-gray-800">API Key</label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={settings.ai_api_key || ''}
-                  onChange={/* 输入变化更新 AI API 密钥草稿；该值仅存于会话状态不写入日志。 */ e => setSettings({...settings, ai_api_key: e.target.value})}
-                  className="w-full ios-input px-4 py-3 pr-12 rounded-xl font-mono text-sm"
-                  placeholder={settings.ai_api_key_configured ? '已配置，如需替换请输入新密钥' : 'sk-...'}
-                />
-                <button
-                  type="button"
-                  onClick={/* 点击切换 API Key 明文显示状态。 */ () => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-sm font-bold text-gray-800">模型</label>
-              <div ref={modelPickerRef} className="relative flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <input
-                    value={currentModel}
-                    onFocus={/* 聚焦时若有已读取模型则展开下拉列表。 */ () => aiModels.length > 0 && setModelDropdownOpen(true)}
-                    onChange={/* 输入变化更新模型名称草稿并展开候选列表。 */ e => {
-                      setSettings({...settings, ai_model: e.target.value});
-                      if (aiModels.length > 0) setModelDropdownOpen(true);
-                    }}
-                    onKeyDown={/* 键盘操作关闭或展开模型下拉列表。 */ e => {
-                      if (e.key === 'Escape') setModelDropdownOpen(false);
-                      if (e.key === 'ArrowDown' && aiModels.length > 0) setModelDropdownOpen(true);
-                    }}
-                    className="w-full ios-input px-4 py-3 pr-10 rounded-xl"
-                    placeholder="从接口读取或手动输入模型名"
-                  />
-                  <button
-                    type="button"
-                    onClick={/* 点击切换模型下拉列表展开状态。 */ () => aiModels.length > 0 && setModelDropdownOpen(/* open 是切换前的展开状态，返回取反后的下一状态。 */ open => !open)}
-                    disabled={aiModels.length === 0}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                    aria-label="展开模型列表"
-                  >
-                    <ChevronDown className={`w-4 h-4 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {modelDropdownOpen && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl shadow-gray-200/70 py-1">
-                      {visibleAIModels.length > 0 ? (
-                        visibleAIModels.map(/* model 是远端返回的单个模型名称，点击后写入草稿。 */ model => (
-                          <button
-                            key={model}
-                            type="button"
-                            onClick={/* 点击候选模型写入草稿并收起下拉列表。 */ () => {
-                              setSettings({...settings, ai_model: model});
-                              setModelDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-brand-50 hover:text-brand flex items-center justify-between gap-3"
-                          >
-                            <span className="truncate">{model}</span>
-                            {model === currentModel && <Check className="w-4 h-4 shrink-0 text-brand" />}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-3 text-sm text-gray-400">没有匹配的模型</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={/* 点击向当前 API 地址发起模型发现请求。 */ () => loadAIModels(undefined, true)}
-                  disabled={modelsLoading}
-                  className="px-4 py-3 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-60 font-bold flex items-center justify-center gap-2 whitespace-nowrap"
-                >
-                  <RefreshCw className={`w-4 h-4 ${modelsLoading ? 'animate-spin' : ''}`} />
-                  读取模型
-                </button>
-                <button
-                  type="button"
-                  onClick={/* 点击发起一次 AI 连接测试。 */ testConnection}
-                  disabled={connectionTestLoading}
-                  className="px-4 py-3 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-60 font-bold flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
-                >
-                  <Zap className={`w-4 h-4 ${connectionTestLoading ? 'animate-spin' : ''}`} />
-                  测试连接
-                </button>
-              </div>
-              {modelError ? (
-                <p className="text-xs text-danger-500">{modelError}</p>
-              ) : (
-                <p className="text-xs text-gray-500">
-                  {aiModels.length > 0 ? `已从当前 API 地址读取到 ${aiModels.length} 个模型` : '模型列表从当前 API 地址读取，也可以手动输入模型名'}
-                </p>
-              )}
-              {connectionTestMessage && (
-                <div className={`rounded-lg px-3 py-2 text-xs font-medium ${connectionTestMessage.type === 'success' ? 'bg-success-50 text-success-700 border border-success-100' : 'bg-danger-50 text-danger-700 border border-danger-100'}`}>
-                  {connectionTestMessage.type === 'success' ? '✓ ' : '✗ '}{connectionTestMessage.text}
-                </div>
-              )}
-            </div>
-
-            {/* 常见 AI 服务提示：默认折叠，展开后才列出兼容地址；两条示例来自常量，避免散落在 JSX 里。 */}
-            <details className="p-3 bg-brand-50 rounded-xl text-xs text-brand-700">
-              <summary className="cursor-pointer font-bold select-none">常见 AI 服务</summary>
-              <ul className="list-disc list-inside mt-2 space-y-0.5">
-                {COMMON_AI_SERVICES.map(/* service 是一条参考服务及其兼容 API 地址。 */ service => (
-                  <li key={service.url}>{service.name}: {service.url}</li>
-                ))}
-              </ul>
-            </details>
+          <div className="flex flex-col gap-3 rounded-xl bg-brand-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-6 text-brand-900">
+              AI 模型与 API Key 由当前用户的连接器配置提供；修改后立即对当前用户的全部闲鱼账号生效。
+            </p>
+            <button
+              type="button"
+              onClick={/* 点击跳转到连接器页维护模型与密钥。 */ () => onNavigate?.('connectors')}
+              className="ios-btn-primary whitespace-nowrap rounded-xl px-4 py-2 font-bold"
+            >
+              前往连接器页
+            </button>
           </div>
         </SettingsDisclosure>
 

@@ -53,8 +53,6 @@ func TestVersionedSettingsCardNotificationRoutesPreserveLegacyContracts(t *testi
 		{name: "system-settings-list", method: http.MethodGet, versionedPath: "/api/v1/settings/system", legacyPath: "/system-settings", wantStatus: http.StatusOK},
 		{name: "system-settings-bulk", method: http.MethodPut, versionedPath: "/api/v1/settings/system", legacyPath: "/system-settings", body: `{}`, wantStatus: http.StatusBadRequest},
 		{name: "system-settings-key", method: http.MethodPut, versionedPath: "/api/v1/settings/system/theme_color", legacyPath: "/system-settings/theme_color", body: `{"value":"blue"}`, wantStatus: http.StatusOK},
-		{name: "ai-models-invalid", method: http.MethodPost, versionedPath: "/api/v1/settings/ai-models", legacyPath: "/ai-models", body: `not-json`, wantStatus: http.StatusBadRequest},
-		{name: "ai-test-invalid", method: http.MethodPost, versionedPath: "/api/v1/settings/ai-test", legacyPath: "/ai-test", body: `not-json`, wantStatus: http.StatusBadRequest},
 		{name: "ai-reply-list", method: http.MethodGet, versionedPath: "/api/v1/settings/ai-reply", legacyPath: "/ai-reply-settings", wantStatus: http.StatusOK},
 		{name: "ai-reply-missing", method: http.MethodGet, versionedPath: "/api/v1/settings/ai-reply/missing", legacyPath: "/ai-reply-settings/missing", wantStatus: http.StatusNotFound},
 		{name: "ai-reply-update-missing", method: http.MethodPut, versionedPath: "/api/v1/settings/ai-reply/missing", legacyPath: "/ai-reply-settings/missing", body: `{}`, wantStatus: http.StatusNotFound},
@@ -74,11 +72,6 @@ func TestVersionedSettingsCardNotificationRoutesPreserveLegacyContracts(t *testi
 		{name: "notification-channel-update-invalid", method: http.MethodPut, versionedPath: "/api/v1/notifications/channels/invalid", legacyPath: "/notification-channels/invalid", body: `{}`, wantStatus: http.StatusBadRequest},
 		{name: "notification-channel-delete-invalid", method: http.MethodDelete, versionedPath: "/api/v1/notifications/channels/invalid", legacyPath: "/notification-channels/invalid", wantStatus: http.StatusBadRequest},
 		{name: "notification-channel-test-invalid", method: http.MethodPost, versionedPath: "/api/v1/notifications/channels/invalid/test", legacyPath: "/notification-channels/invalid/test", wantStatus: http.StatusBadRequest},
-		{name: "message-notifications-list", method: http.MethodGet, versionedPath: "/api/v1/notifications/messages", legacyPath: "/message-notifications", wantStatus: http.StatusOK},
-		{name: "message-notification-delete-invalid", method: http.MethodDelete, versionedPath: "/api/v1/notifications/messages/invalid", legacyPath: "/message-notifications/invalid", wantStatus: http.StatusBadRequest},
-		{name: "account-notifications-delete", method: http.MethodDelete, versionedPath: "/api/v1/notifications/messages/account/acc1", legacyPath: "/message-notifications/account/acc1", wantStatus: http.StatusOK},
-		{name: "account-bindings-missing", method: http.MethodGet, versionedPath: "/api/v1/notifications/accounts/missing/bindings", legacyPath: "/message-notifications/missing", wantStatus: http.StatusNotFound},
-		{name: "account-bindings-update-missing", method: http.MethodPost, versionedPath: "/api/v1/notifications/accounts/missing/bindings", legacyPath: "/message-notifications/missing", body: `{}`, wantStatus: http.StatusNotFound},
 	}
 	for _, routeCase := range cases { // routeCase 是当前正在执行的设置、卡券或通知路由样例。
 		// versionedStatus 是版本化入口实际返回的状态码。

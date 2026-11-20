@@ -1,13 +1,12 @@
 import { Radio,RefreshCw,ShieldCheck } from 'lucide-react';
-import React,{ useCallback,useState } from 'react';
+import React from 'react';
 import { DependencyRow } from '../../../../shared/ui/DependencyRow';
 import { PageHeader } from '../../../../shared/ui/PageHeader';
 import { PageShell } from '../../../../shared/ui/PageShell';
 import { SaveBar } from '../../../../shared/ui/SaveBar';
-import type { SaveBarState } from '../../../../shared/ui/SaveBar';
 import { SectionHeader } from '../../../../shared/ui/SectionHeader';
-import { useSettings } from '../hooks';
-import { isQQBotConnectorReady } from '../api';
+import { isQQConnectorReady } from '../api';
+import { useUserIntegrations } from '../../../../shared/async/useUserIntegrations';
 import { OpsConversationPanel } from '../components/OpsConversationPanel';
 import { SettingsDisclosure } from '../components/SettingsDisclosure';
 
@@ -17,47 +16,44 @@ export interface OpsAgentProps {
   onNavigate?: (tab: string) => void;
 }
 
-/** OpsAgent 管理 QQ 入站命令开关与发送者白名单，并提供运营会话列表、消息与 Web 人工发送。 */
+/** OpsAgent 管理当前用户的 QQ 入站命令开关与发送者白名单，并提供运营会话列表、消息与 Web 人工发送。 */
 const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
-  // featureState 是 Settings Hook 提供的状态与动作集合，scope=ops 只保存 QQ 入站两个字段。
-  const {
-    settings, loading, loadError, saveError,
-    loadSettings, handleSave, setSettings,
-  } = useSettings('ops');
-
-  // saveBarState 是区块级保存条的四态，由一次保存的结果驱动，成功提示展示完毕后回落为空闲。
-  const [saveBarState, setSaveBarState] = useState<SaveBarState>('idle');
-
-  // handlePageSave 提交运营配置草稿，并把返回值映射为保存条的成功或失败态。
-  const handlePageSave = useCallback(/* 当前回调把保存请求的进展映射为保存条状态。 */ async () => {
-    setSaveBarState('saving');
-    // saved 是本次保存是否成功；失败时保存条常驻并提供重试入口。
-    const saved = await handleSave({ silentSuccess: true });
-    setSaveBarState(saved ? 'success' : 'error');
-  }, [handleSave]);
-
-  // settleSaveBar 在成功提示展示满 2 秒后把保存条复位为空闲待提交。
-  const settleSaveBar = useCallback(/* 当前回调在成功提示超时后把保存条复位为空闲。 */ () => setSaveBarState('idle'), []);
-
-  if (!settings) {
-    return (
-      <div className="p-8 text-center text-gray-400 space-y-3">
-        {loadError || (loading ? '加载配置中...' : '暂无配置')}
-        {!loading && loadError && (
-          <div>
-            <button type="button" className="ios-btn-primary px-4 py-2 rounded-xl" onClick={loadSettings}>重新加载</button>
-          </div>
-        )}
-      </div>
-    );
-  }
+  // integrations 提供当前用户的 QQ、AI 与 SMTP 集成配置；本页只编辑 QQ 入站两项。
+  const integrations = useUserIntegrations();
+  // settings 是当前用户的集成配置草稿。
+  const settings = integrations.settings;
 
   // commandsEnabled 表示 QQ 入站命令开关是否已打开；未配置按关闭处理。
   const commandsEnabled = settings['qqbot.commands_enabled'] === true;
   // openidAllowlist 是命令发送者白名单的草稿原文，支持换行或逗号分隔。
   const openidAllowlist = String(settings['qqbot.command_openids'] ?? '');
+  // handlePageSave 只提交入站命令开关与白名单两个键，避免把其他集成配置一并回写。
+  const handlePageSave = () => void integrations.save({
+    'qqbot.commands_enabled': commandsEnabled,
+    'qqbot.command_openids': openidAllowlist,
+  });
   // credentialsReady 表示 QQ 机器人凭据是否就绪，决定对话区能否发送人工消息。
-  const credentialsReady = isQQBotConnectorReady(settings);
+  const credentialsReady = isQQConnectorReady(settings);
+  // applyIntegrationPatch 把单个集成配置键值合并进当前用户草稿。
+  const applyIntegrationPatch = (key: string, value: string | boolean) => {
+    integrations.setSettings(/* previous 是当前集成配置草稿。 */ previous => ({ ...previous, [key]: value }));
+  };
+  // handleCommandsEnabledChange 更新 QQ 入站命令开关草稿。
+  const handleCommandsEnabledChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    applyIntegrationPatch('qqbot.commands_enabled', event.target.checked);
+  };
+  // handleAllowlistChange 更新命令发送者白名单草稿原文。
+  const handleAllowlistChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    applyIntegrationPatch('qqbot.command_openids', event.target.value);
+  };
+
+  if (integrations.loading && Object.keys(settings).length === 0) {
+    return (
+      <div className="p-8 text-center text-gray-400 space-y-3">
+        {integrations.loadError || '加载配置中...'}
+      </div>
+    );
+  }
 
   return (
     <PageShell>
@@ -68,7 +64,7 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
         actions={(
           <button
             type="button"
-            onClick={loadSettings}
+            onClick={/* 点击重新读取当前用户的集成配置。 */ () => void integrations.load()}
             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl font-bold text-gray-700 flex items-center gap-2 transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -102,7 +98,7 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
               className="mt-1"
               aria-label="启用运营 Agent（QQ 入站）"
               checked={commandsEnabled}
-              onChange={/* 勾选变化更新入站命令开关草稿。 */ event => setSettings({ ...settings, 'qqbot.commands_enabled': event.target.checked })}
+              onChange={handleCommandsEnabledChange}
             />
             <span>
               <span className="block text-sm font-bold text-brand-900">启用运营 Agent（QQ 入站）</span>
@@ -118,7 +114,7 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
               id="ops-command-openids"
               aria-label="命令发送者白名单（openid）"
               value={openidAllowlist}
-              onChange={/* 白名单输入变化更新草稿原文。 */ event => setSettings({ ...settings, 'qqbot.command_openids': event.target.value })}
+              onChange={handleAllowlistChange}
               placeholder={'留空表示拒绝所有发送者。每行一个或用逗号分隔，例如：\n0A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P'}
               className="h-28 w-full ios-input px-4 py-3 rounded-xl text-sm leading-6 font-mono resize-y"
             />
@@ -138,14 +134,14 @@ const OpsAgent: React.FC<OpsAgentProps> = ({ onNavigate }) => {
           />
 
           <SaveBar
-            state={saveBarState}
-            onSave={/* 提交入站命令开关与白名单。 */ () => void handlePageSave()}
+            state={integrations.saveState}
+            onSave={/* 提交入站命令开关与白名单。 */ () => handlePageSave()}
             label="保存运营配置"
             scopeLabel="保存运营 Agent 配置"
-            errorMessage={/* 使用 Hook 捕获的具体失败原因，未取到时回落到保存条默认文案。 */ saveError || undefined}
+            errorMessage={/* 使用 Hook 捕获的具体失败原因，未取到时回落到保存条默认文案。 */ integrations.saveError || undefined}
             successMessage="运营 Agent 配置已保存"
             sticky={false}
-            onSettled={settleSaveBar}
+            onSettled={integrations.resetSaveState}
           />
         </div>
       </SettingsDisclosure>

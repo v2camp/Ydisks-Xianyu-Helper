@@ -255,7 +255,7 @@ type UncertainNotificationsPort interface {
 	ListForAdmin(context.Context, int) ([]notificationsapp.UncertainSummary, int, error)
 }
 
-// NotificationChannelsPort 定义通知渠道和账号绑定的管理能力。
+// NotificationChannelsPort 定义通知渠道的管理能力。
 type NotificationChannelsPort interface {
 	ListChannels(context.Context, int64) ([]notificationsapp.ChannelSummary, error)
 	GetChannelEditor(context.Context, int64, int64) (notificationsapp.ChannelEditor, error)
@@ -263,12 +263,6 @@ type NotificationChannelsPort interface {
 	UpdateChannel(context.Context, int64, int64, notificationsapp.ChannelPatch) error
 	DeleteChannel(context.Context, int64, int64) error
 	TestChannel(context.Context, int64, int64, time.Time) error
-	ListBindings(context.Context, int64) ([]notificationsapp.BindingSummary, error)
-	GetBindingIDs(context.Context, int64, string) ([]int64, error)
-	SetBindings(context.Context, int64, string, []int64) error
-	SetSingleBinding(context.Context, int64, string, int64, bool) error
-	DeleteBinding(context.Context, int64, int64) error
-	DeleteAccountBindings(context.Context, int64, string) error
 }
 
 // AnalyticsPort 定义仪表盘和订单分析能力。
@@ -353,6 +347,7 @@ type KeywordsPort interface {
 // SettingsPort 定义系统、用户和账号 AI 设置能力。
 type SettingsPort interface {
 	IsSensitiveSettingKey(string) bool
+	IsUserIntegrationSettingKey(string) bool
 	PublicSystem(context.Context) (map[string]string, error)
 	GetSystem(context.Context, int64) (map[string]string, error)
 	ApplySystemChanges(context.Context, int64, map[string]string, map[string]settingsapp.SecretChange) error
@@ -360,6 +355,8 @@ type SettingsPort interface {
 	ListUser(context.Context, int64) (map[string]string, error)
 	GetUser(context.Context, int64, string) (string, error)
 	SetUser(context.Context, int64, string, string) error
+	GetUserIntegrations(context.Context, int64) (map[string]string, error)
+	ApplyUserIntegrationChanges(context.Context, int64, map[string]string, map[string]settingsapp.SecretChange) error
 	ListAIReply(context.Context, int64) ([]settingsapp.AIReplySettings, error)
 	GetAIReply(context.Context, int64, string) (settingsapp.AIReplySettings, error)
 	UpsertAIReply(context.Context, int64, string, settingsapp.AIReplySettings) error
@@ -416,9 +413,9 @@ type AgentConversationPort interface {
 // 它不暴露凭据、平台客户端或数据库模型。
 type OpsAgentPort interface {
 	// List 分页读取运营会话。
-	List(context.Context, int, int) (opschatapp.ConversationPage, error)
-	// Messages 读取指定会话的消息页。
-	Messages(context.Context, int64, int64, int) (opschatapp.MessagePage, error)
+	List(context.Context, int64, int, int) (opschatapp.ConversationPage, error)
+	// Messages 读取指定用户会话的消息页。
+	Messages(context.Context, int64, int64, int64, int) (opschatapp.MessagePage, error)
 	// Send 发送一条 Web 人工消息。
 	Send(context.Context, opschatapp.SendInput) (opschatapp.Message, opschatapp.Conversation, error)
 }

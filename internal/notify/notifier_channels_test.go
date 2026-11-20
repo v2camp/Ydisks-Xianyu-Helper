@@ -608,25 +608,36 @@ func handleSMTP(conn net.Conn, received *strings.Builder) {
 	}
 }
 
-// TestSendEmail_Success 通过 mock SMTP 服务器验证邮件发送。
+// seedSMTPForUser 为指定用户写入用户级 SMTP 配置，供邮件发送测试使用。
+func seedSMTPForUser(t *testing.T, store *db.Store, userID int64, values map[string]string) {
+	t.Helper()
+	// ctx 是写入用户级 SMTP 设置使用的上下文。
+	ctx := context.Background()
+	for /* key、value 是当前待写入的 SMTP 设置键值。 */ key, value := range values {
+		if err := store.UserSettings.SetForUser(ctx, userID, key, value); err != nil {
+			t.Fatalf("set user %s: %v", key, err)
+		}
+	}
+}
+
+// TestSendEmail_Success 通过 mock SMTP 服务器验证用户级 SMTP 邮件发送。
 func TestSendEmail_Success(t *testing.T) {
 	// addr、received 用于本次流程后续判断的addr、received
 	addr, received := fakeSMTPServer(t)
 	// host、port 用于本次流程后续判断的host、port
 	host, port, _ := strings.Cut(addr, ":")
+	// store、cleanup 是带用户级 SMTP 配置的测试仓储。
+	store, cleanup := newNotifyStoreBare(t)
+	defer cleanup()
+	seedSMTPForUser(t, store, 1, map[string]string{
+		"smtp_server": host, "smtp_port": port, "smtp_user": "u@e.com", "smtp_password": "pw", "smtp_use_tls": "false",
+	})
 	// n 用于本次流程后续判断的n
-	n := New("cid", nil, nil)
-	// cfg 用于本次流程后续判断的cfg
-	cfg := map[string]any{
-		"smtp_server":   host,
-		"smtp_port":     port,
-		"smtp_user":     "u@e.com",
-		"smtp_password": "pw",
-		"smtp_use_tls":  false,
-		"to_email":      "to@e.com",
-	}
+	n := New("cid", store, nil)
+	// cfg 只保留邮件渠道自己的收件地址。
+	cfg := map[string]any{"to_email": "to@e.com"}
 	if // err 用于本次流程后续判断的err
-	err := n.sendEmail(cfg, "邮件正文"); err != nil {
+	err := n.sendEmailWithUser(cfg, "邮件正文", 1); err != nil {
 		t.Fatalf("sendEmail: %v", err)
 	}
 	// body 用于本次流程后续判断的请求体
@@ -642,19 +653,18 @@ func TestSendEmail_DefaultFrom(t *testing.T) {
 	addr, received := fakeSMTPServer(t)
 	// host、port 用于本次流程后续判断的host、port
 	host, port, _ := strings.Cut(addr, ":")
+	// store、cleanup 是带用户级 SMTP 配置的测试仓储。
+	store, cleanup := newNotifyStoreBare(t)
+	defer cleanup()
+	seedSMTPForUser(t, store, 1, map[string]string{
+		"smtp_server": host, "smtp_port": port, "smtp_user": "from@e.com", "smtp_password": "pw", "smtp_use_tls": "false",
+	})
 	// n 用于本次流程后续判断的n
-	n := New("cid", nil, nil)
-	// cfg 用于本次流程后续判断的cfg
-	cfg := map[string]any{
-		"smtp_server":   host,
-		"smtp_port":     port,
-		"smtp_user":     "from@e.com",
-		"smtp_password": "pw",
-		"smtp_use_tls":  false,
-		"to_email":      "to@e.com",
-	}
+	n := New("cid", store, nil)
+	// cfg 只保留邮件渠道自己的收件地址。
+	cfg := map[string]any{"to_email": "to@e.com"}
 	if // err 用于本次流程后续判断的err
-	err := n.sendEmail(cfg, "x"); err != nil {
+	err := n.sendEmailWithUser(cfg, "x", 1); err != nil {
 		t.Fatalf("sendEmail: %v", err)
 	}
 	if !strings.Contains(received.String(), "From: from@e.com") {
@@ -668,16 +678,19 @@ func TestSendEmail_SeparatesDisplayNameAndEnvelopeAddress(t *testing.T) {
 	addr, received := fakeSMTPServer(t)
 	// host、port 用于本次流程后续判断的host、port
 	host, port, _ := strings.Cut(addr, ":")
-	// n 用于本次流程后续判断的n
-	n := New("cid", nil, nil)
-	// cfg 用于本次流程后续判断的cfg
-	cfg := map[string]any{
+	// store、cleanup 是带用户级 SMTP 配置的测试仓储。
+	store, cleanup := newNotifyStoreBare(t)
+	defer cleanup()
+	seedSMTPForUser(t, store, 1, map[string]string{
 		"smtp_server": host, "smtp_port": port, "smtp_user": "login@e.com", "smtp_password": "pw",
-		"smtp_use_tls":   false,
-		"smtp_from_name": "闲鱼自动回复系统", "smtp_from_address": "sender@e.com", "to_email": "to@e.com",
-	}
+		"smtp_use_tls": "false", "smtp_from_name": "闲鱼自动回复系统", "smtp_from_address": "sender@e.com",
+	})
+	// n 用于本次流程后续判断的n
+	n := New("cid", store, nil)
+	// cfg 只保留邮件渠道自己的收件地址。
+	cfg := map[string]any{"to_email": "to@e.com"}
 	if // err 用于本次流程后续判断的err
-	err := n.sendEmail(cfg, "x"); err != nil {
+	err := n.sendEmailWithUser(cfg, "x", 1); err != nil {
 		t.Fatal(err)
 	}
 	// body 用于本次流程后续判断的请求体
@@ -698,19 +711,9 @@ func TestSendEmail_UsesSystemSMTPFallback(t *testing.T) {
 	defer cleanup()
 	// ctx 用于本次流程后续判断的ctx
 	ctx := context.Background()
-	// key、value 表示当前遍历过程中的key、value
-	for key, value := range map[string]string{
-		"smtp_server":   host,
-		"smtp_port":     port,
-		"smtp_user":     "system@e.com",
-		"smtp_password": "pw",
-		"smtp_use_tls":  "false",
-	} {
-		if // err 用于本次流程后续判断的err
-		err := store.Settings.Set(ctx, key, value); err != nil {
-			t.Fatalf("set %s: %v", key, err)
-		}
-	}
+	seedSMTPForUser(t, store, 1, map[string]string{
+		"smtp_server": host, "smtp_port": port, "smtp_user": "system@e.com", "smtp_password": "pw", "smtp_use_tls": "false",
+	})
 
 	// channelID、channelErr 保存数据库渠道及创建错误，用于覆盖测试发送的真实取渠道路径。
 	channelID, channelErr := store.Notifications.CreateChannel(ctx, &db.NotificationChannelRow{
@@ -740,57 +743,44 @@ func TestSendEmail_UsesSystemSMTPFallback(t *testing.T) {
 	}
 }
 
-// TestSMTPConfigValueUsesExclusiveExplicitModes 封装TestSMTP配置值UsesExclusiveExplicitModes业务协调。
-func TestSMTPConfigValueUsesExclusiveExplicitModes(t *testing.T) {
+// TestSMTPConfigValueReadsUserScopeOnly 验证 SMTP 配置只读用户级，渠道级旧字段不再生效。
+func TestSMTPConfigValueReadsUserScopeOnly(t *testing.T) {
 	// store、cleanup 用于本次流程后续判断的store、cleanup
-	store, cleanup := newNotifyStoreBare(t)
+	store, cleanup := newNotifyStore(t)
 	defer cleanup()
 	// ctx 用于本次流程后续判断的ctx
 	ctx := context.Background()
-	if // err 用于本次流程后续判断的err
-	err := store.Settings.Set(ctx, "smtp_server", "system.example.com"); err != nil {
-		t.Fatal(err)
-	}
+	seedSMTPForUser(t, store, 1, map[string]string{"smtp_server": "user.example.com"})
 	// n 用于本次流程后续判断的n
 	n := New("cid", store, nil)
+	// cfg 携带旧渠道级 SMTP 字段，必须被忽略。
+	cfg := map[string]any{"use_custom_smtp": true, "smtp_server": "stale-channel.example.com"}
 
 	if // got 用于本次流程后续判断的got
-	got := n.smtpConfigValue(ctx, map[string]any{
-		"use_custom_smtp": false,
-		"smtp_server":     "stale-channel.example.com",
-	}, "smtp_server", ""); got != "system.example.com" {
-		t.Fatalf("system mode mixed in channel override: %q", got)
+	got := n.smtpConfigValue(ctx, cfg, "smtp_server", "", 1); got != "user.example.com" {
+		t.Fatalf("用户级 SMTP 未生效: %q", got)
 	}
-	if // got 用于本次流程后续判断的got
-	got := n.smtpConfigValue(ctx, map[string]any{
-		"use_custom_smtp": true,
-	}, "smtp_server", ""); got != "" {
-		t.Fatalf("custom mode inherited system value: %q", got)
-	}
-	if // got 用于本次流程后续判断的got
-	got := n.smtpConfigValue(ctx, map[string]any{
-		"smtp_server": "legacy-channel.example.com",
-	}, "smtp_server", ""); got != "legacy-channel.example.com" {
-		t.Fatalf("legacy channel override compatibility lost: %q", got)
+	if // got 是未知用户读取时的回退值
+	got := n.smtpConfigValue(ctx, cfg, "smtp_server", "fallback.example.com", 2); got != "fallback.example.com" {
+		t.Fatalf("用户级缺失时应回落默认值: %q", got)
 	}
 }
 
-// TestSendEmail_IncompleteConfig 配置不完整应报错。
+// TestSendEmail_IncompleteConfig 用户级 SMTP 或收件地址缺失时应报错。
 func TestSendEmail_IncompleteConfig(t *testing.T) {
+	// store、cleanup 是未配置 SMTP 的测试仓储。
+	store, cleanup := newNotifyStoreBare(t)
+	defer cleanup()
 	// n 用于本次流程后续判断的n
-	n := New("cid", nil, nil)
-	// cases 用于本次流程后续判断的cases
-	cases := []map[string]any{
-		{"smtp_user": "u", "to_email": "t@e.com"},   // 缺 server
-		{"smtp_server": "s", "to_email": "t@e.com"}, // 缺 user
-		{"smtp_server": "s", "smtp_user": "u"},      // 缺 to
+	n := New("cid", store, nil)
+	// 未配置用户级 SMTP 时必须报错。
+	if err := n.sendEmailWithUser(map[string]any{"to_email": "t@e.com"}, "x", 1); err == nil {
+		t.Fatal("缺少用户 SMTP 配置应报错")
 	}
-	// cfg 表示当前遍历过程中的cfg
-	for _, cfg := range cases {
-		if // err 用于本次流程后续判断的err
-		err := n.sendEmail(cfg, "x"); err == nil {
-			t.Fatalf("配置不完整应报错: %v", cfg)
-		}
+	seedSMTPForUser(t, store, 1, map[string]string{"smtp_server": "127.0.0.1", "smtp_user": "u@e.com", "smtp_password": "pw"})
+	// 缺少收件地址时同样必须报错。
+	if err := n.sendEmailWithUser(map[string]any{}, "x", 1); err == nil {
+		t.Fatal("缺少收件地址应报错")
 	}
 }
 
@@ -814,18 +804,16 @@ func TestSendEmail_ConnectionFailed(t *testing.T) {
 	// host、port 用于本次流程后续判断的host、port
 	host, port, _ := strings.Cut(ln.Addr().String(), ":")
 	_ = ln.Close()
+	// store、cleanup 是带不可达 SMTP 地址的测试仓储。
+	store, cleanup := newNotifyStoreBare(t)
+	defer cleanup()
+	seedSMTPForUser(t, store, 1, map[string]string{"smtp_server": host, "smtp_port": port, "smtp_user": "u@e.com", "smtp_password": "pw"})
 	// n 用于本次流程后续判断的n
-	n := New("cid", nil, nil)
-	// cfg 用于本次流程后续判断的cfg
-	cfg := map[string]any{
-		"smtp_server":   host,
-		"smtp_port":     port,
-		"smtp_user":     "u",
-		"smtp_password": "p",
-		"to_email":      "t@e.com",
-	}
+	n := New("cid", store, nil)
+	// cfg 只保留收件地址。
+	cfg := map[string]any{"to_email": "t@e.com"}
 	if // err 用于本次流程后续判断的err
-	err := n.sendEmail(cfg, "x"); err == nil {
+	err := n.sendEmailWithUser(cfg, "x", 1); err == nil {
 		t.Fatal("连接失败应报错")
 	}
 }

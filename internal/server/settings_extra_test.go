@@ -32,7 +32,7 @@ func TestListAIModels(t *testing.T) {
 	// body 用于本次流程后续判断的请求体
 	body := `{"base_url":"` + ts.URL + `","api_key":"sk-test"}`
 	// req 用于本次流程后续判断的req
-	req := httptest.NewRequest(http.MethodPost, "/ai-models", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settings/user/ai-models", strings.NewReader(body))
 	req.AddCookie(cookie)
 	// rec 用于本次流程后续判断的rec
 	rec := httptest.NewRecorder()
@@ -83,7 +83,7 @@ func TestListAIModelsBadJSON(t *testing.T) {
 	cookie := loginHelper(t, h)
 
 	// req 用于本次流程后续判断的req
-	req := httptest.NewRequest(http.MethodPost, "/ai-models", strings.NewReader("not-json"))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settings/user/ai-models", strings.NewReader("not-json"))
 	req.AddCookie(cookie)
 	// rec 用于本次流程后续判断的rec
 	rec := httptest.NewRecorder()
@@ -103,8 +103,15 @@ func TestListAIModelsEmptyBaseURL(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer ts.Close()
-	// 设置系统设置 ai_api_url 指向该 server。
-	store.Settings.Set(context.Background(), "ai_api_url", ts.URL)
+	// 设置当前用户级 ai_api_url 指向该 server。
+	admin, adminErr := store.Users.GetByUsername(context.Background(), "admin")
+	if adminErr != nil {
+		t.Fatal(adminErr)
+	}
+	// setErr 表示写入用户级 AI 地址失败。
+	if setErr := store.UserSettings.SetForUser(context.Background(), admin.ID, "ai_api_url", ts.URL); setErr != nil {
+		t.Fatal(setErr)
+	}
 
 	// h 用于本次流程后续判断的h
 	h := srv.Router()
@@ -114,7 +121,7 @@ func TestListAIModelsEmptyBaseURL(t *testing.T) {
 	// body 用于本次流程后续判断的请求体
 	body := `{}`
 	// req 用于本次流程后续判断的req
-	req := httptest.NewRequest(http.MethodPost, "/ai-models", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settings/user/ai-models", strings.NewReader(body))
 	req.AddCookie(cookie)
 	// rec 用于本次流程后续判断的rec
 	rec := httptest.NewRecorder()
@@ -218,7 +225,6 @@ func TestSystemSettingsRequireAdmin(t *testing.T) {
 	}{
 		{http.MethodGet, "/system-settings", ""},
 		{http.MethodPut, "/system-settings/theme_color", `{"value":"red"}`},
-		{http.MethodPost, "/ai-models", `{"base_url":"http://127.0.0.1","api_key":"sk"}`},
 	}
 	// tc 表示当前遍历过程中的tc
 	for _, tc := range cases {
@@ -526,7 +532,7 @@ func TestSystemSettingsEndpointRedactsSensitiveValues(t *testing.T) {
 	ctx := context.Background()
 	// err 是写入脱敏测试秘密时返回的错误。
 	if err := store.Settings.SetMany(ctx, map[string]string{
-		"ai_api_key":                "sk-server-secret",
+		"qq_reply_secret_key":       "sk-server-secret",
 		"smtp_password":             "smtp-server-secret",
 		"captcha.remote_secret_key": "captcha-server-secret",
 	}); err != nil {
@@ -556,7 +562,7 @@ func TestSystemSettingsEndpointRedactsSensitiveValues(t *testing.T) {
 			t.Fatalf("settings response leaked secret %q: %s", secret, rec.Body.String())
 		}
 	}
-	for _, key := range []string{"ai_api_key", "smtp_password", "captcha.remote_secret_key"} { // key 是待验证的敏感配置键。
+	for _, key := range []string{"qq_reply_secret_key", "smtp_password", "captcha.remote_secret_key"} { // key 是待验证的敏感配置键。
 		// ok 表示脱敏响应是否意外包含敏感键。
 		if _, ok := response[key]; ok {
 			t.Fatalf("settings response contains sensitive key %q: %#v", key, response)
@@ -607,7 +613,7 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 	// ctx 是当前测试使用的请求上下文。
 	ctx := context.Background()
 	// err 是初始敏感设置写入错误。
-	if err := store.Settings.Set(ctx, "ai_api_key", "before"); err != nil {
+	if err := store.Settings.Set(ctx, "qq_reply_secret_key", "before"); err != nil {
 		t.Fatal(err)
 	}
 	// h 是当前测试服务的 HTTP 路由器。
@@ -615,7 +621,7 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 	// cookie 是管理员登录后得到的会话 Cookie。
 	cookie := loginHelper(t, h)
 	// replaceReq 是提交敏感替换命令的请求。
-	replaceReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"values":{"theme_color":"blue"},"secrets":{"ai_api_key":{"action":"replace","value":"after"}}}`))
+	replaceReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"values":{"theme_color":"blue"},"secrets":{"qq_reply_secret_key":{"action":"replace","value":"after"}}}`))
 	replaceReq.AddCookie(cookie)
 	// replaceRec 是替换命令的 HTTP 响应记录器。
 	replaceRec := httptest.NewRecorder()
@@ -624,11 +630,11 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 		t.Fatalf("replace status=%d body=%s", replaceRec.Code, replaceRec.Body.String())
 	}
 	// value、err 是替换后的秘密读取结果及错误。
-	if value, err := store.Settings.Get(ctx, "ai_api_key"); err != nil || value != "after" {
+	if value, err := store.Settings.Get(ctx, "qq_reply_secret_key"); err != nil || value != "after" {
 		t.Fatalf("replace value=%q err=%v", value, err)
 	}
 	// clearReq 是提交敏感清除命令的请求。
-	clearReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"secrets":{"ai_api_key":{"action":"clear"}}}`))
+	clearReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"secrets":{"qq_reply_secret_key":{"action":"clear"}}}`))
 	clearReq.AddCookie(cookie)
 	// clearRec 是清除命令的 HTTP 响应记录器。
 	clearRec := httptest.NewRecorder()
@@ -637,7 +643,7 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 		t.Fatalf("clear status=%d body=%s", clearRec.Code, clearRec.Body.String())
 	}
 	// value、err 是清除后的秘密读取结果及错误。
-	if value, err := store.Settings.Get(ctx, "ai_api_key"); err != nil || value != "" {
+	if value, err := store.Settings.Get(ctx, "qq_reply_secret_key"); err != nil || value != "" {
 		t.Fatalf("clear value=%q err=%v", value, err)
 	}
 	// admin、adminErr 保存管理员用户及其查询错误。
@@ -651,7 +657,7 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 		t.Fatalf("敏感设置写入未生成足够审计记录: records=%+v err=%v", auditRecords, auditErr)
 	}
 	// forbiddenReq 是尝试把敏感值放进普通 values 的请求。
-	forbiddenReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"values":{"ai_api_key":"leak"}}`))
+	forbiddenReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"values":{"qq_reply_secret_key":"leak"}}`))
 	forbiddenReq.AddCookie(cookie)
 	// forbiddenRec 是拒绝普通敏感字段的 HTTP 响应记录器。
 	forbiddenRec := httptest.NewRecorder()
@@ -660,7 +666,7 @@ func TestSystemSettingsEndpointUsesExplicitSecretCommands(t *testing.T) {
 		t.Fatalf("forbidden status=%d body=%s", forbiddenRec.Code, forbiddenRec.Body.String())
 	}
 	// legacyForbiddenReq 是旧版顶层敏感字段请求，必须同样被拒绝。
-	legacyForbiddenReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"ai_api_key":"legacy-leak"}`))
+	legacyForbiddenReq := httptest.NewRequest(http.MethodPut, "/system-settings", strings.NewReader(`{"qq_reply_secret_key":"legacy-leak"}`))
 	legacyForbiddenReq.AddCookie(cookie)
 	// legacyForbiddenRec 是旧版顶层敏感字段的 HTTP 响应记录器。
 	legacyForbiddenRec := httptest.NewRecorder()

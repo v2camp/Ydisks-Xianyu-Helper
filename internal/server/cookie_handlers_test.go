@@ -500,17 +500,8 @@ func TestUpdateCookieSettingsAtomically(t *testing.T) {
 	h := srv.Router()
 	// cookie 用于本次流程后续判断的登录凭证
 	cookie := loginHelper(t, h)
-	// admin 用于本次流程后续判断的admin
-	admin, _ := store.Users.GetByUsername(context.Background(), "admin")
-	// channelID、err 用于本次流程后续判断的渠道ID、err
-	channelID, err := store.Notifications.CreateChannel(context.Background(), &db.NotificationChannelRow{
-		Name: "owned", Type: "webhook", Config: `{}`, Enabled: true, UserID: admin.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	// body 用于本次流程后续判断的请求体
-	body := `{"remark":"atomic","auto_confirm":false,"pause_duration":3,"username":"login-user","show_browser":true,"channel_ids":[` + jsonInt(channelID) + `]}`
+	body := `{"remark":"atomic","auto_confirm":false,"pause_duration":3,"username":"login-user","show_browser":true,"notifications_disabled":true}`
 	// req 用于本次流程后续判断的req
 	req := httptest.NewRequest(http.MethodPut, "/cookies/acc1/settings", strings.NewReader(body))
 	req.AddCookie(cookie)
@@ -522,13 +513,8 @@ func TestUpdateCookieSettingsAtomically(t *testing.T) {
 	}
 	// detail 用于本次流程后续判断的detail
 	detail, _ := store.Cookies.GetDetails(context.Background(), "acc1")
-	// bindings 用于本次流程后续判断的bindings
-	bindings, _ := store.Notifications.AccountBindings(context.Background(), "acc1")
 	if detail.Remark != "atomic" || detail.AutoConfirm || detail.PauseDuration != 3 || detail.Username != "login-user" || !detail.ShowBrowser {
 		t.Fatalf("detail=%+v", detail)
-	}
-	if len(bindings) != 1 || bindings[0] != channelID {
-		t.Fatalf("bindings=%v", bindings)
 	}
 }
 

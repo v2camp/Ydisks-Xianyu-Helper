@@ -143,10 +143,8 @@ func TestAIKeyProviderMissWritesSingleAuditRow(t *testing.T) {
 	// store、cleanup 是带一个账号与密钥的真实测试库。
 	store, cleanup := newAIStore(t)
 	defer cleanup()
-	// ctx 是测试上下文。
-	ctx := context.Background()
 	// err 是写入测试密钥的失败原因。
-	if err := store.Settings.Set(ctx, "ai_api_key", "sk-cache"); err != nil {
+	if err := setUserAISettingForTest(store, "ai_api_key", "sk-cache"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// provider 是本用例使用的缓存实例，TTL 取默认值。

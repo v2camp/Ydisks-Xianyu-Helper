@@ -61,7 +61,7 @@ func TestMigrate_AppliesCleanSchema(t *testing.T) {
 		{"chat_sessions", "role_source"},
 		{"notification_channels", "user_id"},
 		{"notification_channels", "event_types"},
-		{"message_notifications", "event_types"},
+		{"cookies", "notifications_disabled"},
 		{"scheduled_cookies_refresh_log", "step_details"},
 		{"scheduled_cookies_refresh_log", "renew_method"},
 		{"scheduled_cookies_refresh_log", "duration_ms"},
@@ -201,7 +201,7 @@ func TestMigrate_ExistingAutomationRunsReceiveEmptyDeliveryProof(t *testing.T) {
 	}
 	// finalVersion、versionErr 验证升级包含聊天删除截止线、认证代次、会话角色、账号自动确认发货、凭证冷却、发送日计数、进程心跳迁移，并叠加上游自动免拼、砍价免拼阶段、账号级免拼安抚模板、MCP 开放服务、账号每日定时下架、账号级客服 Agent 配置（00059）、聊天时间单位统一（00060）、卡券发货渠道（00061）、消息与日志保留设置（00062）与账号级模型配置列移除（00063）、AI 决策归因日志（00064）、AI 生成归因日志（00065）、发货步骤留痕（00066）、订单商品标题快照（00067）与运营 Agent 会话留痕（00068）迁移，不能仅证明旧 delivery_proof 列存在。
 	finalVersion, versionErr := goose.GetDBVersion(rawDB)
-	if versionErr != nil || finalVersion != 68 {
+	if versionErr != nil || finalVersion != 69 {
 		t.Fatalf("final migration version=%d err=%v", finalVersion, versionErr)
 	}
 	// credential_cooldowns 表由 00050 创建，账号任务重试计数列由 00048 创建，发送日计数表由 00051 创建，进程心跳表由 00052 创建，免拼名单表由 00053 建立并已被 00056 移除，都必须在最终版本中符合预期。
@@ -321,8 +321,8 @@ func TestMigrate_UpgradesDatabaseWithMainChatVersions(t *testing.T) {
 	if versionErr != nil {
 		t.Fatalf("read final migration version: %v", versionErr)
 	}
-	if finalVersion != 68 {
-		t.Fatalf("final migration version=%d, want 68", finalVersion)
+	if finalVersion != 69 {
+		t.Fatalf("final migration version=%d, want 69", finalVersion)
 	}
 	if !tableExists(t, rawDB, "process_heartbeats") {
 		t.Fatal("升级后必须创建进程心跳持久化表")
@@ -456,7 +456,7 @@ func TestLatestMigrationsDownUpSQLite(t *testing.T) {
 		col   string
 	}{
 		{"notification_channels", "event_types"},
-		{"message_notifications", "event_types"},
+		{"cookies", "notifications_disabled"},
 		{"scheduled_cookies_refresh_log", "step_details"},
 		{"scheduled_login_renew_log", "updated_cookie_count"},
 		{"scheduled_api_cookie_renew_log", "request_count"},

@@ -5013,107 +5013,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/notifications/accounts/{cid}/bindings":
-    get:
-      operationId: getApiV1NotificationsAccountsBycidBindings
-      summary: getApiV1NotificationsAccountsBycidBindings
-      parameters:
-          - name: cid
-            in: path
-            required: true
-            schema:
-              type: string
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountBindingsResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    post:
-      operationId: postApiV1NotificationsAccountsBycidBindings
-      summary: postApiV1NotificationsAccountsBycidBindings
-      parameters:
-          - name: cid
-            in: path
-            required: true
-            schema:
-              type: string
-      security: [{cookieAuth: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/NotificationBindingRequest'
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
   "/api/v1/notifications/channels":
     get:
       operationId: getApiV1NotificationsChannels
@@ -5359,144 +5258,6 @@ paths:
       summary: postApiV1NotificationsChannelsBychannel_idTest
       parameters:
           - name: channel_id
-            in: path
-            required: true
-            schema:
-              type: string
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/notifications/messages":
-    get:
-      operationId: getApiV1NotificationsMessages
-      summary: getApiV1NotificationsMessages
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotificationBindingsByAccount'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/notifications/messages/{notification_id}":
-    delete:
-      operationId: deleteApiV1NotificationsMessagesBynotification_id
-      summary: deleteApiV1NotificationsMessagesBynotification_id
-      parameters:
-          - name: notification_id
-            in: path
-            required: true
-            schema:
-              type: string
-      security: [{cookieAuth: []}]
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/notifications/messages/account/{cid}":
-    delete:
-      operationId: deleteApiV1NotificationsMessagesAccountBycid
-      summary: deleteApiV1NotificationsMessagesAccountBycid
-      parameters:
-          - name: cid
             in: path
             required: true
             schema:
@@ -7291,108 +7052,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/settings/ai-models":
-    post:
-      operationId: postApiV1SettingsAiModels
-      summary: postApiV1SettingsAiModels
-      security: [{cookieAuth: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AIModelsRequest'
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIModelsResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  "/api/v1/settings/ai-test":
-    post:
-      operationId: postApiV1SettingsAiTest
-      summary: postApiV1SettingsAiTest
-      security: [{cookieAuth: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AIConnectionTestRequest'
-      responses:
-        '200':
-          description: 成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIConnectionTestResponse'
-        '400':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: 统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '502':
-          description: AI 上游服务或连接测试失败的统一错误响应
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
   "/api/v1/settings/ai-reply":
     get:
       operationId: getApiV1SettingsAiReply
@@ -7864,6 +7523,143 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/settings/user/integrations":
+    get:
+      operationId: getApiV1SettingsUserIntegrations
+      summary: 读取当前用户的 AI、QQ 与 SMTP 集成配置（敏感值只返回 configured 标记）
+      security: [{cookieAuth: []}]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettingsResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      operationId: putApiV1SettingsUserIntegrations
+      summary: 保存当前用户的 AI、QQ 与 SMTP 集成配置
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemSettingsUpdateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/settings/user/ai-models":
+    post:
+      operationId: postApiV1SettingsUserAiModels
+      summary: 使用当前用户的 AI 配置读取模型目录
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIModelsRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIModelsResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/v1/settings/user/ai-test":
+    post:
+      operationId: postApiV1SettingsUserAiTest
+      summary: 使用当前用户的 AI 配置测试连接
+      security: [{cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIConnectionTestRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIConnectionTestResponse'
+        '400':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 统一错误响应
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/health":
     get:
       operationId: getHealth
@@ -8319,14 +8115,6 @@ components:
       properties:
         success: {type: boolean}
         summary: {$ref: '#/components/schemas/AccountTaskSummaryResponse'}
-    AccountBindingsResponse:
-      type: object
-      required: [cookie_id, channel_ids]
-      properties:
-        cookie_id: {type: string}
-        channel_ids:
-          type: [array, 'null']
-          items: {type: integer}
     KeywordBasicResponse:
       type: object
       required: [keyword, reply]
@@ -8809,7 +8597,6 @@ components:
         event_types: {type: string}
         enabled: {type: boolean}
         to_email: {type: string}
-        use_custom_smtp: {type: boolean}
         config:
           type: object
           additionalProperties: {type: string}
@@ -8833,34 +8620,8 @@ components:
         name: {type: string}
         type: {type: string}
         config: {type: string}
-        email_recipient:
-          type: string
-          minLength: 1
-          description: 仅更新已有邮件渠道的收件地址，保留所有 SMTP 配置；与 config 互斥，不可同时改变渠道类型。
         event_types: {type: string}
         enabled: {type: boolean}
-    NotificationBindingRequest:
-      type: object
-      properties:
-        channel_ids:
-          type: array
-          items: {type: integer}
-        channel_id: {type: integer}
-        enabled: {type: boolean}
-    NotificationBinding:
-      type: object
-      required: [id, channel_id, channel_name, enabled]
-      properties:
-        id: {type: integer}
-        channel_id: {type: integer}
-        channel_name: {type: string}
-        enabled: {type: boolean}
-    NotificationBindingsByAccount:
-      type: object
-      additionalProperties:
-        type: array
-        items:
-          $ref: '#/components/schemas/NotificationBinding'
     SessionResponse:
       type: object
       required: [success, message, is_admin]
@@ -9069,10 +8830,8 @@ components:
           type: boolean
         show_browser:
           type: boolean
-        channel_ids:
-          type: array
-          items:
-            type: integer
+        notifications_disabled:
+          type: boolean
     AccountLoginInfoRequest:
       type: object
       properties:

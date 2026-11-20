@@ -248,20 +248,14 @@ func PlatformToolRisks() (*ToolRiskTable, error) {
 		// 通知：渠道、绑定与不确定通知的查询。
 		ToolRiskSpec{Name: "notification_channel_list", Risk: RiskRead},
 		ToolRiskSpec{Name: "notification_channel_get", Risk: RiskRead},
-		ToolRiskSpec{Name: "notification_binding_list", Risk: RiskRead},
-		ToolRiskSpec{Name: "notification_binding_get", Risk: RiskRead},
 		ToolRiskSpec{Name: "notification_uncertain_list", Risk: RiskRead},
 		ToolRiskSpec{Name: "notification_uncertain_list_all", Risk: RiskRead},
-		// 通知：渠道与绑定的写入；测试发送会向真实渠道投递一条消息。
+		// 通知：渠道写入；测试发送会向真实渠道投递一条消息。
 		ToolRiskSpec{Name: "notification_channel_create", Risk: RiskWrite},
 		ToolRiskSpec{Name: "notification_channel_update", Risk: RiskWrite},
 		ToolRiskSpec{Name: "notification_channel_test", Risk: RiskWrite},
-		ToolRiskSpec{Name: "notification_binding_set", Risk: RiskWrite},
-		ToolRiskSpec{Name: "notification_binding_toggle", Risk: RiskWrite},
-		// 通知：删除渠道与绑定；清空账号绑定一次移除全部关联。
+		// 通知：删除渠道。
 		ToolRiskSpec{Name: "notification_channel_delete", Risk: RiskDestructive},
-		ToolRiskSpec{Name: "notification_binding_delete", Risk: RiskDestructive},
-		ToolRiskSpec{Name: "notification_binding_clear_account", Risk: RiskDestructive},
 
 		// 系统设置与 AI：查询。
 		ToolRiskSpec{Name: "settings_get_system", Risk: RiskRead},

@@ -26,7 +26,7 @@ func TestOpsChatRecordInboundDeduplicates(t *testing.T) {
 			// at 是第一条消息的固定毫秒时间。
 			at := time.Now().Add(-2 * time.Hour).UnixMilli()
 			// record 是同一条平台消息的记录输入。
-			record := OpsInboundRecord{Channel: "qq", TargetOpenID: "group-1", PlatformMsgID: "m1", Content: "第一句", IsGroup: true, At: at}
+			record := OpsInboundRecord{UserID: 1, Channel: "qq", TargetOpenID: "group-1", PlatformMsgID: "m1", Content: "第一句", IsGroup: true, At: at}
 			// first、inserted、firstErr 是首次写入结果。
 			first, inserted, firstErr := store.OpsChat.RecordInbound(ctx, record)
 			if firstErr != nil || !inserted || first.ID <= 0 {
@@ -41,7 +41,7 @@ func TestOpsChatRecordInboundDeduplicates(t *testing.T) {
 				t.Fatalf("重复平台消息应判重，实际 inserted=%v msg=%+v", duplicated, second)
 			}
 			// page、listErr 是当前会话的消息页。
-			page, listErr := store.OpsChat.ListOpsMessages(ctx, first.ConversationID, 0, 10)
+			page, listErr := store.OpsChat.ListOpsMessages(ctx, 1, first.ConversationID, 0, 10)
 			if listErr != nil {
 				t.Fatalf("读取运营消息失败: %v", listErr)
 			}
@@ -49,7 +49,7 @@ func TestOpsChatRecordInboundDeduplicates(t *testing.T) {
 				t.Fatalf("重复消息不得重复落库，实际 %+v", page.Messages)
 			}
 			// conversation、getErr 是会话摘要快照。
-			conversation, getErr := store.OpsChat.GetConversation(ctx, first.ConversationID)
+			conversation, getErr := store.OpsChat.GetConversation(ctx, 1, first.ConversationID)
 			if getErr != nil {
 				t.Fatalf("读取运营会话失败: %v", getErr)
 			}
@@ -76,13 +76,13 @@ func TestOpsChatAppendOutboundAndPages(t *testing.T) {
 			at := time.Now().Add(-time.Hour).UnixMilli()
 			// inbound、_, inboundErr 是建立会话的入站消息。
 			inbound, _, inboundErr := store.OpsChat.RecordInbound(ctx, OpsInboundRecord{
-				TargetOpenID: "user-1", PlatformMsgID: "in-1", Content: "在吗", At: at,
+				UserID: 1, TargetOpenID: "user-1", PlatformMsgID: "in-1", Content: "在吗", At: at,
 			})
 			if inboundErr != nil {
 				t.Fatalf("建立运营会话失败: %v", inboundErr)
 			}
 			// message、conversation、appendErr 是出站写入结果。
-			message, conversation, appendErr := store.OpsChat.AppendOutbound(ctx, inbound.ConversationID, "在的", "在的", at+1000)
+			message, conversation, appendErr := store.OpsChat.AppendOutbound(ctx, 1, inbound.ConversationID, "在的", "在的", at+1000)
 			if appendErr != nil {
 				t.Fatalf("写入出站消息失败: %v", appendErr)
 			}
@@ -93,7 +93,7 @@ func TestOpsChatAppendOutboundAndPages(t *testing.T) {
 				t.Fatalf("出站消息未推进会话摘要，实际 %+v", conversation)
 			}
 			// byTarget、_, targetErr 是按目标写入的第二条出站消息。
-			byTarget, _, targetErr := store.OpsChat.AppendOutboundByTarget(ctx, "qq", "user-1", "稍等", "稍等", at+2000)
+			byTarget, _, targetErr := store.OpsChat.AppendOutboundByTarget(ctx, 1, "qq", "user-1", "稍等", "稍等", at+2000)
 			if targetErr != nil || byTarget.ID == 0 {
 				t.Fatalf("按目标写入出站消息失败: msg=%+v err=%v", byTarget, targetErr)
 			}
@@ -101,11 +101,11 @@ func TestOpsChatAppendOutboundAndPages(t *testing.T) {
 				t.Fatalf("命令回复来源应为 command，实际 %q", byTarget.Source)
 			}
 			if // _, _, missingErr 是目标不存在时的写入结果。
-			_, _, missingErr := store.OpsChat.AppendOutboundByTarget(ctx, "qq", "missing", "x", "x", at); !errors.Is(missingErr, ErrNotFound) {
+			_, _, missingErr := store.OpsChat.AppendOutboundByTarget(ctx, 1, "qq", "missing", "x", "x", at); !errors.Is(missingErr, ErrNotFound) {
 				t.Fatalf("目标不存在应返回 ErrNotFound，实际 %v", missingErr)
 			}
 			// listPage、listErr 是会话分页结果。
-			listPage, listErr := store.OpsChat.ListConversations(ctx, 1, 10)
+			listPage, listErr := store.OpsChat.ListConversations(ctx, 1, 1, 10)
 			if listErr != nil {
 				t.Fatalf("读取运营会话列表失败: %v", listErr)
 			}
@@ -139,7 +139,7 @@ func TestOpsChatListMessagesCursor(t *testing.T) {
 			for index := 0; index < 5; index++ {
 				// message、_, err 是当前入站消息写入结果。
 				message, _, err := store.OpsChat.RecordInbound(ctx, OpsInboundRecord{
-					TargetOpenID: "group-cursor", PlatformMsgID: "m-" + string(rune('a'+index)), Content: "msg", IsGroup: true, At: base + int64(index),
+					UserID: 1, TargetOpenID: "group-cursor", PlatformMsgID: "m-" + string(rune('a'+index)), Content: "msg", IsGroup: true, At: base + int64(index),
 				})
 				if err != nil {
 					t.Fatalf("写入游标夹具失败: %v", err)
@@ -147,7 +147,7 @@ func TestOpsChatListMessagesCursor(t *testing.T) {
 				conversationID = message.ConversationID
 			}
 			// latest、latestErr 是最新一页消息。
-			latest, latestErr := store.OpsChat.ListOpsMessages(ctx, conversationID, 0, 2)
+			latest, latestErr := store.OpsChat.ListOpsMessages(ctx, 1, conversationID, 0, 2)
 			if latestErr != nil {
 				t.Fatalf("读取最新消息页失败: %v", latestErr)
 			}
@@ -159,7 +159,7 @@ func TestOpsChatListMessagesCursor(t *testing.T) {
 				t.Fatalf("消息应保持时间正序，实际 %+v", latest.Messages)
 			}
 			// older、olderErr 是以最新页首条为游标的更早消息页。
-			older, olderErr := store.OpsChat.ListOpsMessages(ctx, conversationID, latest.Messages[0].ID, 2)
+			older, olderErr := store.OpsChat.ListOpsMessages(ctx, 1, conversationID, latest.Messages[0].ID, 2)
 			if olderErr != nil {
 				t.Fatalf("读取更早消息页失败: %v", olderErr)
 			}
@@ -167,7 +167,7 @@ func TestOpsChatListMessagesCursor(t *testing.T) {
 				t.Fatalf("中间页应为 2 条且有更早消息，实际 %+v", older)
 			}
 			// oldest、oldestErr 是最后一页消息。
-			oldest, oldestErr := store.OpsChat.ListOpsMessages(ctx, conversationID, older.Messages[0].ID, 2)
+			oldest, oldestErr := store.OpsChat.ListOpsMessages(ctx, 1, conversationID, older.Messages[0].ID, 2)
 			if oldestErr != nil {
 				t.Fatalf("读取最后一页失败: %v", oldestErr)
 			}
@@ -187,7 +187,7 @@ func TestOpsChatGetConversationNotFound(t *testing.T) {
 		t.Run(target.name, func(t *testing.T) {
 			defer target.cleanup()
 			if // _, err 是不存在会话的读取结果。
-			_, err := target.store.OpsChat.GetConversation(context.Background(), 999999); !errors.Is(err, ErrNotFound) {
+			_, err := target.store.OpsChat.GetConversation(context.Background(), 1, 999999); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("不存在的会话应返回 ErrNotFound，实际 %v", err)
 			}
 		})
@@ -206,18 +206,18 @@ func TestCleanupRetentionOpsChat(t *testing.T) {
 	// fresh 是保留期内的毫秒时间点。
 	fresh := time.Now().AddDate(0, 0, -1).UnixMilli()
 	// oldWithMessage、_, err 是带超期消息的会话。
-	oldWithMessage, _, err := s.OpsChat.RecordInbound(ctx, OpsInboundRecord{TargetOpenID: "old-msg", PlatformMsgID: "m-old", Content: "旧消息", At: expired})
+	oldWithMessage, _, err := s.OpsChat.RecordInbound(ctx, OpsInboundRecord{UserID: 1, TargetOpenID: "old-msg", PlatformMsgID: "m-old", Content: "旧消息", At: expired})
 	if err != nil {
 		t.Fatalf("写入超期运营消息失败: %v", err)
 	}
 	// freshConversation、_, freshErr 是保留期内的会话。
-	freshConversation, _, freshErr := s.OpsChat.RecordInbound(ctx, OpsInboundRecord{TargetOpenID: "fresh", PlatformMsgID: "m-fresh", Content: "新消息", At: fresh})
+	freshConversation, _, freshErr := s.OpsChat.RecordInbound(ctx, OpsInboundRecord{UserID: 1, TargetOpenID: "fresh", PlatformMsgID: "m-fresh", Content: "新消息", At: fresh})
 	if freshErr != nil {
 		t.Fatalf("写入近期运营消息失败: %v", freshErr)
 	}
 	// err 是插入超期空会话夹具的失败原因。
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO ops_conversations (channel,target_openid,is_group,last_message_at,last_message_preview,created_at,updated_at)
-		VALUES (?,?,?,?,?,?,?)`, "qq", "old-empty", 0, expired, "", expired, expired); err != nil {
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO ops_conversations (user_id,channel,target_openid,is_group,last_message_at,last_message_preview,created_at,updated_at)
+		VALUES (?,?,?,?,?,?,?,?)`, 1, "qq", "old-empty", 0, expired, "", expired, expired); err != nil {
 		t.Fatalf("插入超期空会话失败: %v", err)
 	}
 	// report、retentionErr 是本次清理报告及失败原因。

@@ -1,5 +1,5 @@
 // tools_notifications_test.go 覆盖通知域工具：渠道 CRUD 与编辑态脱敏、秘密零泄漏扫描、
-// 账号绑定读/写/切换/删除/清空、不确定通知的用户视图与管理员视图数据边界。
+// 不确定通知的用户视图与管理员视图数据边界。
 
 package mcp
 
@@ -26,29 +26,15 @@ type fakeNotificationChannels struct {
 	channels []notificationsapp.ChannelSummary
 	// editor 是渠道编辑态返回。
 	editor notificationsapp.ChannelEditor
-	// bindings 是绑定摘要列表返回。
-	bindings []notificationsapp.BindingSummary
-	// bindingIDs 是账号启用渠道标识返回。
-	bindingIDs []int64
 	// listErr、editorErr、createErr、updateErr、deleteErr、testErr 是渠道类错误。
 	listErr, editorErr, createErr, updateErr, deleteErr, testErr error
-	// bindingsErr、bindingIDsErr、setErr、toggleErr、deleteBindingErr、clearErr 是绑定类错误。
-	bindingsErr, bindingIDsErr, setErr, toggleErr, deleteBindingErr, clearErr error
 	// createID 是创建成功返回的渠道标识。
 	createID int64
 	// listCalls、editorCalls、createCalls、updateCalls、deleteCalls、testCalls 是渠道类调用计数。
 	listCalls, editorCalls, createCalls, updateCalls, deleteCalls, testCalls int
-	// bindingsCalls、bindingIDsCalls、setCalls、toggleCalls、deleteBindingCalls、clearCalls 是绑定类调用计数。
-	bindingsCalls, bindingIDsCalls, setCalls, toggleCalls, deleteBindingCalls, clearCalls int
 	// createdInput、updatedPatch 是写入用例收到的入参。
 	createdInput notificationsapp.ChannelInput
 	updatedPatch notificationsapp.ChannelPatch
-	// setChannelIDs 是整组设置收到的渠道标识。
-	setChannelIDs []int64
-	// toggledEnabled 是单条切换收到的目标状态。
-	toggledEnabled bool
-	// deletedBindingID 是删除绑定收到的标识。
-	deletedBindingID int64
 }
 
 // ListChannels 回传预设渠道摘要。
@@ -87,45 +73,6 @@ func (f *fakeNotificationChannels) DeleteChannel(context.Context, int64, int64) 
 func (f *fakeNotificationChannels) TestChannel(context.Context, int64, int64) error {
 	f.testCalls++
 	return f.testErr
-}
-
-// ListBindings 回传预设绑定摘要。
-func (f *fakeNotificationChannels) ListBindings(context.Context, int64) ([]notificationsapp.BindingSummary, error) {
-	f.bindingsCalls++
-	return f.bindings, f.bindingsErr
-}
-
-// GetBindingIDs 回传预设渠道标识。
-func (f *fakeNotificationChannels) GetBindingIDs(context.Context, int64, string) ([]int64, error) {
-	f.bindingIDsCalls++
-	return f.bindingIDs, f.bindingIDsErr
-}
-
-// SetBindings 记录整组设置入参。
-func (f *fakeNotificationChannels) SetBindings(_ context.Context, _ int64, _ string, channelIDs []int64) error {
-	f.setCalls++
-	f.setChannelIDs = channelIDs
-	return f.setErr
-}
-
-// SetSingleBinding 记录单条切换入参。
-func (f *fakeNotificationChannels) SetSingleBinding(_ context.Context, _ int64, _ string, _ int64, enabled bool) error {
-	f.toggleCalls++
-	f.toggledEnabled = enabled
-	return f.toggleErr
-}
-
-// DeleteBinding 记录删除绑定入参。
-func (f *fakeNotificationChannels) DeleteBinding(_ context.Context, _, bindingID int64) error {
-	f.deleteBindingCalls++
-	f.deletedBindingID = bindingID
-	return f.deleteBindingErr
-}
-
-// DeleteAccountBindings 记录账号绑定清空调用。
-func (f *fakeNotificationChannels) DeleteAccountBindings(context.Context, int64, string) error {
-	f.clearCalls++
-	return f.clearErr
 }
 
 // fakeUncertainNotifications 是不确定通知查询假端口。
@@ -198,7 +145,7 @@ func TestNotificationChannelViewsNeverLeakSecrets(t *testing.T) {
 		},
 		editor: notificationsapp.ChannelEditor{
 			ID: 3, Name: "邮件通知", Type: "email", EventTypes: "all", Enabled: true,
-			ToEmail: "owner@example.com", UseCustomSMTP: true,
+			ToEmail: "owner@example.com",
 		},
 		createID: 9,
 	}
@@ -221,10 +168,10 @@ func TestNotificationChannelViewsNeverLeakSecrets(t *testing.T) {
 	if editorResult.IsError {
 		t.Fatalf("渠道编辑态失败: %s", resultJSON(t, editorResult))
 	}
-	// editorText 是编辑态 JSON，必须含收件地址与自定义 SMTP 标记，且明确密钥只写不读。
+	// editorText 是编辑态 JSON，必须含收件地址，且明确密钥只写不读。
 	editorText := resultJSON(t, editorResult)
 	// fragment 是编辑态响应中必须出现的片段。
-	for _, fragment := range []string{`"to_email":"owner@example.com"`, `"use_custom_smtp":true`, "只可写入"} {
+	for _, fragment := range []string{`"to_email":"owner@example.com"`, "只可写入"} {
 		if !strings.Contains(editorText, fragment) {
 			t.Fatalf("渠道编辑态缺少 %s: %s", fragment, editorText)
 		}
@@ -276,15 +223,6 @@ func TestNotificationChannelUpdateSemantics(t *testing.T) {
 		fake.updatedPatch.Config != nil || fake.updatedPatch.Type != nil || fake.updatedPatch.EventTypes != nil {
 		t.Fatalf("渠道更新补丁异常: %+v", fake.updatedPatch)
 	}
-	// recipientOnly 是只改邮件收件地址的更新，必须走 email_recipient 以保留 SMTP 凭据。
-	recipientOnly := invoke(endpoint, ctx, "notification_channel_update", map[string]any{
-		"channel_id": 3.0, "email_recipient": "new@example.com",
-	})
-	if recipientOnly.IsError || fake.updatedPatch.EmailRecipient == nil || *fake.updatedPatch.EmailRecipient != "new@example.com" {
-		t.Fatalf("邮件收件地址更新异常: %+v", fake.updatedPatch)
-	}
-	// 更新响应同样不得回显任何密钥。
-	assertNoNotificationSecret(t, resultJSON(t, recipientOnly))
 	// 越权或参数错误时归一为对应中文提示。
 	fake.updateErr = notificationsapp.ErrChannelForbidden
 	// forbidden 是越权更新结果。
@@ -334,77 +272,6 @@ func TestNotificationChannelConfirmGates(t *testing.T) {
 	// failed = 测试发送失败结果。
 	failed := invoke(endpoint, ctx, "notification_channel_test", map[string]any{"channel_id": 3.0, "confirm": true})
 	assertNoNotificationSecret(t, resultJSON(t, failed))
-}
-
-// TestNotificationBindingTools 验证绑定读/整组设置/单条切换/删除/清空的映射与 confirm 守卫。
-func TestNotificationBindingTools(t *testing.T) {
-	// fake 是通知渠道假端口（含绑定能力）。
-	fake := &fakeNotificationChannels{
-		bindings: []notificationsapp.BindingSummary{
-			{ID: 5, CookieID: "acc1", ChannelID: 3, ChannelName: "邮件通知", Enabled: true},
-			{ID: 6, CookieID: "acc1", ChannelID: 4, ChannelName: "机器人通知", Enabled: false},
-		},
-		bindingIDs: []int64{3},
-	}
-	// endpoint、ctx 是通知工具端点与身份上下文。
-	endpoint, ctx := newNotificationToolEndpoint(t, fake, nil)
-	// listResult 是绑定列表结果。
-	listResult := invoke(endpoint, ctx, "notification_binding_list", nil)
-	if listResult.IsError || !strings.Contains(resultJSON(t, listResult), `"channel_name":"邮件通知"`) {
-		t.Fatalf("绑定列表异常: %s", resultJSON(t, listResult))
-	}
-	// getResult 是账号绑定读取结果。
-	getResult := invoke(endpoint, ctx, "notification_binding_get", map[string]any{"account_id": "acc1"})
-	if getResult.IsError || !strings.Contains(resultJSON(t, getResult), `"channel_ids":[3]`) {
-		t.Fatalf("账号绑定读取异常: %s", resultJSON(t, getResult))
-	}
-	// setResult 是整组设置结果。
-	setResult := invoke(endpoint, ctx, "notification_binding_set", map[string]any{
-		"account_id": "acc1", "channel_ids": []any{3.0, 4.0},
-	})
-	if setResult.IsError || fake.setCalls != 1 || len(fake.setChannelIDs) != 2 {
-		t.Fatalf("整组设置异常: %s", resultJSON(t, setResult))
-	}
-	// emptySet 是空数组整组设置，表示解绑全部渠道。
-	emptySet := invoke(endpoint, ctx, "notification_binding_set", map[string]any{"account_id": "acc1", "channel_ids": []any{}})
-	if emptySet.IsError || fake.setCalls != 2 || len(fake.setChannelIDs) != 0 {
-		t.Fatalf("空数组整组设置异常: %s", resultJSON(t, emptySet))
-	}
-	// badIDs 是元素类型错误的设置入参，必须被拒绝且零触达。
-	badIDs := invoke(endpoint, ctx, "notification_binding_set", map[string]any{"account_id": "acc1", "channel_ids": []any{"3"}})
-	if !badIDs.IsError || fake.setCalls != 2 {
-		t.Fatalf("非法渠道数组必须零触达: %s", resultJSON(t, badIDs))
-	}
-	// toggleResult 是单条切换结果。
-	toggleResult := invoke(endpoint, ctx, "notification_binding_toggle", map[string]any{
-		"account_id": "acc1", "channel_id": 4.0, "enabled": true,
-	})
-	if toggleResult.IsError || fake.toggleCalls != 1 || !fake.toggledEnabled {
-		t.Fatalf("单条切换异常: %s", resultJSON(t, toggleResult))
-	}
-	// deleteDenied、clearDenied 是缺 confirm 的破坏性操作。
-	deleteDenied := invoke(endpoint, ctx, "notification_binding_delete", map[string]any{"binding_id": 5.0})
-	// clearDenied 是缺 confirm 的账号绑定清空。
-	clearDenied := invoke(endpoint, ctx, "notification_binding_clear_account", map[string]any{"account_id": "acc1"})
-	if !deleteDenied.IsError || !clearDenied.IsError || fake.deleteBindingCalls != 0 || fake.clearCalls != 0 {
-		t.Fatal("缺 confirm 的绑定删除与清空必须零触达")
-	}
-	// deleteAllowed、clearAllowed 是显式确认后的操作。
-	deleteAllowed := invoke(endpoint, ctx, "notification_binding_delete", map[string]any{"binding_id": 5.0, "confirm": true})
-	// clearAllowed 是显式确认后的账号绑定清空。
-	clearAllowed := invoke(endpoint, ctx, "notification_binding_clear_account", map[string]any{"account_id": "acc1", "confirm": true})
-	if deleteAllowed.IsError || clearAllowed.IsError || fake.deleteBindingCalls != 1 || fake.clearCalls != 1 ||
-		fake.deletedBindingID != 5 {
-		t.Fatalf("带 confirm 的绑定删除与清空应执行: %s / %s",
-			resultJSON(t, deleteAllowed), resultJSON(t, clearAllowed))
-	}
-	// 账号越权时归一为中文提示。
-	fake.setErr = notificationsapp.ErrAccountForbidden
-	// forbidden 是越权整组设置结果。
-	forbidden := invoke(endpoint, ctx, "notification_binding_set", map[string]any{"account_id": "acc9", "channel_ids": []any{3.0}})
-	if !strings.Contains(resultJSON(t, forbidden), "无权操作该通知渠道或账号绑定") {
-		t.Fatalf("账号越权映射异常: %s", resultJSON(t, forbidden))
-	}
 }
 
 // TestNotificationUncertainViews 验证不确定通知的用户视图与管理员视图数据边界（TR-10.2）。
@@ -457,14 +324,11 @@ func TestNotificationToolInventory(t *testing.T) {
 	expected := map[string]bool{
 		"notification_channel_list": true, "notification_channel_get": true, "notification_channel_create": true,
 		"notification_channel_update": true, "notification_channel_delete": true, "notification_channel_test": true,
-		"notification_binding_list": true, "notification_binding_get": true, "notification_binding_set": true,
-		"notification_binding_toggle": true, "notification_binding_delete": true, "notification_binding_clear_account": true,
 		"notification_uncertain_list": true, "notification_uncertain_list_all": true,
 	}
 	// destructive 是必须标记破坏性的工具集合。
 	destructive := map[string]bool{
 		"notification_channel_delete": true, "notification_channel_test": true,
-		"notification_binding_delete": true, "notification_binding_clear_account": true,
 	}
 	// endpoint、_ 是注册通知工具的端点。
 	endpoint, _ := newNotificationToolEndpoint(t, &fakeNotificationChannels{}, &fakeUncertainNotifications{})
@@ -493,7 +357,7 @@ func TestNotificationToolInventory(t *testing.T) {
 	if defs := empty.ToolDefs(); len(defs) != 0 {
 		t.Fatalf("通知端口缺失时不应注册工具，实际 %d 个", len(defs))
 	}
-	// 仅缺不确定通知端口时，渠道与绑定工具仍应可用。
+	// 仅缺不确定通知端口时，渠道工具仍应可用。
 	partial, _ := newProtocolEndpoint(t)
 	partial.RegisterNotificationTools(&fakeNotificationChannels{}, nil)
 	// partialNames 是部分装配下注册到的工具名集合。

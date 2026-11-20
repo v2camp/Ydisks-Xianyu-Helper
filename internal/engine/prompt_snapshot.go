@@ -139,8 +139,13 @@ func (a *AIReplierImpl) ExportPromptSnapshot(ctx context.Context, m ChatMessage)
 		snap.Intent = IntentComplaint
 	}
 
-	// model 是当时生效的模型标识；只读 ai_model，不触碰加密的 API 密钥设置。
-	model := strings.TrimSpace(readRaw("模型配置", "ai_model"))
+	// model 是当时生效的模型标识；按账号所有者读取用户级配置，不触碰加密的 API 密钥。
+	model, modelErr := a.store.GetUserSettingForAccount(ctx, a.cookieID, "ai_model")
+	if modelErr != nil {
+		snap.Warnings = append(snap.Warnings, "读取模型配置失败: "+modelErr.Error())
+		model = ""
+	}
+	model = strings.TrimSpace(model)
 	if model == "" {
 		model = defaultAIModel
 	}

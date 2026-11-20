@@ -1,6 +1,6 @@
 import type { SystemSettings } from './api';
 
-/** 设置保存范围：system 只写系统字段，ai 只写 AI 字段，ops 只写运营 Agent 字段。 */
+/** 设置保存范围：system 只写系统字段，ai 只写 AI 行为字段，ops 只写运营 Agent 字段。 */
 export type SettingsScope = 'system' | 'ai' | 'ops';
 
 /** 登录凭据编辑表单。 */
@@ -23,14 +23,6 @@ export type CredentialsMessage = {
   text: string;
 } | null;
 
-/** AI 连接测试操作提示。 */
-export type ConnectionTestMessage = {
-  /** 提示类型。 */
-  type: 'success' | 'error';
-  /** 提示文本。 */
-  text: string;
-} | null;
-
 /** Settings feature 暴露的请求状态。 */
 export type SettingsRequestStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -46,20 +38,6 @@ export type SettingsFeatureState = {
   saving: boolean;
   /** 系统配置保存错误。 */
   saveError: string;
-  /** 可选 AI 模型列表。 */
-  aiModels: string[];
-  /** AI 模型列表加载状态。 */
-  modelsLoading: boolean;
-  /** AI 模型列表错误。 */
-  modelError: string;
-  /** 模型下拉框是否展开。 */
-  modelDropdownOpen: boolean;
-  /** AI 连接测试加载状态。 */
-  connectionTestLoading: boolean;
-  /** AI 连接测试操作提示。 */
-  connectionTestMessage: ConnectionTestMessage;
-  /** API Key 是否明文显示。 */
-  showApiKey: boolean;
   /** 远程验证秘钥是否明文显示。 */
   showCaptchaSecret: boolean;
   /** 当前密码是否明文显示。 */

@@ -5,6 +5,7 @@ import { type RequestControlOptions } from '../../../shared/http/client';
 import { collectionFrom } from '../../../shared/http/contract';
 import type { SystemSettingsUpdate } from '../../../shared/api-contract/settings';
 export type * from './models';
+export { isQQConnectorReady } from '../../../shared/api-contract/settings';
 export { normalizeSystemSettingsUpdate } from '../../../shared/api-contract/settings';
 export type { SensitiveSettingChange,SystemSettingsUpdate } from '../../../shared/api-contract/settings';
 
@@ -81,38 +82,6 @@ export const updateSystemSettings = async (settings: Partial<SystemSettings> | S
     body: normalizeSystemSettingsUpdate(settings),
     signal,
   }), options);
-
-/** 向服务端请求指定人工智能服务的可用模型列表。 */
-export const fetchAIModels = async (baseURL: string, apiKey = '', options?: RequestControlOptions): Promise<string[]> => {
-  // response 是模型发现接口的具名响应。
-  const response = await runContractRequest(/* signal 是本次模型发现请求的超时与取消控制信号。 */ signal => contractClient.POST('/api/v1/settings/ai-models', {
-    body: { base_url: baseURL, api_key: apiKey },
-    signal,
-  }), options);
-  return Array.isArray(response.models) ? response.models : [];
-};
-
-/** AI 连接测试结果。 */
-export interface AIConnectionTestResult {
-  /** 测试是否成功。 */
-  success: boolean;
-  /** 实际被测试的模型名称。 */
-  model: string;
-  /** 请求耗时毫秒数。 */
-  latency_ms: number;
-  /** 模型回复摘要。 */
-  reply: string;
-}
-
-/** 发送一次最小对话请求验证 AI API 地址、密钥和模型的组合是否可用。 */
-export const testAIConnection = async (baseURL: string, apiKey: string, model: string, options?: RequestControlOptions): Promise<AIConnectionTestResult> => {
-  // response 是由版本化 OpenAPI operation 校验后的非敏感连接诊断结果。
-  const response = await runContractRequest(/* signal 是本次长时连接测试的超时与取消控制信号。 */ signal => contractClient.POST('/api/v1/settings/ai-test', {
-    body: { base_url: baseURL, api_key: apiKey, model },
-    signal,
-  }), { timeoutMs: 60_000, ...options });
-  return response;
-};
 
 /** 在保存登录凭据前读取当前会话状态。 */
 export const verifySession = async (options?: RequestControlOptions): Promise<SettingsSessionStatusResponse> =>

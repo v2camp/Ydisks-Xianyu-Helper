@@ -125,24 +125,20 @@ func newNotifyStoreBare(t *testing.T) (*db.Store, func()) {
 	return s, func() { _ = d.Close() }
 }
 
-// addWebhookChannel 插入一个 webhook 渠道并绑定到 cookieID，返回渠道 ID。
+// addWebhookChannel 为 cookieID 的所有者插入一个 webhook 渠道，返回渠道 ID。
+// 渠道归属本地用户后不再需要逐账号绑定。
 func addWebhookChannel(t *testing.T, s *db.Store, cookieID, name, webhookURL string) int64 {
 	t.Helper()
 	// res、err 用于本次流程后续判断的res、err
 	res, err := s.DB.ExecContext(context.Background(),
-		`INSERT INTO notification_channels (name,type,config,enabled,user_id) VALUES (?,?,?,1,1)`,
-		name, "webhook", `{"webhook_url":"`+webhookURL+`"}`)
+		`INSERT INTO notification_channels (name,type,config,enabled,user_id)
+		 SELECT ?,?,?,1,user_id FROM cookies WHERE id=?`,
+		name, "webhook", `{"webhook_url":"`+webhookURL+`"}`, cookieID)
 	if err != nil {
 		t.Fatalf("insert channel: %v", err)
 	}
 	// id 用于本次流程后续判断的标识
 	id, _ := res.LastInsertId()
-	if // err 用于本次流程后续判断的err
-	_, err := s.DB.ExecContext(context.Background(),
-		`INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES (?,?,1)`,
-		cookieID, id); err != nil {
-		t.Fatalf("insert binding: %v", err)
-	}
 	return id
 }
 

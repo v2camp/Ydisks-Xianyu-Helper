@@ -31,13 +31,14 @@ import { appendCardData,batchCreateCards,createCard,deleteCard,getCardDetails,ge
 import { getChatMessagePage,getChatMessages,getChatSessionPage,getChatSessions,markChatRead,sendChatImage,sendChatMessage } from './chat/api';
 import { getDashboardStats,getOrderAnalytics,getValidOrders } from './dashboard/api';
 import { cancelItemPublishBatch,createItem,deleteItem,deleteItemPublishBatch,getItemDetail,getItemPublishBatch,getItemPublishBatches,getItems,previewItemPublishBatch,publishItem,recommendPublishCategory,retryFailedItemPublishBatch,startItemPublishBatch,syncItemsFromAccount,updateItem } from './items/api';
-import { createNotificationChannel,deleteAccountNotifications,deleteMessageNotification,deleteNotificationChannel,getAccountBindings,getMessageNotifications,getNotificationChannel,getNotificationChannels,setAccountBindings,setMessageNotification,testNotificationChannel,updateNotificationChannel,updateSystemSettings as updateNotificationSystemSettings } from './connectors/api';
+import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,testNotificationChannel,updateNotificationChannel } from './connectors/api';
 import { cancelOrderRefreshJob,deleteOrder,getAdminStats,getOrderDetail,getOrders,manualShipOrder,syncOrders,syncSingleOrder,updateOrder } from './orders/api';
 import { clearDefaultReplyRecords,deleteDefaultReply,deleteReplyRule,deleteShippingRule,getAutomationIssues,getDefaultReplies,getDefaultReply,getReplyRules,getShippingRules,getShippingRulesPage,resolveAutomationRun,resolveDeferredAutomationTask,updateDefaultReply,updateReplyRule,updateShippingRule } from './rules/api';
 import { initializeAdmin,login,logout,verifySession } from './session/api';
-import { changePassword,fetchAIModels,generateMCPToken,getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateAgentSupportSettings,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
+import { changePassword,generateMCPToken,getAgentSupportSettings,getMCPAudit,getMCPServiceStatus,getSystemSettings,revokeMCPToken,updateAgentSupportSettings,updateLoginCredentials,updateMCPServiceSettings,updateSystemSettings } from './settings/api';
+import { fetchUserAIModels } from '../../shared/api-contract/userIntegrations';
 import { getHealth } from './system/api';
-import { normalizeSystemSettingsUpdate } from '../../shared/api-contract/settings';
+import { normalizeSystemSettingsUpdate,normalizeUserIntegrationSettingsUpdate } from '../../shared/api-contract/settings';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -78,68 +79,60 @@ test('updateSystemSettings uses one atomic bulk request', async () => {
 	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ theme_color: 'blue', renewal_log_retention_days: 15 });
 } /* 测试回调验证：updateSystemSettings uses one atomic bulk request。 */);
 
-test('updateSystemSettings separates sensitive values into explicit commands', /* 当前回调验证敏感设置三态命令请求体。 */ async () => {
+test('updateSystemSettings separates instance-level sensitive values into explicit commands', /* 当前回调验证实例级敏感设置三态命令请求体。 */ async () => {
   // fetchMock 是系统设置更新请求的 HTTP 替身。
   const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
   stubContractFetch(fetchMock);
-  await updateSystemSettings({ ai_api_key: 'new-secret', smtp_password: '' });
+  await updateSystemSettings({ qq_reply_secret_key: 'new-secret', 'captcha.remote_secret_key': '' });
   // payload 是普通设置与敏感命令分离后的请求体。
   const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
   expect(payload.values).toEqual({});
   expect(payload.secrets).toEqual({
-    ai_api_key: { action: 'replace', value: 'new-secret' },
-    smtp_password: { action: 'clear' },
+    qq_reply_secret_key: { action: 'replace', value: 'new-secret' },
+    'captcha.remote_secret_key': { action: 'clear' },
   });
 });
 
-test('normalizeSystemSettingsUpdate separates every sensitive system setting', /* 当前回调验证共享归一器不会遗漏任一敏感系统设置。 */ () => {
-  // payload 是混合普通值和四类敏感值后的系统设置命令。
+test('normalizeSystemSettingsUpdate separates every instance-level sensitive setting', /* 当前回调验证共享归一器不会遗漏任一实例级敏感设置。 */ () => {
+  // payload 是混合普通值和两类敏感值后的系统设置命令。
   const payload = normalizeSystemSettingsUpdate({
     theme_color: 'blue',
-    ai_api_key: 'test-ai-key',
-    smtp_password: 'test-smtp-password',
     qq_reply_secret_key: 'test-qq-secret',
     'captcha.remote_secret_key': 'test-captcha-secret',
-    'qqbot.app_secret': 'test-qqbot-secret',
   });
   expect(payload.values).toEqual({ theme_color: 'blue' });
   expect(payload.secrets).toEqual({
-    ai_api_key: { action: 'replace', value: 'test-ai-key' },
-    smtp_password: { action: 'replace', value: 'test-smtp-password' },
     qq_reply_secret_key: { action: 'replace', value: 'test-qq-secret' },
     'captcha.remote_secret_key': { action: 'replace', value: 'test-captcha-secret' },
-    'qqbot.app_secret': { action: 'replace', value: 'test-qqbot-secret' },
   });
 });
 
-test('QQ connector settings send the AppSecret as a secret command and the AppID as plain value', /* 当前回调验证 QQ 连接器只有 AppSecret 走敏感命令通道。 */ () => {
-  // payload 是混合 AppID 明文与 AppSecret 明文后的系统设置命令。
-  const payload = normalizeSystemSettingsUpdate({
+test('user integration settings send every secret key as a secret command', /* 当前回调验证用户级集成配置的敏感命令分流。 */ () => {
+  // payload 是混合普通集成值与三类秘密的用户集成命令。
+  const payload = normalizeUserIntegrationSettingsUpdate({
     'qqbot.app_id': '102012345',
     'qqbot.app_secret': 'test-qqbot-secret',
+    smtp_server: 'smtp.example.com',
+    smtp_port: 465,
+    smtp_user: 'sender@example.com',
+    smtp_password: 'test-smtp-secret',
+    ai_api_url: 'https://api.example.com/v1',
+    ai_model: 'test-model',
+    ai_api_key: 'test-ai-key',
   });
-  expect(payload.values).toEqual({ 'qqbot.app_id': '102012345' });
-  expect(payload.secrets).toEqual({ 'qqbot.app_secret': { action: 'replace', value: 'test-qqbot-secret' } });
-});
-
-test('notification SMTP settings separate the authorization code into a secret command', /* 当前回调验证通知页不会把 SMTP 授权码写入普通设置。 */ async () => {
-  // fetchMock 是通知页系统设置更新请求的 HTTP 替身。
-  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
-  stubContractFetch(fetchMock);
-  await updateNotificationSystemSettings({
-    smtp_server: 'smtp.example.com', smtp_port: 465, smtp_user: 'sender@example.com',
-    smtp_password: 'test-smtp-secret', qq_reply_secret_key: 'test-qq-secret',
-    'captcha.remote_secret_key': 'test-captcha-secret',
+  expect(payload.values).toEqual({
+    'qqbot.app_id': '102012345',
+    smtp_server: 'smtp.example.com',
+    smtp_port: 465,
+    smtp_user: 'sender@example.com',
+    ai_api_url: 'https://api.example.com/v1',
+    ai_model: 'test-model',
   });
-  // payload 是通知页适配器分流后的普通设置和敏感命令。
-  const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-  expect(payload.values).toEqual({ smtp_server: 'smtp.example.com', smtp_port: 465, smtp_user: 'sender@example.com' });
   expect(payload.secrets).toEqual({
+    'qqbot.app_secret': { action: 'replace', value: 'test-qqbot-secret' },
     smtp_password: { action: 'replace', value: 'test-smtp-secret' },
-    qq_reply_secret_key: { action: 'replace', value: 'test-qq-secret' },
-    'captcha.remote_secret_key': { action: 'replace', value: 'test-captcha-secret' },
+    ai_api_key: { action: 'replace', value: 'test-ai-key' },
   });
-  expect(payload.values).not.toHaveProperty('smtp_password');
 });
 
 test('health API exposes build metadata through the request boundary', async () => {
@@ -390,11 +383,11 @@ test('Settings 配置、模型和凭据 API 转发外部取消信号', async () 
   // controller 是 Settings feature Hook 使用的请求控制器。
   const controller = new AbortController();
   await getSystemSettings({ signal: controller.signal });
-  await fetchAIModels('https://ai.example.com', 'secret', { signal: controller.signal });
+  await fetchUserAIModels('https://ai.example.com', 'secret', { signal: controller.signal });
   await verifySession({ signal: controller.signal });
   await updateLoginCredentials({ current_password: 'old', new_username: 'admin' }, { signal: controller.signal });
   expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/settings/system', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-  expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/settings/ai-models', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/settings/user/ai-models', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/v1/session', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/v1/session/credentials', expect.objectContaining({ signal: expect.any(AbortSignal) }));
 } /* 测试回调验证：Settings 配置、模型和凭据 API 转发外部取消信号。 */);
@@ -590,19 +583,19 @@ test('getSystemSettings normalizes numeric renewal retention', async () => {
   expect(settings.renewal_log_retention_days).toBe(10);
 } /* 测试回调验证：getSystemSettings normalizes numeric renewal retention。 */);
 
-// getSystemSettings 脱敏响应测试验证客户端只接收敏感配置状态。
+// getSystemSettings 脱敏响应测试验证客户端只接收实例级敏感配置状态。
 test('getSystemSettings keeps only sensitive configuration markers', /* 当前回调验证脱敏设置归一化。 */ async () => {
   // fetchMock 返回服务端的脱敏设置视图，不包含任何敏感明文。
   stubContractFetch(vi.fn().mockResolvedValue(jsonResponse({
-    ai_api_key_configured: 'true',
-    smtp_password_configured: 'false',
+    'captcha.remote_secret_key_configured': 'true',
+    qq_reply_secret_key_configured: 'false',
   })));
 
   // settings 是客户端归一化后的脱敏设置对象。
   const settings = await getSystemSettings();
-  expect(settings.ai_api_key).toBeUndefined();
-  expect(settings.ai_api_key_configured).toBe(true);
-  expect(settings.smtp_password_configured).toBe(false);
+  expect(settings['captcha.remote_secret_key']).toBeUndefined();
+  expect(settings['captcha.remote_secret_key_configured']).toBe(true);
+  expect(settings.qq_reply_secret_key_configured).toBe(false);
 });
 
 // AI 总闸缺省语义是开启：服务端没写该键时界面必须显示为开，写 false 才是关闭。
@@ -666,13 +659,13 @@ test('account editor settings use one aggregate request', async () => {
 	stubContractFetch(fetchMock);
 	await updateAccountSettings('acc1', {
 	  remark: 'main', auto_confirm: false, pause_duration: 5,
-	  username: 'user', show_browser: true, channel_ids: [1, 2],
+	  username: 'user', show_browser: true, notifications_disabled: true,
 	});
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/accounts/acc1/settings', expect.objectContaining({ method: 'PUT' }));
 	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
 	  remark: 'main', auto_confirm: false, pause_duration: 5,
-	  username: 'user', show_browser: true, channel_ids: [1, 2],
+	  username: 'user', show_browser: true, notifications_disabled: true,
 	});
 } /* 测试回调验证：account editor settings use one aggregate request。 */);
 
@@ -1079,12 +1072,12 @@ test('updateNotificationChannel supports partial enabled updates', async () => {
 } /* 测试回调验证：updateNotificationChannel supports partial enabled updates。 */);
 
 test('getNotificationChannel returns only editor-safe email fields', async () => {
-  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7, name: '邮件通知', type: 'email', enabled: true, to_email: 'to@example.com', use_custom_smtp: false })); /* fetchMock 是通知渠道编辑读取请求的网络替身。 */
+  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7, name: '邮件通知', type: 'email', enabled: true, to_email: 'to@example.com' })); /* fetchMock 是通知渠道编辑读取请求的网络替身。 */
   stubContractFetch(fetchMock);
 
   // result 是编辑接口返回的脱敏邮件渠道配置。
   const result = await getNotificationChannel('7');
-  expect(result).toMatchObject({ id: 7, to_email: 'to@example.com', use_custom_smtp: false });
+  expect(result).toMatchObject({ id: 7, to_email: 'to@example.com' });
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/notifications/channels/7', expect.objectContaining({ method: 'GET', credentials: 'include' }));
 } /* 测试回调验证：getNotificationChannel returns only editor-safe email fields。 */);
 
@@ -1099,15 +1092,6 @@ test('updateNotificationChannel serializes config and event types', /* 当前回
   expect(body.event_types).toBe(JSON.stringify(['system_error']));
 });
 
-test('getMessageNotifications 展开数组并忽略非法绑定值', /* 当前回调验证消息通知响应归一化。 */ async () => {
-  // fetchMock 是消息通知接口的网络替身。
-  const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
-    'account-1': [{ channel_id: 1, channel_name: '邮件', enabled: true }],
-    'account-2': null,
-  }));
-  stubContractFetch(fetchMock);
-  await expect(getMessageNotifications()).resolves.toEqual({ success: true, data: [{ cookie_id: 'account-1', channel_id: 1, channel_name: '邮件', enabled: true }] });
-});
 
 test('publishItem 序列化图片和地点字段', /* 当前回调验证商品发布 multipart 请求体。 */ async () => {
   // fetchMock 是商品发布上传接口的网络替身。
@@ -1570,7 +1554,7 @@ const runVersionedSettingsCardNotificationAPITest = async () => {
   await getAllAISettings();
   await getAccountAISettings('acc1');
   await updateAccountAISettings('acc1', { ai_enabled: true });
-  await fetchAIModels('https://ai.example.com');
+  await fetchUserAIModels('https://ai.example.com');
   await getCards();
   await createCard({ name: '卡券', type: 'text', text_content: 'CARD' });
   await updateCard(1, { enabled: false });
@@ -1582,12 +1566,6 @@ const runVersionedSettingsCardNotificationAPITest = async () => {
   await createNotificationChannel({ name: '通知', type: 'bark', config: {} });
   await updateNotificationChannel('1', { enabled: false });
   await deleteNotificationChannel('1');
-  await getMessageNotifications();
-  await setMessageNotification('acc1', 1, true);
-  await deleteMessageNotification('1');
-  await deleteAccountNotifications('acc1');
-  await getAccountBindings('acc1');
-  await setAccountBindings('acc1', [1]);
   await testNotificationChannel('1');
 
   expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/settings/system', expect.objectContaining({ method: 'GET' }));
@@ -1595,7 +1573,7 @@ const runVersionedSettingsCardNotificationAPITest = async () => {
   expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/v1/settings/ai-reply', expect.objectContaining({ method: 'GET' }));
   expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/v1/settings/ai-reply/acc1', expect.objectContaining({ method: 'GET' }));
   expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/v1/settings/ai-reply/acc1', expect.objectContaining({ method: 'PUT' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(6, '/api/v1/settings/ai-models', expect.objectContaining({ method: 'POST' }));
+  expect(fetchMock).toHaveBeenNthCalledWith(6, '/api/v1/settings/user/ai-models', expect.objectContaining({ method: 'POST' }));
   expect(fetchMock).toHaveBeenNthCalledWith(7, '/api/v1/cards', expect.objectContaining({ method: 'GET' }));
   expect(fetchMock).toHaveBeenNthCalledWith(8, '/api/v1/cards', expect.objectContaining({ method: 'POST' }));
   expect(fetchMock).toHaveBeenNthCalledWith(9, '/api/v1/cards/1', expect.objectContaining({ method: 'PUT' }));
@@ -1607,13 +1585,7 @@ const runVersionedSettingsCardNotificationAPITest = async () => {
   expect(fetchMock).toHaveBeenNthCalledWith(15, '/api/v1/notifications/channels', expect.objectContaining({ method: 'POST' }));
   expect(fetchMock).toHaveBeenNthCalledWith(16, '/api/v1/notifications/channels/1', expect.objectContaining({ method: 'PUT' }));
   expect(fetchMock).toHaveBeenNthCalledWith(17, '/api/v1/notifications/channels/1', expect.objectContaining({ method: 'DELETE' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(18, '/api/v1/notifications/messages', expect.objectContaining({ method: 'GET' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(19, '/api/v1/notifications/accounts/acc1/bindings', expect.objectContaining({ method: 'POST' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(20, '/api/v1/notifications/messages/1', expect.objectContaining({ method: 'DELETE' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(21, '/api/v1/notifications/messages/account/acc1', expect.objectContaining({ method: 'DELETE' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(22, '/api/v1/notifications/accounts/acc1/bindings', expect.objectContaining({ method: 'GET' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(23, '/api/v1/notifications/accounts/acc1/bindings', expect.objectContaining({ method: 'POST' }));
-  expect(fetchMock).toHaveBeenNthCalledWith(24, '/api/v1/notifications/channels/1/test', expect.objectContaining({ method: 'POST' }));
+  expect(fetchMock).toHaveBeenNthCalledWith(18, '/api/v1/notifications/channels/1/test', expect.objectContaining({ method: 'POST' }));
 };
 
 // 账号 AI 设置保存只在用户本次切换过开关时提交 ai_enabled，其余情况省略该字段让后端保留原有语义。
@@ -1820,15 +1792,15 @@ const runVersionedRemainingAPITest = async () => {
 
 test('remaining public APIs use versioned compatibility routes', runVersionedRemainingAPITest);
 
-// 仅更新收件地址的请求必须省略完整 config，避免清除仍留在服务器的 SMTP 秘密。
-test('通知编辑可单独更新收件地址', /* recipientPatchAdapterTest 检查契约客户端实际序列化的载荷。 */ async () => {
+// 邮件渠道只提交收件地址，渠道级 SMTP 配置已不再支持。
+test('通知编辑提交邮件收件地址', /* recipientPatchAdapterTest 检查契约客户端实际序列化的载荷。 */ async () => {
   // fetchMock 模拟成功更新，仍通过真实请求序列化路径。
   const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } }));
   stubContractFetch(fetchMock);
-  await updateNotificationChannel('1', { name: 'renamed', email_recipient: 'new@example.com' });
-  // body 是已经发送的请求体，用于证明没有 config 字段。
+  await updateNotificationChannel('1', { name: 'renamed', config: { to_email: 'new@example.com' } });
+  // body 是已经发送的请求体，用于证明只提交收件地址配置。
   const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
-  expect(body).toEqual({ name: 'renamed', email_recipient: 'new@example.com' });
+  expect(body).toEqual({ name: 'renamed', config: JSON.stringify({ to_email: 'new@example.com' }) });
 });
 
 // MCP 状态接口归一非敏感字段并走版本化路径。

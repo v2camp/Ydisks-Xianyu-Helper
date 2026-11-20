@@ -77,10 +77,13 @@ func (r storeRepository) RetryOutbox(ctx context.Context, messageID int64, worke
 	return r.store.Notifications.RetryOutbox(ctx, messageID, workerToken, lastError, nextAttemptAt, permanent)
 }
 
-// GetSetting 委托系统设置读取。
+// GetSetting 读取系统设置；用户集成键不再有全局值，返回空字符串。
 func (r storeRepository) GetSetting(ctx context.Context, key string) (string, error) {
 	if r.store.Settings == nil {
 		return "", errors.New("系统设置 repository 未初始化")
+	}
+	if db.IsUserIntegrationSettingKey(key) {
+		return "", nil
 	}
 	if db.IsSensitiveSettingKey(key) {
 		return r.store.ReadSensitiveSettingForAccount(ctx, r.cookieID, key, "settings.use", "notifications")
@@ -88,10 +91,16 @@ func (r storeRepository) GetSetting(ctx context.Context, key string) (string, er
 	return r.store.Settings.Get(ctx, key)
 }
 
-// GetSettingForUser 按通知渠道所属用户读取系统设置，避免全局通知器丢失敏感设置所有者。
+// GetSettingForUser 按通知渠道所属用户读取设置；用户集成键走用户级作用域与审计。
 func (r storeRepository) GetSettingForUser(ctx context.Context, userID int64, key string) (string, error) {
 	if r.store.Settings == nil {
 		return "", errors.New("系统设置 repository 未初始化")
+	}
+	if db.IsUserIntegrationSettingKey(key) {
+		if db.IsSensitiveSettingKey(key) {
+			return r.store.ReadSensitiveUserSetting(ctx, userID, key, "settings.use", "notifications")
+		}
+		return r.store.UserSettings.GetForUser(ctx, userID, key)
 	}
 	if db.IsSensitiveSettingKey(key) {
 		return r.store.ReadSensitiveSetting(ctx, userID, key, "settings.use", "notifications")

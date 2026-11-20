@@ -152,10 +152,6 @@ func TestCleanupVerifyDataRemovesRowsAndVerifyDataIsDisabled(t *testing.T) {
 	if channelEnabled != 0 {
 		t.Fatal("dbverify 验证通知渠道应默认禁用")
 	}
-	if // err 用于本次流程后续判断的err
-	err := store.Notifications.SetBindings(ctx, ids.accountID, []int64{channelID}); err != nil {
-		t.Fatalf("SetBindings: %v", err)
-	}
 	// ruleID、err 用于本次流程后续判断的规则ID、err
 	ruleID, err := store.Automation.Create(ctx, db.AutomationRuleInput{
 		UserID: user.ID, CookieID: ids.accountID, ItemID: ids.itemID, Name: "付款发货",
@@ -187,11 +183,10 @@ func TestCleanupVerifyDataRemovesRowsAndVerifyDataIsDisabled(t *testing.T) {
 	var count int
 	// name、query 表示当前遍历过程中的name、query
 	for name, query := range map[string]string{
-		"automation_runs":    `SELECT COUNT(*) FROM automation_runs WHERE cookie_id=? OR trigger_key=?`,
-		"automation_rules":   `SELECT COUNT(*) FROM automation_rules WHERE cookie_id=? OR item_id=?`,
-		"notification_links": `SELECT COUNT(*) FROM message_notifications WHERE cookie_id=?`,
-		"orders":             `SELECT COUNT(*) FROM orders WHERE cookie_id=? OR order_id=?`,
-		"items":              `SELECT COUNT(*) FROM item_info WHERE cookie_id=? OR item_id=?`,
+		"automation_runs":  `SELECT COUNT(*) FROM automation_runs WHERE cookie_id=? OR trigger_key=?`,
+		"automation_rules": `SELECT COUNT(*) FROM automation_rules WHERE cookie_id=? OR item_id=?`,
+		"orders":           `SELECT COUNT(*) FROM orders WHERE cookie_id=? OR order_id=?`,
+		"items":            `SELECT COUNT(*) FROM item_info WHERE cookie_id=? OR item_id=?`,
 	} {
 		// err 用于本次流程后续判断的err
 		var err error

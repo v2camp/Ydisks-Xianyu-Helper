@@ -75,52 +75,6 @@ func (r NotificationChannelRepository) OwnsChannel(ctx context.Context, channelI
 	return r.store.Notifications.OwnsChannel(ctx, channelID, userID)
 }
 
-// OwnsAccount 查询账号归属，不读取或解密 Cookie。
-func (r NotificationChannelRepository) OwnsAccount(ctx context.Context, userID int64, cookieID string) (bool, error) {
-	return r.store.Cookies.ExistsOwned(ctx, userID, cookieID)
-}
-
-// ListBindings 查询绑定摘要并转换为应用模型。
-func (r NotificationChannelRepository) ListBindings(ctx context.Context, userID int64) ([]notificationsapp.BindingSummary, error) {
-	// rows、err 保存数据库绑定摘要及错误。
-	rows, err := r.store.Notifications.ListBindingsForUser(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	// bindings 保存不含配置的应用绑定摘要。
-	bindings := make([]notificationsapp.BindingSummary, 0, len(rows))
-	// row 表示当前待转换的数据库绑定行。
-	for _, row := range rows {
-		bindings = append(bindings, notificationsapp.BindingSummary{ID: row.ID, CookieID: row.CookieID, ChannelID: row.ChannelID, ChannelName: row.ChannelName, Enabled: row.Enabled})
-	}
-	return bindings, nil
-}
-
-// GetBindingIDs 查询账号启用的通知渠道 ID。
-func (r NotificationChannelRepository) GetBindingIDs(ctx context.Context, cookieID string) ([]int64, error) {
-	return r.store.Notifications.AccountBindings(ctx, cookieID)
-}
-
-// SetBindings 覆盖保存账号绑定，并保留数据库事务和跨归属校验。
-func (r NotificationChannelRepository) SetBindings(ctx context.Context, cookieID string, channelIDs []int64) error {
-	return normalizeNotificationRepositoryError(r.store.Notifications.SetBindings(ctx, cookieID, channelIDs))
-}
-
-// SetSingleBinding 更新单个账号绑定状态并归一化资源错误。
-func (r NotificationChannelRepository) SetSingleBinding(ctx context.Context, cookieID string, channelID int64, enabled bool) error {
-	return normalizeNotificationRepositoryError(r.store.Notifications.SetSingleBinding(ctx, cookieID, channelID, enabled))
-}
-
-// DeleteBinding 删除用户的一条绑定并归一化资源错误。
-func (r NotificationChannelRepository) DeleteBinding(ctx context.Context, userID, bindingID int64) error {
-	return normalizeNotificationRepositoryError(r.store.Notifications.DeleteBinding(ctx, userID, bindingID))
-}
-
-// DeleteAccountBindings 删除用户账号的全部绑定并归一化资源错误。
-func (r NotificationChannelRepository) DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error {
-	return normalizeNotificationRepositoryError(r.store.Notifications.DeleteAccountBindings(ctx, userID, cookieID))
-}
-
 // normalizeNotificationRepositoryError 将数据库归属错误转换为应用错误，隐藏基础设施类型。
 func normalizeNotificationRepositoryError(err error) error {
 	if errors.Is(err, db.ErrNotFound) {

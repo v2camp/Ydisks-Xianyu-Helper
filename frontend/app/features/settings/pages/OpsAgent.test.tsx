@@ -3,9 +3,10 @@ import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react'
 import { afterEach,beforeEach,describe,expect,test,vi } from 'vitest';
 import OpsAgent from './OpsAgent';
 import {
-  getOpsConversations,getOpsMessages,getSystemSettings,sendOpsMessage,updateSystemSettings,verifySession,
+  getOpsConversations,getOpsMessages,sendOpsMessage,verifySession,
 } from '../api';
-import type { OpsConversation,SystemSettings } from '../models';
+import { getUserIntegrations,updateUserIntegrations } from '../../../../shared/api-contract/userIntegrations';
+import type { OpsConversation } from '../models';
 
 vi.mock('../api', /* opsAgentApiMockFactory 只替换请求入口，保留纯函数判定避免测试重复实现。 */ async (importOriginal) => {
   // actual 是真实适配层，保留 isQQBotConnectorReady 等纯函数。
@@ -14,19 +15,22 @@ vi.mock('../api', /* opsAgentApiMockFactory 只替换请求入口，保留纯函
     ...actual,
     getOpsConversations: vi.fn(),
     getOpsMessages: vi.fn(),
-    getSystemSettings: vi.fn(),
     sendOpsMessage: vi.fn(),
-    updateSystemSettings: vi.fn(),
     verifySession: vi.fn(),
   };
 });
 
-// getSettingsMock 是系统设置读取的替身，负责让运营配置离开加载态。
-const getSettingsMock = vi.mocked(getSystemSettings);
+vi.mock('../../../../shared/api-contract/userIntegrations', /* userIntegrationsMockFactory 替换用户集成配置请求。 */ () => ({
+  getUserIntegrations: vi.fn(),
+  updateUserIntegrations: vi.fn(),
+}));
+
+// getIntegrationsMock 是用户集成配置读取的替身，负责让运营配置离开加载态。
+const getIntegrationsMock = vi.mocked(getUserIntegrations);
+// updateIntegrationsMock 是用户集成配置保存的替身，用于断言只提交两个 ops 键。
+const updateIntegrationsMock = vi.mocked(updateUserIntegrations);
 // verifySessionMock 是会话校验的替身，页面只消费其中的用户名。
 const verifySessionMock = vi.mocked(verifySession);
-// updateSettingsMock 是运营配置保存的替身，用于断言只提交两个 ops 键。
-const updateSettingsMock = vi.mocked(updateSystemSettings);
 // conversationsMock 是运营会话列表读取的替身。
 const conversationsMock = vi.mocked(getOpsConversations);
 // messagesMock 是运营消息读取的替身。
@@ -35,7 +39,7 @@ const messagesMock = vi.mocked(getOpsMessages);
 const sendMock = vi.mocked(sendOpsMessage);
 
 // READY_SETTINGS 是 QQ 凭据齐全且入站开关已关闭的运营配置快照。
-const READY_SETTINGS: SystemSettings = {
+const READY_SETTINGS: Record<string, string | number | boolean | undefined> = {
   'qqbot.app_id': '102012345',
   'qqbot.app_secret_configured': true,
   'qqbot.commands_enabled': false,
@@ -43,7 +47,7 @@ const READY_SETTINGS: SystemSettings = {
 };
 
 // MISSING_CREDENTIALS_SETTINGS 是尚未配置 QQ 凭据的运营配置快照。
-const MISSING_CREDENTIALS_SETTINGS: SystemSettings = {
+const MISSING_CREDENTIALS_SETTINGS: Record<string, string | number | boolean | undefined> = {
   'qqbot.commands_enabled': false,
   'qqbot.command_openids': '',
 };
@@ -58,9 +62,9 @@ afterEach(/* 当前回调隔离每个用例创建的 DOM。 */ () => cleanup());
 
 beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响应。 */ () => {
   vi.clearAllMocks();
-  getSettingsMock.mockResolvedValue(READY_SETTINGS);
+  getIntegrationsMock.mockResolvedValue(READY_SETTINGS);
   verifySessionMock.mockResolvedValue({ authenticated: true, username: 'admin' });
-  updateSettingsMock.mockResolvedValue({ success: true });
+  updateIntegrationsMock.mockResolvedValue({ success: true });
   conversationsMock.mockResolvedValue({ conversations: [conversationFixture], total: 1, page: 1, pageSize: 20, totalPages: 1 });
   messagesMock.mockResolvedValue({ messages: [], hasMore: false });
   sendMock.mockResolvedValue({
@@ -89,14 +93,14 @@ describe('OpsAgent', /* 当前测试组验证运营 Agent 页头、入站配置�
     const allowlist = screen.getByLabelText('命令发送者白名单（openid）') as HTMLTextAreaElement;
     fireEvent.change(allowlist, { target: { value: 'openid-a' } });
     fireEvent.click(screen.getByRole('button', { name: '保存运营配置' }));
-    await waitFor(/* 当前回调等待保存请求发出。 */ () => expect(updateSettingsMock).toHaveBeenCalledTimes(1));
+    await waitFor(/* 当前回调等待保存请求发出。 */ () => expect(updateIntegrationsMock).toHaveBeenCalledTimes(1));
     // payload 是本次提交的运营配置载荷。
-    const payload = updateSettingsMock.mock.calls[0][0] as Record<string, unknown>;
+    const payload = updateIntegrationsMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload).toEqual({ 'qqbot.commands_enabled': true, 'qqbot.command_openids': 'openid-a' });
     expect(await screen.findByText('运营 Agent 配置已保存')).toBeTruthy();
   });
 
-  test('QQ 凭据就绪时依赖行显示已配置且输入可用', /* 当前测试验证凭据状态来自系统设置快照。 */ async () => {
+  test('QQ 凭据就绪时依赖行显示已配置且输入可用', /* 当前测试验证凭据状态来自用户集成配置快照。 */ async () => {
     render(<OpsAgent />);
     // 设置区默认收起，先展开 QQ 入站命令。
     fireEvent.click(await screen.findByRole('button', { name: /QQ 入站命令/ }));
@@ -110,7 +114,7 @@ describe('OpsAgent', /* 当前测试组验证运营 Agent 页头、入站配置�
   });
 
   test('QQ 凭据未就绪时禁用发送并提示配置位置', /* 当前测试验证凭据缺失不会放开人工发送。 */ async () => {
-    getSettingsMock.mockResolvedValue(MISSING_CREDENTIALS_SETTINGS);
+    getIntegrationsMock.mockResolvedValue(MISSING_CREDENTIALS_SETTINGS);
     render(<OpsAgent />);
     // 设置区默认收起，先展开 QQ 入站命令。
     fireEvent.click(await screen.findByRole('button', { name: /QQ 入站命令/ }));

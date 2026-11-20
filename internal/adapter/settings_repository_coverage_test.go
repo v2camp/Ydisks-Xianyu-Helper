@@ -8,6 +8,45 @@ import (
 	settingsapp "xianyu-go/internal/application/settings"
 )
 
+// TestSettingsRepositoryUserIntegrations 覆盖用户集成配置的判定、保存、脱敏与敏感读取。
+func TestSettingsRepositoryUserIntegrations(t *testing.T) {
+	t.Setenv("XIANYU_DATA_KEY", "settings-adapter-integration-key")
+	// store、cleanup 提供真实 SQLite 设置存储。
+	store, cleanup := newAdapterTestStore(t)
+	defer cleanup()
+	// ctx 限制本测试所有数据库操作的生命周期。
+	ctx := context.Background()
+	// owner 是测试管理员；ownerErr 是查询错误。
+	owner, ownerErr := store.Users.GetByUsername(ctx, "admin")
+	if ownerErr != nil || owner == nil {
+		t.Fatalf("读取测试用户失败: err=%v", ownerErr)
+	}
+	// repository 是设置数据库适配器。
+	repository := NewSettingsRepository(store)
+	// keyReady 验证用户集成键白名单判定。
+	keyReady := repository.IsUserIntegrationSettingKey("ai_api_key") && !repository.IsUserIntegrationSettingKey("theme_color")
+	if !keyReady {
+		t.Fatal("用户集成键白名单判定异常")
+	}
+	// applyErr 表示保存用户级普通值与敏感命令失败。
+	applyErr := repository.ApplyUserChanges(ctx, owner.ID,
+		map[string]string{"ai_api_url": "https://adapter.example.com/v1"},
+		map[string]settingsapp.SecretChange{"ai_api_key": {Action: "replace", Value: "adapter-key"}})
+	if applyErr != nil {
+		t.Fatal(applyErr)
+	}
+	// redacted、redactedErr 是脱敏视图与读取错误。
+	redacted, redactedErr := repository.RedactedUser(ctx, owner.ID)
+	if redactedErr != nil || redacted["ai_api_key_configured"] != "true" || redacted["ai_api_url"] != "https://adapter.example.com/v1" {
+		t.Fatalf("脱敏视图异常: view=%+v err=%v", redacted, redactedErr)
+	}
+	// secret、secretErr 是受控敏感读取结果与错误。
+	secret, secretErr := repository.ReadSensitiveUser(ctx, owner.ID, "ai_api_key", "settings.use", "test")
+	if secretErr != nil || secret != "adapter-key" {
+		t.Fatalf("敏感读取异常: value=%q err=%v", secret, secretErr)
+	}
+}
+
 // TestSettingsRepositoryDeterministicPaths 覆盖设置适配器的系统、用户、AI 和归属查询路径。
 func TestSettingsRepositoryDeterministicPaths(t *testing.T) {
 	t.Setenv("XIANYU_DATA_KEY", "settings-adapter-test-key")

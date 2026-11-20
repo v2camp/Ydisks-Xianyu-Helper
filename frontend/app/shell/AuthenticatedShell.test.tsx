@@ -139,7 +139,7 @@ describe('AuthenticatedShell 页面组合行为', /* 当前回调验证权限回
     expect(screen.queryByTestId('settings-page')).toBeNull();
   });
 
-  test('非管理员访问运营 Agent 页时回退到仪表盘', /* 当前回调验证非管理员的运营 Agent 页权限回退。 */ async () => {
+  test('非管理员访问运营 Agent 页时加载用户级页面', /* 当前回调验证运营 Agent 对所有登录用户开放。 */ async () => {
     // appContentModule 表示动态加载的页面组合模块。
     const appContentModule = await loadAppContent();
     // AppContentComponent 表示动态模块导出的页面组合组件。
@@ -153,8 +153,8 @@ describe('AuthenticatedShell 页面组合行为', /* 当前回调验证权限回
       />,
     );
 
-    await waitFor(/* dashboardAssertion 等待仪表盘懒加载完成。 */ () => expect(screen.getByTestId('dashboard-page')).toBeTruthy());
-    expect(screen.queryByTestId('ops-agent-page')).toBeNull();
+    await waitFor(/* opsAgentAssertion 等待用户级运营 Agent 页面懒加载完成。 */ () => expect(screen.getByTestId('ops-agent-page')).toBeTruthy());
+    expect(screen.queryByTestId('dashboard-page')).toBeNull();
   });
 
   test('管理员访问运营 Agent 页时加载页面', /* 当前回调验证管理员运营 Agent 页面加载。 */ async () => {

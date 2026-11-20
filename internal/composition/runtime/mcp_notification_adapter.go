@@ -52,36 +52,6 @@ func (a *mcpNotificationChannelPorts) TestChannel(ctx context.Context, userID, c
 	return a.service.TestChannel(ctx, userID, channelID, time.Now())
 }
 
-// ListBindings 透传绑定摘要列表用例。
-func (a *mcpNotificationChannelPorts) ListBindings(ctx context.Context, userID int64) ([]notificationsapp.BindingSummary, error) {
-	return a.service.ListBindings(ctx, userID)
-}
-
-// GetBindingIDs 透传账号启用渠道读取用例。
-func (a *mcpNotificationChannelPorts) GetBindingIDs(ctx context.Context, userID int64, cookieID string) ([]int64, error) {
-	return a.service.GetBindingIDs(ctx, userID, cookieID)
-}
-
-// SetBindings 透传账号绑定整组覆盖用例。
-func (a *mcpNotificationChannelPorts) SetBindings(ctx context.Context, userID int64, cookieID string, channelIDs []int64) error {
-	return a.service.SetBindings(ctx, userID, cookieID, channelIDs)
-}
-
-// SetSingleBinding 透传单个绑定切换用例。
-func (a *mcpNotificationChannelPorts) SetSingleBinding(ctx context.Context, userID int64, cookieID string, channelID int64, enabled bool) error {
-	return a.service.SetSingleBinding(ctx, userID, cookieID, channelID, enabled)
-}
-
-// DeleteBinding 透传绑定删除用例。
-func (a *mcpNotificationChannelPorts) DeleteBinding(ctx context.Context, userID, bindingID int64) error {
-	return a.service.DeleteBinding(ctx, userID, bindingID)
-}
-
-// DeleteAccountBindings 透传账号绑定清空用例。
-func (a *mcpNotificationChannelPorts) DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error {
-	return a.service.DeleteAccountBindings(ctx, userID, cookieID)
-}
-
 // mcpUncertainNotificationPorts 把不确定通知查询服务投影为 MCP 端口。
 type mcpUncertainNotificationPorts struct {
 	// service 是不确定通知查询应用服务。

@@ -121,10 +121,10 @@ export const AppContent: React.FC<AppContentProps> = ({
         onDeliveryTargetHandled={onDeliveryTargetHandled}
       />;
       case 'delivery-templates': return <DeliveryTemplates />;
-      case 'connectors': return <Connectors isAdmin={isAdmin} />;
+      case 'connectors': return <Connectors />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
-      case 'customer-agent': return isAdmin ? <CustomerAgent /> : <Dashboard />;
-      case 'ops-agent': return isAdmin ? <OpsAgent onNavigate={onNavigate} /> : <Dashboard />;
+      case 'customer-agent': return isAdmin ? <CustomerAgent onNavigate={onNavigate} /> : <Dashboard />;
+      case 'ops-agent': return <OpsAgent onNavigate={onNavigate} />;
       default: return <Dashboard />;
     }
   };

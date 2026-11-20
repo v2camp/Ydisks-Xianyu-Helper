@@ -1,24 +1,38 @@
 // models 保存本 feature adapter 输出的 UI 模型；这些模型不直接代表 HTTP DTO。
-/** 由当前 feature adapter 归一后的 SystemSettings UI 模型；不直接暴露 HTTP DTO。 */
+/** 由当前 feature adapter 归一后的用户集成配置 UI 模型；不直接暴露 HTTP DTO。 */
 export interface SystemSettings {
-  /** 默认 AI 模型名称。 */
+  /** 当前用户默认 AI 模型名称。 */
   ai_model?: string;
-  /** 全局 AI API 密钥。 */
+  /** 当前用户的 AI API 密钥草稿，仅存在于提交请求中，服务端不回显明文。 */
   ai_api_key?: string;
-  /** 全局 AI API 密钥是否已在服务端配置。 */
+  /** 当前用户的 AI API 密钥是否已在服务端配置。 */
   ai_api_key_configured?: boolean;
-  /** 全局 AI API 地址。 */
+  /** 当前用户的 AI API 地址。 */
   ai_api_url?: string;
-  /** 全局 AI 基础地址。 */
+  /** 当前用户的 AI 基础地址。 */
   ai_base_url?: string;
   /** 系统默认回复文案。 */
   default_reply?: string;
   /** 是否允许注册新用户。 */
   registration_enabled?: boolean;
-  /** 系统 SMTP 服务器地址。 */
+  /** 当前用户的 SMTP 服务器地址。 */
   smtp_server?: string;
-  /** 系统 SMTP 密码是否已在服务端配置。 */
+  /** 当前用户的 SMTP 密码草稿，仅存在于提交请求中，服务端不回显明文。 */
+  smtp_password?: string;
+  /** 当前用户的 SMTP 密码是否已在服务端配置。 */
   smtp_password_configured?: boolean;
+  /** 当前用户的 SMTP 端口。 */
+  smtp_port?: number;
+  /** 当前用户的 SMTP 登录邮箱。 */
+  smtp_user?: string;
+  /** 当前用户的 SMTP 发件人显示名。 */
+  smtp_from_name?: string;
+  /** 当前用户的 SMTP 发件地址。 */
+  smtp_from_address?: string;
+  /** 当前用户的 SMTP 是否启用 STARTTLS。 */
+  smtp_use_tls?: boolean;
+  /** 当前用户的 SMTP 是否启用 SSL 直连。 */
+  smtp_use_ssl?: boolean;
   /** 服务端日志级别。 */
   log_level?: 'debug' | 'info' | 'warn' | 'error' | string;
   /** 服务端日志格式。 */
@@ -33,15 +47,15 @@ export interface SystemSettings {
   'captcha.remote_secret_key_configured'?: boolean;
   /** 远程验证码服务 Cookie 配置。 */
   'captcha.remote_pass_cookies'?: boolean | string;
-  /** QQ 连接器机器人的 AppID，明文保存且可被通知渠道继承。 */
+  /** 当前用户的 QQ 机器人 AppID，明文保存。 */
   'qqbot.app_id'?: string;
-  /** QQ 连接器机器人的 AppSecret 草稿，仅存在于提交请求中，服务端不回显明文。 */
+  /** 当前用户的 QQ 机器人 AppSecret 草稿，仅存在于提交请求中，服务端不回显明文。 */
   'qqbot.app_secret'?: string;
-  /** QQ 连接器机器人的 AppSecret 是否已在服务端配置。 */
+  /** 当前用户的 QQ 机器人 AppSecret 是否已在服务端配置。 */
   'qqbot.app_secret_configured'?: boolean;
-  /** 是否启用 QQ 入站命令（连接 QQ 网关接收销量/健康/会话命令）。 */
+  /** 当前用户是否启用 QQ 入站命令（连接 QQ 网关接收销量/健康/会话命令）。 */
   'qqbot.commands_enabled'?: boolean;
-  /** 允许发送 QQ 入站命令的 openid 白名单，逗号或换行分隔；为空表示拒绝所有发送者。 */
+  /** 当前用户允许发送 QQ 入站命令的 openid 白名单，逗号或换行分隔；为空表示拒绝所有发送者。 */
   'qqbot.command_openids'?: string;
   /** 兼容未来配置键的扩展字段。 */
   /** 未知设置键只能承载服务端声明的标量值，敏感值不进入该 UI 模型。 */
@@ -105,21 +119,6 @@ export interface NotificationChannel {
   updated_at?: string;
 }
 
-/** 通知绑定列表中的单条记录。 */
-/** 由当前 feature adapter 归一后的 NotificationBinding UI 模型；不直接暴露 HTTP DTO。 */
-export interface NotificationBinding {
-  /** 账号稳定标识，列表归一化后补充。 */
-  cookie_id?: string;
-  /** 绑定记录主键。 */
-  id?: number;
-  /** 通知渠道主键。 */
-  channel_id: number;
-  /** 通知渠道名称。 */
-  channel_name: string;
-  /** 绑定是否启用。 */
-  enabled: boolean;
-}
-
 /** 简单资源创建接口的数值主键响应。 */
 /** 由当前 feature adapter 归一后的 MutationIDResponse UI 模型；不直接暴露 HTTP DTO。 */
 export interface MutationIDResponse {
@@ -171,8 +170,6 @@ export interface NotificationChannelEditorResponse {
   enabled: boolean;
   /** 邮件渠道的收件邮箱。 */
   to_email?: string;
-  /** 邮件渠道是否使用独立 SMTP。 */
-  use_custom_smtp?: boolean;
   /** 该渠道类型可回显的非敏感配置键值，只含已存在且非空的键；敏感键的值不会出现在这里。 */
   config?: Record<string, string>;
   /** 该渠道类型已保存的敏感凭据键名，按字典序排序；只回传键名，不回传值。 */

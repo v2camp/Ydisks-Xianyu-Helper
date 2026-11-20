@@ -14,20 +14,18 @@ import (
 	notificationsapp "xianyu-go/internal/application/notifications"
 )
 
-// notificationHandlerCoveragePort 为通知 Handler 提供可编程的渠道、绑定和不确定通知结果。
+// notificationHandlerCoveragePort 为通知 Handler 提供可编程的渠道和不确定通知结果。
 type notificationHandlerCoveragePort struct {
 	// NotificationChannelsPort 提供当前场景未覆盖方法的默认能力。
 	NotificationChannelsPort
 	// UncertainNotificationsPort 提供不确定通知查询的默认能力。
 	UncertainNotificationsPort
-	// operationErr 保存绑定或渠道写入操作错误。
+	// operationErr 保存渠道写入操作错误。
 	operationErr error
 	// testErr 保存通知渠道测试发送错误。
 	testErr error
 	// channelErr 保存渠道列表或渠道写入查询错误。
 	channelErr error
-	// bindingErr 保存绑定列表和账号绑定查询错误。
-	bindingErr error
 	// uncertainErr 保存不确定通知查询错误。
 	uncertainErr error
 }
@@ -67,38 +65,8 @@ func (port *notificationHandlerCoveragePort) TestChannel(context.Context, int64,
 	return port.testErr
 }
 
-// ListBindings 返回测试预置的账号绑定摘要或错误。
-func (port *notificationHandlerCoveragePort) ListBindings(context.Context, int64) ([]notificationsapp.BindingSummary, error) {
-	return []notificationsapp.BindingSummary{{ID: 3, CookieID: "cid", ChannelID: 2, ChannelName: "webhook", Enabled: true}}, port.bindingErr
-}
-
-// GetBindingIDs 返回测试预置的账号绑定标识或错误。
-func (port *notificationHandlerCoveragePort) GetBindingIDs(context.Context, int64, string) ([]int64, error) {
-	return []int64{2}, port.bindingErr
-}
-
-// SetBindings 返回测试预置的批量绑定更新错误。
-func (port *notificationHandlerCoveragePort) SetBindings(context.Context, int64, string, []int64) error {
-	return port.operationErr
-}
-
-// SetSingleBinding 返回测试预置的单条绑定更新错误。
-func (port *notificationHandlerCoveragePort) SetSingleBinding(context.Context, int64, string, int64, bool) error {
-	return port.operationErr
-}
-
-// DeleteBinding 返回测试预置的单条绑定删除错误。
-func (port *notificationHandlerCoveragePort) DeleteBinding(context.Context, int64, int64) error {
-	return port.operationErr
-}
-
-// DeleteAccountBindings 返回测试预置的账号绑定删除错误。
-func (port *notificationHandlerCoveragePort) DeleteAccountBindings(context.Context, int64, string) error {
-	return port.operationErr
-}
-
-// TestNotificationHandlersCoverChannelAndBindingMappings 覆盖通知渠道测试、账号绑定及不确定通知查询的业务映射。
-func TestNotificationHandlersCoverChannelAndBindingMappings(t *testing.T) {
+// TestNotificationHandlersCoverChannelAndUncertainMappings 覆盖通知渠道测试及不确定通知查询的业务映射。
+func TestNotificationHandlersCoverChannelAndUncertainMappings(t *testing.T) {
 	// server、cleanup 保存通知 Handler 使用的测试服务器及资源清理函数。
 	server, _, cleanup := newTestServer(t)
 	defer cleanup()
@@ -109,8 +77,8 @@ func TestNotificationHandlersCoverChannelAndBindingMappings(t *testing.T) {
 	// notificationLog 保存通知发送失败时的结构化日志，用于验证底层密钥不会外泄。
 	var notificationLog bytes.Buffer
 	server.Logger = slog.New(slog.NewTextHandler(&notificationLog, nil))
-	// channelParams 保存通知渠道和账号绑定路由参数。
-	channelParams := map[string]string{"channel_id": "2", "cid": "cid", "notification_id": "3"}
+	// channelParams 保存通知渠道路由参数。
+	channelParams := map[string]string{"channel_id": "2"}
 	// successCases 保存通知 Handler 成功场景。
 	successCases := []struct {
 		name string
@@ -122,12 +90,6 @@ func TestNotificationHandlersCoverChannelAndBindingMappings(t *testing.T) {
 		{name: "update", hand: server.updateChannel, req: requestWithKeywordParams(http.MethodPut, "/notification-channels/2", `{"name":"webhook"}`, channelParams)},
 		{name: "delete", hand: server.deleteChannel, req: requestWithKeywordParams(http.MethodDelete, "/notification-channels/2", "", channelParams)},
 		{name: "test", hand: server.testChannel, req: requestWithKeywordParams(http.MethodPost, "/notification-channels/2/test", "", channelParams)},
-		{name: "bindings", hand: server.listMessageNotifications, req: requestWithServerSession(http.MethodGet, "/message-notifications", nil)},
-		{name: "account bindings", hand: server.getAccountBindings, req: requestWithKeywordParams(http.MethodGet, "/message-notifications/cid", "", channelParams)},
-		{name: "single binding", hand: server.setAccountBindings, req: requestWithKeywordParams(http.MethodPost, "/message-notifications/cid", `{"channel_id":2,"enabled":true}`, channelParams)},
-		{name: "batch binding", hand: server.setAccountBindings, req: requestWithKeywordParams(http.MethodPost, "/message-notifications/cid", `{"channel_ids":[2]}`, channelParams)},
-		{name: "delete binding", hand: server.deleteMessageNotification, req: requestWithKeywordParams(http.MethodDelete, "/message-notifications/3", "", channelParams)},
-		{name: "delete account bindings", hand: server.deleteAccountNotifications, req: requestWithKeywordParams(http.MethodDelete, "/message-notifications/account/cid", "", channelParams)},
 	}
 	// successCase 表示当前通知成功 Handler 场景。
 	for _, successCase := range successCases {
@@ -192,19 +154,6 @@ func TestNotificationHandlersCoverChannelAndBindingMappings(t *testing.T) {
 	server.testChannel(invalidChannelRecorder, requestWithKeywordParams(http.MethodPost, "/notification-channels/no/test", "", map[string]string{"channel_id": "no"}))
 	if invalidChannelRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid channel status=%d", invalidChannelRecorder.Code)
-	}
-	// port.bindingErr 保存绑定查询错误，覆盖列表和账号绑定读取失败。
-	port.bindingErr = errors.New("binding query failed")
-	// bindingErrorHandlers 保存两个绑定查询错误 Handler。
-	bindingErrorHandlers := []http.HandlerFunc{server.listMessageNotifications, server.getAccountBindings}
-	// bindingErrorHandler 表示当前绑定查询错误 Handler。
-	for _, bindingErrorHandler := range bindingErrorHandlers {
-		// recorder 保存绑定查询错误响应。
-		recorder := httptest.NewRecorder()
-		bindingErrorHandler(recorder, requestWithKeywordParams(http.MethodGet, "/message-notifications/cid", "", channelParams))
-		if recorder.Code != http.StatusInternalServerError {
-			t.Fatalf("binding error status=%d", recorder.Code)
-		}
 	}
 	// port.uncertainErr 保存不确定通知查询错误。
 	port.uncertainErr = errors.New("uncertain query failed")

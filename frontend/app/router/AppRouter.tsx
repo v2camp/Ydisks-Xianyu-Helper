@@ -6,7 +6,7 @@ import AuthenticatedShell, { type DeliveryRuleTarget } from '../shell/Authentica
 import { pathByRoute, routeFromLocation, type AppRoute } from './routes';
 
 // adminOnlyRoutes 是仅管理员可访问的配置类路由；地址栏直达、历史回退与侧边栏跳转都按这一份名单做门禁。
-const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent', 'ops-agent'];
+const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent'];
 
 /** AppRouter 管理认证后的浏览器路由、侧边栏偏好与跨页面规则配置载荷。 */
 export const AppRouter: React.FC = () => {

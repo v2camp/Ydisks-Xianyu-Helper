@@ -125,7 +125,7 @@ func TestDefaultReplyCRUD(t *testing.T) {
 	}
 }
 
-// TestNotificationChannelCRUD 通知渠道 + 绑定。
+// TestNotificationChannelCRUD 通知渠道创建与列表。
 func TestNotificationChannelCRUD(t *testing.T) {
 	// srv、cleanup 用于本次流程后续判断的srv、cleanup
 	srv, _, cleanup := newTestServer(t)
@@ -151,32 +151,8 @@ func TestNotificationChannelCRUD(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &cr)
 	// id 用于本次流程后续判断的标识
 	id := int64(cr["id"].(float64))
-
-	// 绑定到账号。
-	bindBody := `{"channel_ids":[` + itoa(id) + `]}`
-	// req2 用于本次流程后续判断的req2
-	req2 := httptest.NewRequest(http.MethodPost, "/message-notifications/acc1", strings.NewReader(bindBody))
-	req2.AddCookie(cookie)
-	// rec2 用于本次流程后续判断的rec2
-	rec2 := httptest.NewRecorder()
-	h.ServeHTTP(rec2, req2)
-	if rec2.Code != 200 {
-		t.Fatalf("bind status=%d", rec2.Code)
-	}
-
-	// 查询绑定。
-	req3 := httptest.NewRequest(http.MethodGet, "/message-notifications/acc1", nil)
-	req3.AddCookie(cookie)
-	// rec3 用于本次流程后续判断的rec3
-	rec3 := httptest.NewRecorder()
-	h.ServeHTTP(rec3, req3)
-	// b 用于本次流程后续判断的b
-	var b map[string]any
-	json.Unmarshal(rec3.Body.Bytes(), &b)
-	// ids 用于本次流程后续判断的ids
-	ids, _ := b["channel_ids"].([]any)
-	if len(ids) != 1 {
-		t.Fatalf("绑定数异常: %+v", b)
+	if id == 0 {
+		t.Fatalf("渠道创建未返回标识: %+v", cr)
 	}
 }
 

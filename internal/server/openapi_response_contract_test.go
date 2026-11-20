@@ -612,14 +612,6 @@ func TestOpenAPINotificationResponses(t *testing.T) {
 		t.Fatalf("通知渠道摘要泄漏秘密配置: %s", channelsRecorder.Body.String())
 	}
 
-	// bindingsRequest 是读取按账号动态键组织的通知绑定成功请求。
-	bindingsRequest := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/messages", nil)
-	bindingsRequest.AddCookie(sessionCookie)
-	// bindingsRecorder 捕获动态账号键通知绑定响应。
-	bindingsRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(bindingsRecorder, bindingsRequest)
-	assertOpenAPISuccessResponse(t, bindingsRequest, bindingsRecorder)
-
 	// createChannelRequest 是创建通知渠道的版本化成功请求，配置字段只使用测试占位值。
 	createChannelRequest := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/channels", strings.NewReader(`{"name":"OpenAPI 渠道","type":"webhook","config":"{}","event_types":"[]","enabled":true}`))
 	createChannelRequest.AddCookie(sessionCookie)

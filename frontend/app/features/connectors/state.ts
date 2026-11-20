@@ -1,9 +1,7 @@
 import { Bell,Mail,MessageCircle,Send as Telegram,Webhook } from 'lucide-react';
-import { buildEmailChannelConfig,enableCustomSMTP,normalizeEmailChannelConfig } from '../../../notificationEmailConfig';
 import type { NotificationChannel,NotificationChannelType,NotificationEventType,SystemSettings } from './api';
 import type { ConnectorMeta } from './registry';
-import { connectorSettingsKeys,connectorTypes } from './registry';
-import type { CredentialSource,NotificationChannelMeta,NotificationEventMeta,NotificationForm,NotificationPayload } from './types';
+import type { NotificationChannelMeta,NotificationEventMeta,NotificationForm,NotificationPayload } from './types';
 import { normalizeNotificationEventTypes } from './models';
 
 // notificationChannelTypes 是所有通知渠道的静态字段、图标和使用指南。
@@ -60,18 +58,16 @@ export const notificationChannelTypes: Record<NotificationChannelType, Notificat
     label: '邮件', icon: Mail,
     credential: { keys: [] },
     fields: [{ key: 'to_email', label: '收件邮箱', placeholder: 'receiver@example.com', required: true }],
-    guide: { steps: ['通常先保存页面中的系统 SMTP 配置', '邮件渠道只需填写收件邮箱，即可完整继承系统 SMTP', '只有确实需要另一套发件服务时，才开启“使用独立 SMTP”并填写整套配置'], note: '继承和独立 SMTP 是互斥模式，不会再混用两套配置中的部分字段。' },
+    guide: { steps: ['先在本页「当前用户的集成配置 → 邮件发送（SMTP）」保存发件邮箱与授权码', '邮件渠道只需填写收件邮箱，会使用当前用户的 SMTP 配置发信'], note: '邮件渠道不再支持渠道级独立 SMTP；更换发件服务请修改当前用户的 SMTP 配置。' },
   },
   qq: {
     label: 'QQ 机器人', icon: MessageCircle,
-    credential: { keys: ['app_id', 'app_secret'], providerConnectorId: 'qqbot' },
+    credential: { keys: [] },
     fields: [
-      { key: 'app_id', label: '机器人 AppID', placeholder: '你的 QQ 机器人 AppID', required: true },
-      { key: 'app_secret', label: '机器人 AppSecret', placeholder: 'QQ 机器人 AppSecret', type: 'password', sensitive: true, required: true, help: '用于换取 Access Token，仅本地加密存储，编辑页不回显明文' },
       { key: 'user_openid', label: '单聊目标 OpenID', placeholder: '接收通知的用户 openid（与 AppID 绑定）', help: '单聊与群聊至少填一个，单聊优先' },
       { key: 'group_openid', label: '群聊目标 OpenID', placeholder: '接收通知的群 openid（与 AppID 绑定）', help: '与单聊至少填一个' },
     ],
-    guide: { steps: ['打开 QQ 开放平台 bot.qq.com，创建机器人应用', '在应用管理页获取 AppID 与 AppSecret', '把机器人拉进目标群，或让用户与机器人单聊发一条消息', '在管理页或调用接口获取 user_openid / group_openid（openid 与 AppID 绑定，换机器人需重配）'], urlFormat: 'AppID / AppSecret 在机器人应用管理页获取', note: '主动推送有每日限额且需审核；openid 不可跨 AppID 复用，换机器人后需重配。' },
+    guide: { steps: ['先在本页「当前用户的集成配置 → QQ 机器人」填写 AppID 与 AppSecret 并保存', '把机器人拉进目标群，或让用户与机器人单聊发一条消息', '在管理页或调用接口获取 user_openid / group_openid（openid 与 AppID 绑定，换机器人需重配）'], urlFormat: 'AppID / AppSecret 在本页「当前用户的集成配置」中配置', note: '主动推送有每日限额且需审核；openid 不可跨 AppID 复用，换机器人后需重配。' },
   },
 };
 
@@ -106,54 +102,32 @@ export const notificationEventSummary = (events?: NotificationEventType[]): stri
   ).join('、');
 };
 
-// normalizeNotificationForm 将编辑中的渠道配置复制为独立表单对象。
-export const normalizeNotificationForm = (channel: NotificationChannel, smtp: SystemSettings): NotificationForm => {
-  // normalizedEmailConfig 是邮件渠道的兼容配置副本。
-  const normalizedEmailConfig = channel.type === 'email' ? normalizeEmailChannelConfig({ ...(channel.config || {}) }) : null;
-  // config 是编辑表单实际使用的渠道配置。
-  const config = normalizedEmailConfig
-    ? (normalizedEmailConfig.use_custom_smtp === true ? enableCustomSMTP(normalizedEmailConfig, smtp) : normalizedEmailConfig)
-    : { ...(channel.config || {}) };
-  return { name: channel.name, type: channel.type, enabled: channel.enabled, config, event_types: normalizeNotificationEventTypes(channel.event_types || []) };
-};
+// normalizeNotificationForm 将编辑中的渠道配置复制为独立表单对象；渠道配置不再包含任何连接器级凭据。
+export const normalizeNotificationForm = (channel: NotificationChannel): NotificationForm => ({
+  name: channel.name,
+  type: channel.type,
+  enabled: channel.enabled,
+  config: { ...(channel.config || {}) },
+  event_types: normalizeNotificationEventTypes(channel.event_types || []),
+});
 
 // credentialKeysOf 返回某渠道类型声明的凭据键；只有这些键参与必填豁免与显式清除，避免豁免外溢到普通配置。
 export const credentialKeysOf = (type: NotificationChannelType): string[] => notificationChannelTypes[type].credential.keys;
 
-// ChannelCredentialOptions 描述当前渠道凭据的两种已有来源，用于决定凭据键是否仍需填写。
+// ChannelCredentialOptions 描述当前渠道已保存的凭据，用于决定凭据键是否仍需填写。
 export interface ChannelCredentialOptions {
-  // hiddenKeys 是由已就绪连接器接管、渠道表单不再展示的凭据键。
-  hiddenKeys?: string[];
   // savedCredentialKeys 是渠道自身已保存的凭据键名，留空保存会沿用服务端原值。
   savedCredentialKeys?: string[];
 }
 
-// resolveCredentialSource 按渠道类型声明的上游连接器查找凭据来源；连接器未就绪或未声明支撑该渠道类型时返回空。
-export const resolveCredentialSource = (
-  type: NotificationChannelType,
-  settings: SystemSettings,
-  connectors: ConnectorMeta[] = connectorTypes,
-): CredentialSource | null => {
-  // providerConnectorId 是该渠道类型声明的上游连接器标识；未声明表示凭据只能由渠道自填。
-  const providerConnectorId = notificationChannelTypes[type].credential.providerConnectorId;
-  if (!providerConnectorId) return null;
-  // connector 是同时声明支撑该渠道类型的连接器，只按 id 命中会让连接器越权代填其他渠道的凭据。
-  const connector = connectors.find(
-    // candidate 是当前待匹配的连接器定义。
-    candidate => candidate.id === providerConnectorId && candidate.powersChannelTypes.includes(type),
-  );
-  if (!connector || !connectorReady(connector, settings)) return null;
-  return { hiddenKeys: notificationChannelTypes[type].credential.keys, connectorName: connector.label };
-};
-
-// validateNotificationForm 校验渠道名称、渠道字段和独立 SMTP 必填项。
+// validateNotificationForm 校验渠道名称与渠道字段必填项。
 export const validateNotificationForm = (form: NotificationForm, options: ChannelCredentialOptions = {}): string => {
   // meta 是当前渠道类型的静态校验配置。
   const meta = notificationChannelTypes[form.type];
   // exemptKeys 是本次无需重填的凭据键：只从当前类型声明的凭据键中挑选，其他字段一律保持必填。
   const exemptKeys = meta.credential.keys.filter(
     // key 是当前待判定的凭据键。
-    key => options.hiddenKeys?.includes(key) === true || options.savedCredentialKeys?.includes(key) === true,
+    key => options.savedCredentialKeys?.includes(key) === true,
   );
   // missingField 是第一个未填写的渠道必填字段。
   const missingField = meta.fields.find(
@@ -162,23 +136,6 @@ export const validateNotificationForm = (form: NotificationForm, options: Channe
   );
   if (missingField) return `请填写 ${missingField.label}`;
   if (!form.name.trim()) return '请填写渠道名称';
-  if (form.type === 'email') {
-    // config 是邮件渠道归一化后的提交配置。
-    const config = buildEmailChannelConfig(form.config);
-    if (config.use_custom_smtp && !form.preserveSMTP) {
-      // requiredFields 是独立 SMTP 模式下必须填写的字段列表。
-      const requiredFields: Array<[string, string]> = [
-        ['smtp_server', '独立 SMTP 服务器'], ['smtp_port', '独立 SMTP 端口'], ['smtp_user', '独立 SMTP 登录邮箱'],
-        ['smtp_password', '独立 SMTP 密码 / 授权码'], ['smtp_from_address', '独立 SMTP 发件地址'],
-      ];
-      // missing 是独立 SMTP 模式下第一个缺失字段。
-      const missing = requiredFields.find(
-        // field 是字段名和用户可见名称的二元组。
-        ([key]) => !String(config[key] || '').trim(),
-      );
-      if (missing) return `请填写 ${missing[1]}`;
-    }
-  }
   return '';
 };
 
@@ -191,13 +148,13 @@ const buildChannelConfig = (form: NotificationForm): Record<string, unknown> => 
   return config;
 };
 
-// buildNotificationPayload 将表单转换为通知渠道保存请求。
+// buildNotificationPayload 将表单转换为通知渠道保存请求；邮件渠道只提交收件地址。
 export const buildNotificationPayload = (form: NotificationForm): NotificationPayload => ({
   name: form.name.trim(),
   type: form.type,
-  ...(form.type === 'email' && form.preserveSMTP
-    ? { email_recipient: String(form.config.to_email ?? '').trim() }
-    : { config: form.type === 'email' ? buildEmailChannelConfig(form.config) : buildChannelConfig(form) }),
+  config: form.type === 'email'
+    ? { to_email: String(form.config.to_email ?? '').trim() }
+    : buildChannelConfig(form),
   event_types: form.event_types,
   enabled: form.enabled,
 });
@@ -220,18 +177,6 @@ export const connectorReady = (connector: ConnectorMeta, settings: SystemSetting
     return String(settings[field.key] ?? '').trim() !== '';
   });
 
-// buildConnectorSettings 从连接器草稿提取本次需要提交的系统设置键值；敏感键仅在本次显式输入时提交，避免加载后误清空服务端秘密。
-export const buildConnectorSettings = (connectors: ConnectorMeta[], settings: SystemSettings): Record<string, string | number | boolean> => {
-  // payload 保存按连接器注册表收窄后的提交字段，未登记键一律不下发。
-  const payload: Record<string, string | number | boolean> = {};
-  for (const /* descriptor 是当前待处理的连接器设置键定义。 */ descriptor of connectorSettingsKeys(connectors)) {
-    // hasDraftValue 表示草稿中是否显式存在该键；敏感键缺失该键时保持服务端原值。
-    const hasDraftValue = Object.prototype.hasOwnProperty.call(settings, descriptor.key);
-    if (descriptor.sensitive && !hasDraftValue) continue;
-    // value 是草稿中该键的当前值。
-    const value = settings[descriptor.key];
-    if (value === undefined || value === null) continue;
-    payload[descriptor.key] = descriptor.sensitive ? String(value) : (value as string | number | boolean);
-  }
-  return payload;
-};
+// isAIReady 判断当前用户的集成配置是否已具备可用的 AI 模型与密钥。
+export const isAIReady = (settings: SystemSettings): boolean =>
+  String(settings.ai_model || '').trim() !== '' && settings.ai_api_key_configured === true;

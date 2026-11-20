@@ -43,8 +43,6 @@ type notificationChannelEditorDTO struct {
 	Enabled bool `json:"enabled"`
 	// ToEmail 是邮件渠道的收件地址；其它渠道为空。
 	ToEmail string `json:"to_email,omitempty"`
-	// UseCustomSMTP 表示邮件渠道是否使用独立 SMTP（不返回任何 SMTP 凭据）。
-	UseCustomSMTP bool `json:"use_custom_smtp"`
 	// Note 提示敏感字段的写入语义。
 	Note string `json:"note"`
 }
@@ -61,36 +59,6 @@ type notificationChannelListResult struct {
 type notificationChannelMutationResult struct {
 	// ChannelID 是被写入的渠道标识。
 	ChannelID int64 `json:"channel_id"`
-}
-
-// notificationBindingDTO 是账号与渠道绑定的非敏感视图。
-type notificationBindingDTO struct {
-	// BindingID 是绑定记录标识。
-	BindingID int64 `json:"binding_id"`
-	// AccountID 是绑定账号标识。
-	AccountID string `json:"account_id"`
-	// ChannelID 是绑定渠道标识。
-	ChannelID int64 `json:"channel_id"`
-	// ChannelName 是渠道名称。
-	ChannelName string `json:"channel_name,omitempty"`
-	// Enabled 表示绑定是否启用。
-	Enabled bool `json:"enabled"`
-}
-
-// notificationBindingListResult 是绑定列表返回。
-type notificationBindingListResult struct {
-	// Total 是绑定数量。
-	Total int `json:"total"`
-	// Bindings 是绑定视图列表。
-	Bindings []notificationBindingDTO `json:"bindings"`
-}
-
-// notificationBindingIDsResult 是账号当前启用渠道标识返回。
-type notificationBindingIDsResult struct {
-	// AccountID 是账号标识。
-	AccountID string `json:"account_id"`
-	// ChannelIDs 是该账号当前启用的渠道标识列表。
-	ChannelIDs []int64 `json:"channel_ids"`
 }
 
 // notificationUncertainDTO 是不确定通知的非敏感摘要视图；不含通知正文与错误原文。
@@ -119,11 +87,10 @@ type notificationUncertainListResult struct {
 	Items []notificationUncertainDTO `json:"items"`
 }
 
-// RegisterNotificationTools 注册通知渠道、绑定与不确定通知域全部工具。
+// RegisterNotificationTools 注册通知渠道与不确定通知域全部工具。
 func (e *Endpoint) RegisterNotificationTools(channels capability.NotificationChannelPorts, uncertain capability.UncertainNotificationPorts) {
 	if channels != nil {
 		e.registerNotificationChannelTools(channels)
-		e.registerNotificationBindingTools(channels)
 	}
 	if uncertain != nil {
 		e.registerNotificationUncertainTools(uncertain)
@@ -170,15 +137,15 @@ func (e *Endpoint) registerNotificationChannelTools(p capability.NotificationCha
 				return notificationChannelEditorDTO{
 					ChannelID: editor.ID, Name: editor.Name, Type: editor.Type,
 					EventTypes: editor.EventTypes, Enabled: editor.Enabled,
-					ToEmail: editor.ToEmail, UseCustomSMTP: editor.UseCustomSMTP,
-					Note: "敏感字段（SMTP 密码、机器人 secret 等）只可写入、不可读取；更新时请通过 config_json 重新提交完整配置。",
+					ToEmail: editor.ToEmail,
+					Note:    "敏感字段（SMTP 密码、机器人 secret 等）只可写入、不可读取；更新时请通过 config_json 重新提交完整配置。",
 				}, nil
 			},
 		},
 		ToolDef{
 			Name: "notification_channel_create",
 			Description: "创建通知渠道：config_json 是渠道完整配置（含密钥，只写不读）。" +
-				"邮件渠道示例：{\"to_email\":\"a@b.com\",\"smtp_host\":\"smtp.example.com\",\"smtp_password\":\"...\"}。",
+				"邮件渠道示例：{\"to_email\":\"a@b.com\"}；SMTP 发件配置属于当前用户，不在渠道内维护。",
 			Args: []ArgSpec{
 				{Name: "name", Type: ArgString, Required: true, Description: "渠道名称。"},
 				{Name: "type", Type: ArgString, Required: true, Description: "渠道类型，例如 email、qq、captcha。"},
@@ -211,13 +178,12 @@ func (e *Endpoint) registerNotificationChannelTools(p capability.NotificationCha
 		ToolDef{
 			Name: "notification_channel_update",
 			Description: "部分更新通知渠道：只提交需要变更的字段，未提交字段保留现值。" +
-				"密钥类字段通过 config_json 整体重写（只写不读）；只改邮件收件地址时请用 email_recipient，避免丢失 SMTP 凭据。",
+				"密钥类字段通过 config_json 整体重写（只写不读）；邮件渠道可直接用 config_json 提交 to_email。",
 			Args: []ArgSpec{
 				{Name: "channel_id", Type: ArgInteger, Required: true, Description: "渠道标识。"},
 				{Name: "name", Type: ArgString, Description: "新的渠道名称。"},
 				{Name: "type", Type: ArgString, Description: "新的渠道类型。"},
 				{Name: "config_json", Type: ArgString, Description: "渠道完整配置 JSON（含密钥，只写不读）。"},
-				{Name: "email_recipient", Type: ArgString, Description: "仅邮件渠道：只改收件地址并保留现有 SMTP 凭据。"},
 				{Name: "event_types", Type: ArgString, Description: "新的订阅事件类型编码。"},
 				{Name: "enabled", Type: ArgBoolean, Description: "新的启用状态。"},
 			},
@@ -269,144 +235,6 @@ func (e *Endpoint) registerNotificationChannelTools(p capability.NotificationCha
 					return nil, testErr
 				}
 				return notificationChannelMutationResult{ChannelID: int64(id)}, nil
-			},
-		},
-	)
-}
-
-// registerNotificationBindingTools 注册账号渠道绑定工具。
-func (e *Endpoint) registerNotificationBindingTools(p capability.NotificationChannelPorts) {
-	// accountArg 是绑定工具通用的账号入参定义。
-	accountArg := ArgSpec{Name: "account_id", Type: ArgString, Required: true, Description: "账号标识。"}
-	e.RegisterTools(
-		ToolDef{
-			Name:        "notification_binding_list",
-			Description: "列出全部账号与通知渠道的绑定（含渠道名称与启用状态）。只读。",
-			Handler: func(ctx context.Context, identity *CallIdentity, _ Arguments) (any, error) {
-				// rows、listErr 是绑定摘要列表。
-				rows, listErr := p.ListBindings(ctx, identity.UserID)
-				if listErr != nil {
-					return nil, listErr
-				}
-				// bindings 是绑定视图列表。
-				bindings := make([]notificationBindingDTO, 0, len(rows))
-				// row 是当前待映射的绑定摘要。
-				for _, row := range rows {
-					bindings = append(bindings, notificationBindingDTO{
-						BindingID: row.ID, AccountID: row.CookieID, ChannelID: row.ChannelID,
-						ChannelName: row.ChannelName, Enabled: row.Enabled,
-					})
-				}
-				return notificationBindingListResult{Total: len(bindings), Bindings: bindings}, nil
-			},
-		},
-		ToolDef{
-			Name:        "notification_binding_get",
-			Description: "读取指定账号当前启用的渠道标识列表。只读。",
-			Args:        []ArgSpec{accountArg},
-			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
-				// accountID 是账号标识。
-				accountID, err := args.String("account_id")
-				if err != nil {
-					return nil, err
-				}
-				// ids、listErr 是账号启用的渠道标识。
-				ids, listErr := p.GetBindingIDs(ctx, identity.UserID, accountID)
-				if listErr != nil {
-					return nil, listErr
-				}
-				return notificationBindingIDsResult{AccountID: accountID, ChannelIDs: ids}, nil
-			},
-		},
-		ToolDef{
-			Name: "notification_binding_set",
-			Description: "整组覆盖指定账号的渠道绑定：未提交的渠道会被解绑。请先 notification_binding_get 读取现状。" +
-				"channel_ids 传空数组表示解绑全部渠道。",
-			Args: []ArgSpec{accountArg, {Name: "channel_ids", Type: ArgArray, ItemType: ArgInteger,
-				Description: "该账号要启用的渠道标识数组；传空数组表示全部解绑。"}},
-			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
-				// accountID 是账号标识。
-				accountID, err := args.String("account_id")
-				if err != nil {
-					return nil, err
-				}
-				// ids、idsErr 是待启用的渠道标识数组。
-				ids, idsErr := intArrayArg(args, "channel_ids")
-				if idsErr != nil {
-					return nil, idsErr
-				}
-				// setErr 是整组设置用例返回的错误。
-				if setErr := p.SetBindings(ctx, identity.UserID, accountID, ids); setErr != nil {
-					return nil, setErr
-				}
-				return notificationBindingIDsResult{AccountID: accountID, ChannelIDs: ids}, nil
-			},
-		},
-		ToolDef{
-			Name:        "notification_binding_toggle",
-			Description: "切换指定账号中单个渠道绑定的启用状态，不影响该账号的其它渠道。",
-			Args: []ArgSpec{
-				accountArg,
-				{Name: "channel_id", Type: ArgInteger, Required: true, Description: "渠道标识。"},
-				{Name: "enabled", Type: ArgBoolean, Required: true, Description: "true 启用绑定，false 停用绑定。"},
-			},
-			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
-				// accountID 是账号标识。
-				accountID, err := args.String("account_id")
-				if err != nil {
-					return nil, err
-				}
-				// id 是渠道标识。
-				id, err := args.Int("channel_id")
-				if err != nil {
-					return nil, err
-				}
-				// enabled 是目标启用状态。
-				enabled, err := args.Bool("enabled")
-				if err != nil {
-					return nil, err
-				}
-				// toggleErr 是单条切换用例返回的错误。
-				if toggleErr := p.SetSingleBinding(ctx, identity.UserID, accountID, int64(id), enabled); toggleErr != nil {
-					return nil, toggleErr
-				}
-				return notificationBindingDTO{AccountID: accountID, ChannelID: int64(id), Enabled: enabled}, nil
-			},
-		},
-		ToolDef{
-			Name:        "notification_binding_delete",
-			Description: "删除一条账号渠道绑定（不可逆，会停止该账号在该渠道的通知）。必须显式 confirm=true。",
-			Destructive: true,
-			Args:        []ArgSpec{{Name: "binding_id", Type: ArgInteger, Required: true, Description: "绑定记录标识。"}},
-			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
-				// id 是绑定标识。
-				id, err := args.Int("binding_id")
-				if err != nil {
-					return nil, err
-				}
-				// deleteErr 是绑定删除用例返回的错误。
-				if deleteErr := p.DeleteBinding(ctx, identity.UserID, int64(id)); deleteErr != nil {
-					return nil, deleteErr
-				}
-				return notificationBindingDTO{BindingID: int64(id)}, nil
-			},
-		},
-		ToolDef{
-			Name:        "notification_binding_clear_account",
-			Description: "清空指定账号的全部渠道绑定（不可逆，会停止该账号全部通知）。必须显式 confirm=true。",
-			Destructive: true,
-			Args:        []ArgSpec{accountArg},
-			Handler: func(ctx context.Context, identity *CallIdentity, args Arguments) (any, error) {
-				// accountID 是账号标识。
-				accountID, err := args.String("account_id")
-				if err != nil {
-					return nil, err
-				}
-				// clearErr 是账号绑定清空用例返回的错误。
-				if clearErr := p.DeleteAccountBindings(ctx, identity.UserID, accountID); clearErr != nil {
-					return nil, clearErr
-				}
-				return notificationBindingIDsResult{AccountID: accountID}, nil
 			},
 		},
 	)
@@ -499,13 +327,6 @@ func channelPatchFromArgs(args Arguments) notificationsapp.ChannelPatch {
 		// text 是新的渠道完整配置 JSON（只写不读）。
 		if text, isText := value.(string); isText {
 			patch.Config = &text
-		}
-	}
-	// value、ok 是邮件收件地址入参及其存在性。
-	if value, ok := args["email_recipient"]; ok {
-		// text 是新的邮件收件地址。
-		if text, isText := value.(string); isText {
-			patch.EmailRecipient = &text
 		}
 	}
 	// value、ok 是订阅事件编码入参及其存在性。

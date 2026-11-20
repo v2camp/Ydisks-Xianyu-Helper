@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -110,6 +111,21 @@ func newAIStore(t *testing.T) (*db.Store, func()) {
 	return s, func() { d.Close() }
 }
 
+// setUserAISettingForTest 把用户级 AI 配置写入测试账号所有者，返回错误供测试显式断言。
+func setUserAISettingForTest(s *db.Store, key, value string) error {
+	// ctx 是解析账号所有者和写入用户设置使用的上下文。
+	ctx := context.Background()
+	// ownerID 是测试账号 cookie 的所有者用户；AI 配置按所有者读取。
+	ownerID, err := s.Cookies.GetOwnerID(ctx, "cid")
+	if err != nil {
+		return err
+	}
+	if ownerID <= 0 {
+		return errors.New("测试账号缺少所有者")
+	}
+	return s.UserSettings.SetForUser(ctx, ownerID, key, value)
+}
+
 // TestAIReply_DisabledReturnsNil 账号关闭或全局未配 APIKey 时应返回 nil,nil（降级到下一级）。
 // 无设置行不再是「关闭」：它表示跟随全局总闸，因此在缺 APIKey 时才降级。
 func TestAIReply_DisabledReturnsNil(t *testing.T) {
@@ -189,8 +205,8 @@ func TestAIReply_HTTPErrorDegrades(t *testing.T) {
 
 	// 启用 AI + 配 APIKey + 指向 mock 服务。
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 用于本次流程后续判断的a
 	a := NewAIReplier("cid", s, nil)
@@ -223,8 +239,8 @@ func TestAIReply_EmptyChoicesReturnsNil(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 用于本次流程后续判断的a
 	a := NewAIReplier("cid", s, nil)
@@ -245,8 +261,8 @@ func TestAIReply_SuccessReturnsContent(t *testing.T) {
 	// srv 用于本次流程后续判断的srv
 	srv := mockOpenAIServer(t, 0, "你好，在的哦")
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 用于本次流程后续判断的a
 	a := NewAIReplier("cid", s, nil)
@@ -281,11 +297,11 @@ func TestAIReplyBuildsExecutableQuote(t *testing.T) {
 		t.Fatal(err)
 	}
 	// err 是保存模型测试密钥时不应出现的错误。
-	if err := store.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(store, "ai_api_key", "sk-test"); err != nil {
 		t.Fatal(err)
 	}
 	// err 是保存本地模型服务地址时不应出现的错误。
-	if err := store.Settings.Set(ctx, "ai_api_url", server.URL); err != nil {
+	if err := setUserAISettingForTest(store, "ai_api_url", server.URL); err != nil {
 		t.Fatal(err)
 	}
 	// result 是通过价格边界校验后的 AI 回复与可执行报价。
@@ -309,8 +325,8 @@ func TestAIReply_ZeroIntentMessageFallsThrough(t *testing.T) {
 	// ctx 用于本次流程后续判断的ctx
 	ctx := context.Background()
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", "http://127.0.0.1:1")
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", "http://127.0.0.1:1")
 
 	// res、err 用于本次流程后续判断的res、err
 	res, err := NewAIReplier("cid", s, nil).Reply(ctx, chatMsg("你好", "item1", "chat1"))
@@ -339,9 +355,9 @@ func TestGlobalAIConfig(t *testing.T) {
 	}
 
 	// 显式设置。
-	s.Settings.Set(ctx, "ai_api_key", "sk-x")
-	s.Settings.Set(ctx, "ai_api_url", "https://example.com/v1/")
-	s.Settings.Set(ctx, "ai_model", "gpt-4o")
+	setUserAISettingForTest(s, "ai_api_key", "sk-x")
+	setUserAISettingForTest(s, "ai_api_url", "https://example.com/v1/")
+	setUserAISettingForTest(s, "ai_model", "gpt-4o")
 	cfg, _ = a.globalAIConfig(ctx)
 	if cfg.APIKey != "sk-x" || cfg.BaseURL != "https://example.com/v1" || cfg.Model != "gpt-4o" {
 		t.Fatalf("显式设置异常: %+v", cfg)
@@ -356,7 +372,7 @@ func TestGlobalAIConfigAuditsAPIKeyAccess(t *testing.T) {
 	// ctx 保存当前 AI 配置审计测试上下文。
 	ctx := context.Background()
 	// setErr 表示写入 AI 测试 API Key 时返回的错误。
-	if setErr := s.Settings.Set(ctx, "ai_api_key", "sk-audit-only"); setErr != nil {
+	if setErr := setUserAISettingForTest(s, "ai_api_key", "sk-audit-only"); setErr != nil {
 		t.Fatal(setErr)
 	}
 	// cfg、configErr 保存读取到的 AI 配置及读取错误。
@@ -417,8 +433,8 @@ func TestAIReplyTracksBargainRoundsAndBlocksUnsafePrice(t *testing.T) {
 		VALUES ('cid',1,10,20,1,'')`)
 	s.DB.ExecContext(ctx, `INSERT INTO item_info
 		(cookie_id,item_id,item_title,item_price,item_description) VALUES ('cid','item1','商品','100','描述')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 用于本次流程后续判断的a
 	a := NewAIReplier("cid", s, nil)
@@ -461,8 +477,8 @@ func TestAIReplyWritesRealIntent(t *testing.T) {
 	// srv 是返回固定文本的本地模型桩。
 	srv := mockOpenAIServer(t, 0, "可以优惠")
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 是待测的 AI 回复实现。
 	a := NewAIReplier("cid", s, nil)
@@ -504,8 +520,8 @@ func TestAIReplyExtendedComplaintKeywordIntercepts(t *testing.T) {
 	// srv 是返回固定文本的本地模型桩。
 	srv := mockOpenAIServer(t, 0, "可以优惠")
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 
 	// a 是待测的 AI 回复实现。
 	a := NewAIReplier("cid", s, nil)

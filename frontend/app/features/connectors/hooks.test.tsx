@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,test,vi } from 'vitest';
-import type { NotificationChannel,SystemSettings } from './api';
-import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
+import type { NotificationChannel } from './api';
+import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,testNotificationChannel,updateNotificationChannel } from './api';
 import { useConnectors } from './hooks';
 
 vi.mock('./api', /* notificationsApiMockFactory 提供通知 Hook 的确定性 API 替身。 */ () => ({
@@ -10,10 +10,8 @@ vi.mock('./api', /* notificationsApiMockFactory 提供通知 Hook 的确定性 A
   deleteNotificationChannel: vi.fn(),
   getNotificationChannel: vi.fn(),
   getNotificationChannels: vi.fn(),
-  getSystemSettings: vi.fn(),
   testNotificationChannel: vi.fn(),
   updateNotificationChannel: vi.fn(),
-  updateSystemSettings: vi.fn(),
   QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' },
 }));
 
@@ -25,49 +23,36 @@ const deleteChannelMock = vi.mocked(deleteNotificationChannel);
 const getChannelsMock = vi.mocked(getNotificationChannels);
 // getChannelMock 是通知渠道编辑配置请求的可控替身。
 const getChannelMock = vi.mocked(getNotificationChannel);
-// getSmtpMock 是管理员 SMTP 设置请求的可控替身。
-const getSmtpMock = vi.mocked(getSystemSettings);
 // testChannelMock 是测试通知发送请求的可控替身。
 const testChannelMock = vi.mocked(testNotificationChannel);
 // updateChannelMock 是通知渠道更新请求的可控替身。
 const updateChannelMock = vi.mocked(updateNotificationChannel);
-// updateSmtpMock 是系统 SMTP 保存请求的可控替身。
-const updateSmtpMock = vi.mocked(updateSystemSettings);
 
 // channelFixture 是覆盖启用状态和事件订阅的通知渠道对象。
 const channelFixture: NotificationChannel = { id: 'channel-1', name: '测试渠道', type: 'bark', config: { server_url: 'https://api.day.app', device_key: 'device-key' }, event_types: ['system_error'], enabled: true };
-// smtpFixture 是管理员 SMTP 配置对象。
-const smtpFixture: SystemSettings = { smtp_server: 'smtp.example.com', smtp_port: 587, smtp_user: 'sender@example.com', smtp_password: 'secret' };
 
-describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状态。 */ () => {
+describe('useConnectors', /* 当前回调处理通知渠道与动作状态。 */ () => {
   beforeEach(/* 当前回调重置通知 API 替身和浏览器确认框。 */ () => {
     vi.clearAllMocks();
     // 一次性响应若因断言失败未被消费会串到下一个用例，因此每例开始前清空队列。
     getChannelMock.mockReset();
-    getSmtpMock.mockReset();
     getChannelsMock.mockResolvedValue({ success: true, data: [channelFixture] });
     getChannelMock.mockResolvedValue({ id: 1, name: '测试渠道', type: 'bark', enabled: true });
-    getSmtpMock.mockResolvedValue(smtpFixture);
     createChannelMock.mockResolvedValue({ success: true, id: 2 });
     deleteChannelMock.mockResolvedValue({ success: true });
     testChannelMock.mockResolvedValue({ success: true });
     updateChannelMock.mockResolvedValue({ success: true });
-    updateSmtpMock.mockResolvedValue({ success: true });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
-  test('管理员加载渠道和 SMTP 后可以新建、切换和保存', /* 当前回调验证通知 Hook 的成功动作路径。 */ async () => {
-    // hook 是管理员通知 Hook 的渲染结果。
-    const hook = renderHook(
-      // adminHookFactory 创建管理员通知 Hook。
-      () => useConnectors(true),
-    );
+  test('加载渠道后可以新建、切换、测试和保存', /* 当前回调验证通知 Hook 的成功动作路径。 */ async () => {
+    // hook 是通知 Hook 的渲染结果。
+    const hook = renderHook(/* hookFactory 创建通知 Hook。 */ () => useConnectors());
     await waitFor(
       // loadingAssertion 等待通知渠道加载完成。
       () => expect(hook.result.current.loading).toBe(false),
     );
     expect(hook.result.current.channels).toEqual([channelFixture]);
-    expect(hook.result.current.smtp).toEqual(smtpFixture);
 
     await act(
       // openCreateAction 打开新建渠道表单。
@@ -95,56 +80,39 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
       async () => hook.result.current.handleTest(channelFixture),
     );
     expect(testChannelMock).toHaveBeenCalledWith('channel-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    await act(
-      // smtpAction 保存系统 SMTP 配置。
-      async () => hook.result.current.handleSaveSmtp(),
-    );
-    expect(updateSmtpMock).toHaveBeenCalledWith(expect.objectContaining({ smtp_port: 587 }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   test('编辑邮件渠道时回显服务端保存的收件邮箱', /* 当前回调验证编辑配置异步加载不会丢失收件地址。 */ async () => {
     // emailChannel 是编辑收件邮箱回显场景使用的渠道摘要。
     const emailChannel: NotificationChannel = { id: 'email-1', name: '邮件通知', type: 'email', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 1, name: '邮件通知', type: 'email', enabled: true, to_email: 'receiver@example.com', use_custom_smtp: false });
+    getChannelMock.mockResolvedValueOnce({ id: 1, name: '邮件通知', type: 'email', enabled: true, to_email: 'receiver@example.com' });
     // hook 是邮件渠道编辑场景的 Hook 渲染结果。
-    const hook = renderHook(/* editHookFactory 创建邮件渠道编辑场景的 Hook。 */ () => useConnectors(false));
+    const hook = renderHook(/* editHookFactory 创建邮件渠道编辑场景的 Hook。 */ () => useConnectors());
     await waitFor(/* loadingAssertion 等待渠道摘要加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* editAction 读取脱敏编辑配置并打开邮件渠道弹窗。 */ async () => hook.result.current.openEdit(emailChannel));
-    expect(hook.result.current.form.config).toMatchObject({ to_email: 'receiver@example.com', use_custom_smtp: false });
+    expect(hook.result.current.form.config).toEqual({ to_email: 'receiver@example.com' });
     expect(getChannelMock).toHaveBeenCalledWith('email-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+
+    await act(/* recipientEditAction 用户修改收件地址，之后不会再有该读取的回填。 */ () => hook.result.current.setForm(/* recipientUpdater 只改变收件地址。 */ current => ({ ...current, config: { ...current.config, to_email: 'new@example.com' } })));
+    await act(/* recipientSaveAction 提交修改后的收件地址。 */ async () => hook.result.current.handleSave());
+    // payload 是邮件渠道提交的请求体，只包含收件地址且不再使用 email_recipient 通道。
+    const payload = updateChannelMock.mock.calls.at(-1)?.[1];
+    expect(payload?.config).toEqual({ to_email: 'new@example.com' });
+    expect(payload).not.toHaveProperty('email_recipient');
     hook.unmount();
-  });
-
-  // 脱敏 SMTP 配置保存测试验证缺省密码不会被意外清空。
-  test('脱敏 SMTP 配置保存时不会意外清空服务端密码', /* 当前回调验证敏感字段保留语义。 */ async () => {
-    getSmtpMock.mockResolvedValueOnce({
-      smtp_server: 'smtp.example.com', smtp_port: 587, smtp_user: 'sender@example.com', smtp_password_configured: true,
-    });
-    // hook 是脱敏 SMTP 配置场景下的通知 Hook 渲染结果。
-    const hook = renderHook(/* hookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
-    // loadingAssertion 等待脱敏 SMTP 配置加载完成。
-    await waitFor(/* loadingAssertion 检查异步加载状态。 */ () => expect(hook.result.current.loading).toBe(false));
-
-    // saveAction 提交未修改密码的 SMTP 配置。
-    await act(/* saveAction 执行 SMTP 保存动作。 */ async () => hook.result.current.handleSaveSmtp());
-    // payload 是发送给服务端的 SMTP 配置载荷。
-    const payload = updateSmtpMock.mock.calls.at(-1)?.[0] as SystemSettings;
-    expect(payload.smtp_password).toBeUndefined();
-    expect(payload.smtp_server).toBe('smtp.example.com');
   });
 
   test('渠道校验失败和删除成功都保持明确状态', /* 当前回调验证通知 Hook 的校验与删除路径。 */ async () => {
     // hook 是渠道校验和删除场景下的通知 Hook 渲染结果。
     const hook = renderHook(
-      // userHookFactory 创建普通用户通知 Hook。
-      () => useConnectors(false),
+      // hookFactory 创建通知 Hook。
+      () => useConnectors(),
     );
     await waitFor(
-      // loadingAssertion 等待普通用户渠道加载完成。
+      // loadingAssertion 等待渠道加载完成。
       () => expect(hook.result.current.loading).toBe(false),
     );
-    expect(hook.result.current.smtp).toEqual({});
     await act(
       // openCreateAction 打开校验场景的渠道表单。
       () => hook.result.current.openCreate(),
@@ -172,7 +140,7 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     // hook 是通知测试失败场景下的 Hook 渲染结果。
     const hook = renderHook(
       // failureHookFactory 创建测试通知失败场景的 Hook。
-      () => useConnectors(false),
+      () => useConnectors(),
     );
     await waitFor(
       // loadingAssertion 等待失败场景的渠道列表加载完成。
@@ -186,11 +154,11 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     expect(hook.result.current.toast).toEqual({ type: 'error', text: '通知服务失败' });
   });
 
-  test('渠道加载、保存、切换和 SMTP 保存失败时展示错误', /* 当前回调验证通知 Hook 的业务错误分支。 */ async () => {
-    // hook 是管理员通知错误场景的 Hook 渲染结果。
+  test('渠道加载、保存和切换失败时展示错误', /* 当前回调验证通知 Hook 的业务错误分支。 */ async () => {
+    // hook 是通知错误场景的 Hook 渲染结果。
     const hook = renderHook(
-      // errorHookFactory 创建管理员通知错误场景的 Hook。
-      () => useConnectors(true),
+      // errorHookFactory 创建通知错误场景的 Hook。
+      () => useConnectors(),
     );
     await waitFor(
       // loadingAssertion 等待首次通知渠道加载完成。
@@ -224,99 +192,6 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
       async () => hook.result.current.handleToggleEnabled(channelFixture),
     );
     expect(hook.result.current.toast).toEqual({ type: 'error', text: '切换失败' });
-
-    updateSmtpMock.mockRejectedValueOnce(new Error('SMTP保存失败'));
-    await act(
-      // smtpErrorAction 触发系统 SMTP 保存错误。
-      async () => hook.result.current.handleSaveSmtp(),
-    );
-    expect(hook.result.current.toast).toEqual({ type: 'error', text: 'SMTP保存失败' });
-    hook.unmount();
-  });
-
-  test('SMTP 初始加载失败时记录错误并保持渠道加载完成', /* 当前回调验证管理员 SMTP 初始化错误分支。 */ async () => {
-    getSmtpMock.mockRejectedValueOnce(new Error('SMTP读取失败'));
-    // consoleError 是 SMTP 加载错误日志的可控替身。
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(/* errorLogger 忽略测试日志输出。 */ () => undefined);
-    // hook 是 SMTP 初始化失败场景的通知 Hook 渲染结果。
-    const hook = renderHook(
-      // smtpFailureHookFactory 创建 SMTP 初始化失败场景的 Hook。
-      () => useConnectors(true),
-    );
-    await waitFor(
-      // loadingAssertion 等待通知渠道列表加载完成。
-      () => expect(hook.result.current.loading).toBe(false),
-    );
-    expect(consoleError).toHaveBeenCalledWith('加载 SMTP 配置失败', expect.any(Error));
-    hook.unmount();
-    consoleError.mockRestore();
-  });
-
-  test('系统设置首次读取期间保持读取态并在失败后暴露可见错误', /* 当前测试验证读取中态与静默失败修复。 */ async () => {
-    // failSettings 由测试控制首次系统设置读取的失败时机，用于观察读取中的中间态。
-    let failSettings!: (reason: Error) => void;
-    getSmtpMock.mockImplementationOnce(/* pendingSettingsResponse 暂存读取失败的控制函数。 */ () => new Promise(/* pendingSettingsExecutor 等待测试结束首次读取。 */ (_resolve, reject) => { failSettings = reject; }));
-    // consoleError 是读取失败日志的可控替身。
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(/* errorLogger 忽略测试日志输出。 */ () => undefined);
-    // hook 是系统设置读取场景下的管理员通知 Hook 渲染结果。
-    const hook = renderHook(/* settingsHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
-    expect(hook.result.current.settingsLoading).toBe(true);
-    expect(hook.result.current.settingsError).toBe('');
-
-    await act(/* failSettingsAction 让首次读取失败。 */ async () => {
-      failSettings(new Error('系统设置读取失败'));
-      await Promise.resolve();
-    });
-    await waitFor(/* settingsErrorAssertion 等待读取失败落到错误态。 */ () => expect(hook.result.current.settingsError).toBe('系统设置读取失败'));
-    expect(hook.result.current.settingsLoading).toBe(false);
-
-    await act(/* retrySettingsAction 重新读取成功后清空错误。 */ async () => hook.result.current.loadSmtp());
-    expect(hook.result.current.settingsError).toBe('');
-    expect(hook.result.current.connectorSettings).toEqual(smtpFixture);
-    hook.unmount();
-    consoleError.mockRestore();
-  });
-
-  test('刷新对管理员同时重载渠道与系统设置，对普通用户只刷新渠道', /* 当前测试验证页头刷新的权限语义。 */ async () => {
-    // adminHook 是管理员刷新场景的 Hook 渲染结果。
-    const adminHook = renderHook(/* adminRefreshHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
-    await waitFor(/* adminLoadedAssertion 等待管理员首次加载完成。 */ () => expect(adminHook.result.current.settingsLoading).toBe(false));
-    getChannelsMock.mockClear();
-    getSmtpMock.mockClear();
-    await act(/* adminRefreshAction 触发管理员刷新。 */ async () => adminHook.result.current.refresh());
-    expect(getChannelsMock).toHaveBeenCalledTimes(1);
-    expect(getSmtpMock).toHaveBeenCalledTimes(1);
-    adminHook.unmount();
-
-    // userHook 是普通用户刷新场景的 Hook 渲染结果。
-    const userHook = renderHook(/* userRefreshHookFactory 创建普通用户通知 Hook。 */ () => useConnectors(false));
-    await waitFor(/* userLoadedAssertion 等待普通用户首次加载完成。 */ () => expect(userHook.result.current.loading).toBe(false));
-    getChannelsMock.mockClear();
-    getSmtpMock.mockClear();
-    await act(/* userRefreshAction 触发普通用户刷新。 */ async () => userHook.result.current.refresh());
-    expect(getChannelsMock).toHaveBeenCalledTimes(1);
-    expect(getSmtpMock).not.toHaveBeenCalled();
-    userHook.unmount();
-  });
-
-  test('连接器与 SMTP 保存分别驱动各自的区块保存条状态', /* 当前测试验证两条保存条互不串态。 */ async () => {
-    // hook 是保存条状态场景的管理员通知 Hook 渲染结果。
-    const hook = renderHook(/* saveBarHookFactory 创建管理员通知 Hook。 */ () => useConnectors(true));
-    await waitFor(/* saveBarLoadedAssertion 等待管理员首次加载完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
-
-    await act(/* connectorSaveAction 保存连接器配置。 */ async () => hook.result.current.handleSaveConnector());
-    expect(hook.result.current.connectorSaveState).toBe('success');
-    expect(hook.result.current.smtpSaveState).toBe('idle');
-    act(/* connectorSettleAction 复位连接器保存条。 */ () => hook.result.current.resetConnectorSaveState());
-    expect(hook.result.current.connectorSaveState).toBe('idle');
-
-    updateSmtpMock.mockRejectedValueOnce(new Error('SMTP 保存失败'));
-    await act(/* smtpSaveAction 触发 SMTP 保存失败。 */ async () => hook.result.current.handleSaveSmtp());
-    expect(hook.result.current.smtpSaveState).toBe('error');
-    expect(hook.result.current.smtpSaveError).toBe('SMTP 保存失败');
-    expect(hook.result.current.connectorSaveState).toBe('idle');
-    act(/* smtpSettleAction 复位 SMTP 保存条。 */ () => hook.result.current.resetSmtpSaveState());
-    expect(hook.result.current.smtpSaveState).toBe('idle');
     hook.unmount();
   });
 
@@ -326,7 +201,7 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
       // hook 是通知提示和弹窗状态场景的 Hook 渲染结果。
       const hook = renderHook(
         // toastHookFactory 创建通知提示场景的 Hook。
-        () => useConnectors(false),
+        () => useConnectors(),
       );
       await act(
         // toastAction 展示一条短暂提示。
@@ -389,7 +264,7 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     // hook 是通知渠道刷新竞态场景的 Hook 渲染结果。
     const hook = renderHook(
       // staleHookFactory 创建通知渠道旧响应场景的 Hook。
-      () => useConnectors(false),
+      () => useConnectors(),
     );
     await act(
       // refreshAction 发起第二次渠道刷新并使首次请求过期。
@@ -412,17 +287,16 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
       id: 1, name: 'QQ 通知', type: 'qq', enabled: true,
       config: { user_openid: 'user-openid', group_openid: 'group-openid' }, saved_credential_keys: ['app_id', 'app_secret'],
     });
-    // hook 是普通用户编辑 qq 渠道的 Hook 渲染结果。
-    const hook = renderHook(/* qqHookFactory 创建不读取系统设置的 qq 编辑状态。 */ () => useConnectors(false));
+    // hook 是编辑 qq 渠道的 Hook 渲染结果。
+    const hook = renderHook(/* qqHookFactory 创建 qq 编辑状态。 */ () => useConnectors());
     await waitFor(/* qqLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* qqEditAction 读取脱敏编辑配置并打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
     expect(hook.result.current.form.config).toEqual({ user_openid: 'user-openid', group_openid: 'group-openid' });
     expect(Object.keys(hook.result.current.form.config)).not.toContain('app_id');
     expect(hook.result.current.savedCredentialKeys).toEqual(['app_id', 'app_secret']);
-    expect(hook.result.current.credentialSource).toBeNull();
 
-    await act(/* qqKeepAction 未勾选改用连接器凭据时直接保存。 */ async () => hook.result.current.handleSave());
+    await act(/* qqSaveAction 直接保存未重填凭据的表单。 */ async () => hook.result.current.handleSave());
     // payload 是本轮 qq 渠道保存提交的请求体。
     const payload = updateChannelMock.mock.calls.at(-1)?.[1];
     expect(payload?.config).toEqual({ user_openid: 'user-openid', group_openid: 'group-openid' });
@@ -430,59 +304,21 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     hook.unmount();
   });
 
-  // 连接器凭据就绪时 qq 渠道不再要求填写 app 字段，保存后沿用系统级凭据。
-  test('连接器凭据就绪时 qq 渠道无需自填凭据即可保存', /* readyQQTest 验证连接器就绪驱动的校验豁免。 */ async () => {
-    getSmtpMock.mockResolvedValueOnce({ 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true });
-    // qqChannel 是未保存渠道级凭据的 qq 渠道摘要。
-    const qqChannel: NotificationChannel = { id: 'qq-2', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 2, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: [] });
-    // hook 是管理员编辑 qq 渠道的 Hook 渲染结果。
-    const hook = renderHook(/* readyHookFactory 创建读取系统连接器凭据的管理员状态。 */ () => useConnectors(true));
-    await waitFor(/* readyAssertion 等待系统设置读取完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
-
-    await act(/* readyEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    // 凭据来源按当前表单类型判定，打开 qq 渠道后才应命中 QQ 机器人连接器。
-    expect(hook.result.current.credentialSource).toEqual({ hiddenKeys: ['app_id', 'app_secret'], connectorName: 'QQ 机器人' });
-    expect(hook.result.current.savedCredentialKeys).toEqual([]);
-    await act(/* readySaveAction 保存不含 app 字段的 qq 表单。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).toHaveBeenCalledWith('qq-2', expect.objectContaining({ config: { user_openid: 'user-openid' } }), expect.anything());
-    expect(hook.result.current.toast).toEqual({ type: 'success', text: '已更新' });
-    hook.unmount();
-  });
-
-  // 勾选「改用连接器凭据」后表单只记录清除意图，保存时由该类型的凭据键生成空串。
-  test('改用连接器凭据时提交空串以清除渠道级凭据', /* clearCredentialTest 验证显式清除的载荷表达。 */ async () => {
-    getSmtpMock.mockResolvedValueOnce({ 'qqbot.app_id': '102012345', 'qqbot.app_secret_configured': true });
+  // 勾选「改用用户级集成凭据」后表单只记录清除意图，保存时由该类型的凭据键生成空串。
+  test('改用用户级集成凭据时提交空串以清除渠道级凭据', /* clearCredentialTest 验证显式清除的载荷表达。 */ async () => {
     // qqChannel 是仍保存独立凭据的 qq 渠道摘要。
     const qqChannel: NotificationChannel = { id: 'qq-3', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
     getChannelMock.mockResolvedValueOnce({ id: 3, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: ['app_id', 'app_secret'] });
-    // hook 是管理员编辑 qq 渠道的 Hook 渲染结果。
-    const hook = renderHook(/* clearHookFactory 创建读取系统连接器凭据的管理员状态。 */ () => useConnectors(true));
-    await waitFor(/* clearAssertion 等待系统设置读取完成。 */ () => expect(hook.result.current.settingsLoading).toBe(false));
+    // hook 是编辑 qq 渠道的 Hook 渲染结果。
+    const hook = renderHook(/* clearHookFactory 创建 qq 编辑状态。 */ () => useConnectors());
+    await waitFor(/* clearAssertion 等待渠道列表读取完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* clearEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    await act(/* clearFormAction 模拟勾选改用连接器凭据后写入的清除意图。 */ () => hook.result.current.setForm(
+    await act(/* clearFormAction 模拟勾选改用用户级集成凭据后写入的清除意图。 */ () => hook.result.current.setForm(
       /* clearFormUpdater 只切换凭据意图，不改动已回填的配置。 */ current => ({ ...current, credentialAction: 'clear' }),
     ));
     await act(/* clearSaveAction 保存带有清除意图的 qq 表单。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).toHaveBeenCalledWith('qq-3', expect.objectContaining({ config: { user_openid: 'user-openid', app_id: '', app_secret: '' } }), expect.anything());
-    hook.unmount();
-  });
-
-  // 连接器未就绪且渠道没有已保存凭据时，qq 渠道凭据仍必须由用户填写。
-  test('连接器未就绪且渠道无凭据时 qq 凭据仍必填', /* missingCredentialTest 验证原有必填行为不被放过。 */ async () => {
-    // qqChannel 是缺少渠道级凭据的 qq 渠道摘要。
-    const qqChannel: NotificationChannel = { id: 'qq-4', name: 'QQ 通知', type: 'qq', config: {}, enabled: true, event_types: [] };
-    getChannelMock.mockResolvedValueOnce({ id: 4, name: 'QQ 通知', type: 'qq', enabled: true, config: { user_openid: 'user-openid' }, saved_credential_keys: [] });
-    // hook 是普通用户编辑 qq 渠道的 Hook 渲染结果。
-    const hook = renderHook(/* invalidHookFactory 创建不读取系统设置的 qq 编辑状态。 */ () => useConnectors(false));
-    await waitFor(/* invalidAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
-
-    await act(/* invalidEditAction 打开 qq 渠道表单。 */ async () => hook.result.current.openEdit(qqChannel));
-    expect(hook.result.current.credentialSource).toBeNull();
-    await act(/* invalidSaveAction 提交缺少凭据的 qq 表单。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).not.toHaveBeenCalled();
-    expect(hook.result.current.toast).toEqual({ type: 'error', text: '请填写 机器人 AppID' });
+    expect(updateChannelMock).toHaveBeenCalledWith('qq-3', expect.objectContaining({ config: { user_openid: 'user-openid' } }), expect.anything());
     hook.unmount();
   });
 
@@ -494,8 +330,8 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
       id: 5, name: 'Bark', type: 'bark', enabled: true,
       config: { server_url: 'https://bark.example.com', title: '闲鱼助手' }, saved_credential_keys: ['device_key'],
     });
-    // hook 是普通用户编辑 bark 渠道的 Hook 渲染结果。
-    const hook = renderHook(/* barkHookFactory 创建不读取系统设置的 bark 编辑状态。 */ () => useConnectors(false));
+    // hook 是编辑 bark 渠道的 Hook 渲染结果。
+    const hook = renderHook(/* barkHookFactory 创建 bark 编辑状态。 */ () => useConnectors());
     await waitFor(/* barkLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* barkEditAction 打开 bark 渠道表单。 */ async () => hook.result.current.openEdit(barkChannel));
@@ -515,8 +351,8 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     // dingtalkChannel 是编辑场景使用的钉钉渠道摘要。
     const dingtalkChannel: NotificationChannel = { id: 'dingtalk-1', name: '钉钉', type: 'dingtalk', config: {}, enabled: true, event_types: [] };
     getChannelMock.mockResolvedValueOnce({ id: 6, name: '钉钉', type: 'dingtalk', enabled: true, saved_credential_keys: ['secret', 'webhook_url'] });
-    // hook 是普通用户编辑钉钉渠道的 Hook 渲染结果。
-    const hook = renderHook(/* dingtalkHookFactory 创建不读取系统设置的钉钉编辑状态。 */ () => useConnectors(false));
+    // hook 是编辑钉钉渠道的 Hook 渲染结果。
+    const hook = renderHook(/* dingtalkHookFactory 创建钉钉编辑状态。 */ () => useConnectors());
     await waitFor(/* dingtalkLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
 
     await act(/* dingtalkEditAction 打开钉钉渠道表单。 */ async () => hook.result.current.openEdit(dingtalkChannel));
@@ -537,8 +373,8 @@ describe('useConnectors', /* 当前回调处理通知渠道、SMTP 和动作状�
     // dingtalkChannel 是携带已保存凭据键的钉钉渠道摘要。
     const dingtalkChannel: NotificationChannel = { id: 'dingtalk-2', name: '钉钉', type: 'dingtalk', config: {}, enabled: true, event_types: [] };
     getChannelMock.mockResolvedValueOnce({ id: 7, name: '钉钉', type: 'dingtalk', enabled: true, saved_credential_keys: ['secret', 'webhook_url'] });
-    // hook 是普通用户编辑钉钉渠道的 Hook 渲染结果。
-    const hook = renderHook(/* switchHookFactory 创建不读取系统设置的编辑状态。 */ () => useConnectors(false));
+    // hook 是编辑钉钉渠道的 Hook 渲染结果。
+    const hook = renderHook(/* switchHookFactory 创建编辑状态。 */ () => useConnectors());
     await waitFor(/* switchLoadedAssertion 等待渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
     await act(/* switchEditAction 打开钉钉渠道表单。 */ async () => hook.result.current.openEdit(dingtalkChannel));
     await act(/* switchFormAction 模拟弹窗切换类型后写入清除意图。 */ () => hook.result.current.setForm(
@@ -564,7 +400,7 @@ test.each(['ready', 'close', 'create', 'switch', 'failure'] as const)('编辑加
   let failEditor!: (reason: Error) => void;
   getChannelMock.mockImplementationOnce(/* pendingEditorResponse 暂存读取响应的控制函数。 */ () => new Promise(/* pendingEditorExecutor 等待测试完成首个读取。 */ (resolve, reject) => { finishEditor = resolve; failEditor = reject; }));
   // hook 是本场景独立的通知状态，卸载会取消仍在等待的请求。
-  const hook = renderHook(/* editorHookFactory 创建无系统 SMTP 查询的编辑状态。 */ () => useConnectors(false));
+  const hook = renderHook(/* editorHookFactory 创建编辑状态。 */ () => useConnectors());
   await waitFor(/* editorLoadedAssertion 等待初始渠道列表加载完成。 */ () => expect(hook.result.current.loading).toBe(false));
   // pending 保存首个异步编辑，用于等待它完成后确认没有旧响应覆盖。
   let pending!: Promise<void>;
@@ -578,16 +414,15 @@ test.each(['ready', 'close', 'create', 'switch', 'failure'] as const)('编辑加
   }
   await act(/* finishEditorAction 让旧读取最后完成或失败。 */ async () => {
     if (mode === 'failure') failEditor(new Error('读取失败'));
-    else finishEditor({ id: 1, name: '邮件', type: 'email', enabled: true, to_email: 'old@example.com', use_custom_smtp: true });
+    else finishEditor({ id: 1, name: '邮件', type: 'email', enabled: true, to_email: 'old@example.com' });
     await pending;
   });
   if (mode === 'ready') {
-    expect(hook.result.current.form.preserveSMTP).toBe(true);
     expect(hook.result.current.showModal).toBe(true);
+    expect(hook.result.current.form.config).toEqual({ to_email: 'old@example.com' });
     act(/* editRecipientAction 读取完成后用户修改收件地址，之后不会再有该读取的回填。 */ () => hook.result.current.setForm(/* recipientUpdater 只改变当前收件地址。 */ current => ({ ...current, config: { ...current.config, to_email: 'new@example.com' } })));
-    await act(/* saveRecipientAction 单独更新收件地址并保留服务器 SMTP。 */ async () => hook.result.current.handleSave());
-    expect(updateChannelMock).toHaveBeenLastCalledWith('1', expect.objectContaining({ email_recipient: 'new@example.com' }), expect.anything());
-    expect(updateChannelMock.mock.calls.at(-1)?.[1].config).toBeUndefined();
+    await act(/* saveRecipientAction 更新收件地址。 */ async () => hook.result.current.handleSave());
+    expect(updateChannelMock).toHaveBeenLastCalledWith('1', expect.objectContaining({ config: { to_email: 'new@example.com' } }), expect.anything());
   } else if (mode === 'create') {
     expect(hook.result.current.editing).toBeNull();
     expect(hook.result.current.form.type).toBe('bark');

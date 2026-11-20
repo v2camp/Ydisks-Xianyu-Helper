@@ -441,6 +441,22 @@ func openServerInfrastructure(ctx context.Context, startup serverStartupConfig, 
 			logger.Info("管理员初始化完成", "username", "admin")
 		}
 	}
+	// migrationReport 是全局/渠道级集成配置折叠到本地用户的结果；失败时不得继续启动。
+	// 迁移必须在管理员初始化之后执行，否则首次 -init-admin 会因没有可接收旧配置的用户而失败。
+	migrationReport, migrationErr := store.MigrateIntegrationSettingsV1(ctx)
+	if migrationErr != nil {
+		_ = database.Close()
+		closeLog()
+		return serverInfrastructure{}, fmt.Errorf("迁移用户级集成配置失败: %w", migrationErr)
+	}
+	if !migrationReport.Skipped {
+		logger.Info("用户级集成配置迁移完成",
+			"admin_user_id", migrationReport.AdminUserID,
+			"global_keys", migrationReport.GlobalKeys,
+			"channels", migrationReport.Channels,
+			"conflicts", migrationReport.Conflicts,
+		)
+	}
 	// initialized 表示系统是否已有管理员；查询失败按未初始化提示而不阻断启动。
 	if initialized, _ := store.Users.IsSystemInitialized(ctx); !initialized {
 		if isNonLoopbackListenAddress(opts.addr) {

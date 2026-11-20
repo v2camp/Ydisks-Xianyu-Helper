@@ -334,44 +334,6 @@ func TestSettingsCardsNotificationsBatchContracts(t *testing.T) {
 		t.Fatalf("channel response=%+v", channelResponse)
 	}
 
-	// bindingReq 是将通知渠道绑定到测试账号的请求。
-	bindingReq := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/accounts/acc1/bindings", strings.NewReader(`{"channel_ids":[`+strconv.FormatInt(channelResponse.ID, 10)+`]}`))
-	bindingReq.AddCookie(sessionCookie)
-	// bindingRecorder 是捕获通知绑定响应的记录器。
-	bindingRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(bindingRecorder, bindingReq)
-	if bindingRecorder.Code != http.StatusOK {
-		t.Fatalf("binding status=%d body=%s", bindingRecorder.Code, bindingRecorder.Body.String())
-	}
-	// bindingResponse 是通知绑定变更具名响应 DTO。
-	var bindingResponse operationResponse
-	// bindingDecodeErr 是通知绑定响应 JSON 反序列化失败的原因。
-	if bindingDecodeErr := json.Unmarshal(bindingRecorder.Body.Bytes(), &bindingResponse); bindingDecodeErr != nil {
-		t.Fatalf("decode binding response: %v", bindingDecodeErr)
-	}
-	if !bindingResponse.Success {
-		t.Fatalf("binding response=%+v", bindingResponse)
-	}
-
-	// bindingGetReq 是读取账号通知绑定的请求。
-	bindingGetReq := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/accounts/acc1/bindings", nil)
-	bindingGetReq.AddCookie(sessionCookie)
-	// bindingGetRecorder 是捕获账号通知绑定响应的记录器。
-	bindingGetRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(bindingGetRecorder, bindingGetReq)
-	if bindingGetRecorder.Code != http.StatusOK {
-		t.Fatalf("binding get status=%d body=%s", bindingGetRecorder.Code, bindingGetRecorder.Body.String())
-	}
-	// bindingGetResponse 是账号通知绑定具名响应 DTO。
-	var bindingGetResponse accountBindingsResponse
-	// bindingGetDecodeErr 是账号通知绑定响应 JSON 反序列化失败的原因。
-	if bindingGetDecodeErr := json.Unmarshal(bindingGetRecorder.Body.Bytes(), &bindingGetResponse); bindingGetDecodeErr != nil {
-		t.Fatalf("decode binding get response: %v", bindingGetDecodeErr)
-	}
-	if bindingGetResponse.CookieID != "acc1" || len(bindingGetResponse.ChannelIDs) != 1 {
-		t.Fatalf("binding get response=%+v", bindingGetResponse)
-	}
-
 	// batchReq 是读取商品批量任务列表的请求。
 	batchReq := httptest.NewRequest(http.MethodGet, "/api/v1/items/publish-batches?limit=10", nil)
 	batchReq.AddCookie(sessionCookie)

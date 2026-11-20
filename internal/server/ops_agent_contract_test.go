@@ -32,12 +32,12 @@ type opsAgentPortStub struct {
 }
 
 // List 返回预设会话分页。
-func (s opsAgentPortStub) List(context.Context, int, int) (opschatapp.ConversationPage, error) {
+func (s opsAgentPortStub) List(context.Context, int64, int, int) (opschatapp.ConversationPage, error) {
 	return s.listPage, s.listErr
 }
 
 // Messages 返回预设消息分页。
-func (s opsAgentPortStub) Messages(context.Context, int64, int64, int) (opschatapp.MessagePage, error) {
+func (s opsAgentPortStub) Messages(context.Context, int64, int64, int64, int) (opschatapp.MessagePage, error) {
 	return s.messagesPage, s.messagesErr
 }
 
@@ -120,8 +120,8 @@ func TestOpsSendSuccessShape(t *testing.T) {
 	}
 }
 
-// TestOpsAgentRoutesRequireAuthAndAdmin 验证运营接口对未认证与非管理员分别返回 401 与 403。
-func TestOpsAgentRoutesRequireAuthAndAdmin(t *testing.T) {
+// TestOpsAgentRoutesRequireAuthAndScopeToUser 验证运营接口对未认证返回 401，且普通用户只能看到自己的会话。
+func TestOpsAgentRoutesRequireAuthAndScopeToUser(t *testing.T) {
 	// srv、store、cleanup 分别是测试 Server、测试数据库与资源释放函数。
 	srv, store, cleanup := newTestServer(t)
 	defer cleanup()
@@ -136,7 +136,7 @@ func TestOpsAgentRoutesRequireAuthAndAdmin(t *testing.T) {
 		t.Fatalf("未认证应 401，实际 %d", unauthenticatedRecorder.Code)
 	}
 	assertOpenAPIResponse(t, unauthenticated, unauthenticatedRecorder)
-	// 创建普通用户并登录，验证管理员门。
+	// 创建普通用户并登录，验证运营会话按登录用户隔离。
 	created, createErr := store.Users.Create(context.Background(), "ops-user", "ops@e.com", "pw")
 	if createErr != nil || !created {
 		t.Fatalf("创建普通用户失败: created=%v err=%v", created, createErr)
@@ -144,13 +144,18 @@ func TestOpsAgentRoutesRequireAuthAndAdmin(t *testing.T) {
 	// userCookie 是普通用户会话。
 	userCookie := loginAsHelper(t, handler, "ops-user", "pw")
 	// forbidden 是普通用户的列表请求。
-	forbidden := httptest.NewRequest(http.MethodGet, "/api/v1/agent/ops/conversations", nil)
-	forbidden.AddCookie(userCookie)
-	// forbiddenRecorder 捕获越权响应。
-	forbiddenRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(forbiddenRecorder, forbidden)
-	if forbiddenRecorder.Code != http.StatusForbidden {
-		t.Fatalf("非管理员应 403，实际 %d body=%s", forbiddenRecorder.Code, forbiddenRecorder.Body.String())
+	scoped := httptest.NewRequest(http.MethodGet, "/api/v1/agent/ops/conversations", nil)
+	scoped.AddCookie(userCookie)
+	// scopedRecorder 捕获按用户隔离后的列表响应。
+	scopedRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(scopedRecorder, scoped)
+	if scopedRecorder.Code != http.StatusOK {
+		t.Fatalf("登录用户应可访问自己的运营会话，实际 %d body=%s", scopedRecorder.Code, scopedRecorder.Body.String())
+	}
+	// scopedBody 是普通用户的列表响应原文，必须为空且不泄露其他用户会话。
+	scopedBody := scopedRecorder.Body.String()
+	if !strings.Contains(scopedBody, `"conversations":[]`) || !strings.Contains(scopedBody, `"total":0`) {
+		t.Fatalf("普通用户不应看到其他用户的运营会话，实际 %s", scopedBody)
 	}
 }
 
@@ -163,9 +168,14 @@ func TestOpsAgentRealServerFlow(t *testing.T) {
 	handler := srv.Router()
 	// sessionCookie 是管理员会话 Cookie。
 	sessionCookie := loginHelper(t, handler)
+	// admin、adminErr 是当前登录管理员账号，用于给运营会话补齐用户归属。
+	admin, adminErr := store.Users.GetAdmin(context.Background())
+	if adminErr != nil || admin == nil {
+		t.Fatalf("读取管理员账号失败: admin=%+v err=%v", admin, adminErr)
+	}
 	// message、_, recordErr 是建立运营会话的入站消息。
 	message, _, recordErr := store.OpsChat.RecordInbound(context.Background(), db.OpsInboundRecord{
-		TargetOpenID: "group-contract", PlatformMsgID: "msg-contract", Content: "你好", IsGroup: true, At: 1700000000000,
+		UserID: admin.ID, TargetOpenID: "group-contract", PlatformMsgID: "msg-contract", Content: "你好", IsGroup: true, At: 1700000000000,
 	})
 	if recordErr != nil {
 		t.Fatalf("写入运营会话失败: %v", recordErr)
@@ -225,7 +235,7 @@ func TestOpsAgentRealServerFlow(t *testing.T) {
 	}
 	assertOpenAPIResponse(t, validSend, validRecorder)
 	// count、countErr 是发送失败后的消息总数，必须保持不变。
-	count, countErr := store.OpsChat.ListOpsMessages(context.Background(), message.ConversationID, 0, 10)
+	count, countErr := store.OpsChat.ListOpsMessages(context.Background(), admin.ID, message.ConversationID, 0, 10)
 	if countErr != nil {
 		t.Fatalf("读取消息数失败: %v", countErr)
 	}

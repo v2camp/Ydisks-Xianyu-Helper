@@ -30,6 +30,11 @@ func (r *SettingsRepository) IsSensitiveSettingKey(key string) bool {
 	return db.IsSensitiveSettingKey(key)
 }
 
+// IsUserIntegrationSettingKey 判断设置键是否属于用户级集成配置。
+func (r *SettingsRepository) IsUserIntegrationSettingKey(key string) bool {
+	return db.IsUserIntegrationSettingKey(key)
+}
+
 // SensitiveSettingKeys 返回敏感设置键名，不返回任何敏感值。
 func (r *SettingsRepository) SensitiveSettingKeys() []string {
 	if r == nil {
@@ -139,6 +144,39 @@ func (r *SettingsRepository) SetUser(ctx context.Context, userID int64, key, val
 		return err
 	}
 	return r.store.UserSettings.SetForUser(ctx, userID, key, value)
+}
+
+// RedactedUser 返回用户集成配置的脱敏视图，敏感键只回 configured 标记。
+func (r *SettingsRepository) RedactedUser(ctx context.Context, userID int64) (map[string]string, error) {
+	// err 表示设置数据库适配器未装配。
+	if err := r.validate(); err != nil {
+		return nil, err
+	}
+	return r.store.UserSettings.RedactedForUser(ctx, userID)
+}
+
+// ApplyUserChanges 原子保存用户级普通设置与敏感变更命令。
+func (r *SettingsRepository) ApplyUserChanges(ctx context.Context, userID int64, values map[string]string, secrets map[string]settingsapp.SecretChange) error {
+	// err 表示设置数据库适配器未装配。
+	if err := r.validate(); err != nil {
+		return err
+	}
+	// dbSecrets 保存转换后的数据库敏感设置命令。
+	dbSecrets := make(map[string]db.SensitiveSettingChange, len(secrets))
+	// key、change 是当前待转换的敏感键与其三态命令。
+	for key, change := range secrets {
+		dbSecrets[key] = db.SensitiveSettingChange{Action: change.Action, Value: change.Value}
+	}
+	return r.store.UserSettings.ApplyChangesForUser(ctx, userID, values, dbSecrets)
+}
+
+// ReadSensitiveUser 通过 fail-closed 审计入口读取用户级秘密。
+func (r *SettingsRepository) ReadSensitiveUser(ctx context.Context, userID int64, key, action, resource string) (string, error) {
+	// err 表示设置数据库适配器未装配。
+	if err := r.validate(); err != nil {
+		return "", err
+	}
+	return r.store.ReadSensitiveUserSetting(ctx, userID, key, action, resource)
 }
 
 // CheckOwnership 查询账号所属用户，不读取或解密任何账号凭证。

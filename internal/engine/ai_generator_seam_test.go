@@ -54,11 +54,11 @@ func newSeamAIStore(t *testing.T, discountPercent, discountAmount, autoAdjust in
 		t.Fatal(itemErr)
 	}
 	// keyErr 表示写入测试密钥时不应出现的数据库错误。
-	if keyErr := store.Settings.Set(ctx, "ai_api_key", "sk-seam"); keyErr != nil {
+	if keyErr := setUserAISettingForTest(store, "ai_api_key", "sk-seam"); keyErr != nil {
 		t.Fatal(keyErr)
 	}
 	// urlErr 表示写入不可达模型地址时不应出现的数据库错误；该地址必须永不被访问。
-	if urlErr := store.Settings.Set(ctx, "ai_api_url", "http://127.0.0.1:1"); urlErr != nil {
+	if urlErr := setUserAISettingForTest(store, "ai_api_url", "http://127.0.0.1:1"); urlErr != nil {
 		t.Fatal(urlErr)
 	}
 	return store, cleanup

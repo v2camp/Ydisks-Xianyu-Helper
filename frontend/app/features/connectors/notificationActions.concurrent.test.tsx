@@ -6,7 +6,7 @@ import { useConnectors } from './hooks';
 import { createNotificationChannel, deleteNotificationChannel, getNotificationChannels, testNotificationChannel, updateNotificationChannel } from './api';
 
 // API 替身只控制通知请求，不发送任何消息。
-vi.mock('./api', () => ({ getNotificationChannels: vi.fn(), getSystemSettings: vi.fn(), getNotificationChannel: vi.fn(), createNotificationChannel: vi.fn(), deleteNotificationChannel: vi.fn(), testNotificationChannel: vi.fn(), updateNotificationChannel: vi.fn(), updateSystemSettings: vi.fn(), QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' } }));
+vi.mock('./api', () => ({ getNotificationChannels: vi.fn(), getNotificationChannel: vi.fn(), createNotificationChannel: vi.fn(), deleteNotificationChannel: vi.fn(), testNotificationChannel: vi.fn(), updateNotificationChannel: vi.fn(), QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' } }));
 // channel 是本地构造的渠道摘要。
 const channel: NotificationChannel = { id: 'one', name: '测试', type: 'bark', config: {}, enabled: true, event_types: [] };
 
@@ -25,7 +25,7 @@ test.each(['toggle', 'delete', 'save', 'close', 'unmount'])('通知测试被 %s 
     signal?.addEventListener('abort', /* 取消行为与生产契约客户端一致。 */ () => reject(new Error('请求已取消')), { once: true });
   }));
   // hook 是待检验的通知状态。
-  const hook = renderHook(/* 创建通知页面状态。 */ () => useConnectors(false));
+  const hook = renderHook(/* 创建通知页面状态。 */ () => useConnectors());
   await waitFor(/* 等待初次渠道读取收束。 */ () => expect(hook.result.current.loading).toBe(false));
   if (action === 'save') act(/* 填写合法表单以触发保存。 */ () => {
     hook.result.current.openCreate();
@@ -61,7 +61,7 @@ test('旧测试结束不能清理新渠道测试的忙碌状态或显示旧错�
     .mockReturnValueOnce(new Promise(/* resolve 不使用，reject 释放旧错误。 */ (_resolve, reject) => { rejectOld = reject; }))
     .mockReturnValueOnce(new Promise(/* resolve 释放新测试的成功结果。 */ resolve => { resolveNew = resolve; }));
   // hook 管理连续渠道测试的生产状态。
-  const hook = renderHook(/* 创建通知状态。 */ () => useConnectors(false));
+  const hook = renderHook(/* 创建通知状态。 */ () => useConnectors());
   await waitFor(/* 等待列表初始化。 */ () => expect(hook.result.current.loading).toBe(false));
   // oldTask 保存被替换的测试。
   let oldTask!: Promise<void>;

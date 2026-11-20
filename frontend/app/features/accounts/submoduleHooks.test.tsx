@@ -8,9 +8,7 @@ cancelPasswordLogin,
 checkPasswordLoginStatus,
 getAccountAISettings,
 getAccountAgentSupport,
-getAccountBindings,
 getLongLoginSettings,
-getNotificationChannels,
 passwordLogin,
 setLongLoginSettings,
 updateAccountAISettings,
@@ -26,9 +24,7 @@ vi.mock('./api', /* accountsSubmoduleApiMockFactory 提供账号子模块 Hook �
   checkPasswordLoginStatus: vi.fn(),
   getAccountAISettings: vi.fn(),
   getAccountAgentSupport: vi.fn(),
-  getAccountBindings: vi.fn(),
   getLongLoginSettings: vi.fn(),
-  getNotificationChannels: vi.fn(),
   passwordLogin: vi.fn(),
   setLongLoginSettings: vi.fn(),
   updateAccountAISettings: vi.fn(),
@@ -43,12 +39,8 @@ const cancelPasswordMock = vi.mocked(cancelPasswordLogin);
 const passwordStatusMock = vi.mocked(checkPasswordLoginStatus);
 // accountAIMock 是账号 AI 设置读取的可控替身。
 const accountAIMock = vi.mocked(getAccountAISettings);
-// bindingsMock 是账号通知绑定读取的可控替身。
-const bindingsMock = vi.mocked(getAccountBindings);
 // longLoginMock 是长期登录状态读取的可控替身。
 const longLoginMock = vi.mocked(getLongLoginSettings);
-// channelsMock 是通知渠道读取的可控替身。
-const channelsMock = vi.mocked(getNotificationChannels);
 // passwordLoginMock 是密码登录启动的可控替身。
 const passwordLoginMock = vi.mocked(passwordLogin);
 // setLongLoginMock 是长期登录保存的可控替身。
@@ -67,7 +59,7 @@ const updateAgentSupportMock = vi.mocked(updateAccountAgentSupport);
 // accountFixture 是账号编辑和登录流程使用的账号对象。
 const accountFixture = { id: 'account-1', enabled: true, value: 'old-cookie', remark: '旧备注', auto_confirm: false, auto_consign: false, auto_bargain: false, pause_duration: 0, username: 'user@example.com', login_password: 'old-password', show_browser: false } as AccountDetail;
 // editFormFixture 是账号编辑弹窗的初始表单。
-const editFormFixture: AccountEditForm = { remark: '新备注', cookie: 'new-cookie', auto_confirm: true, auto_consign: false, auto_bargain: true, bargain_soothe_template: '', pause_duration: 60, username: 'user@example.com', login_password: 'new-password', show_browser: true, showLoginPassword: false, clear_password: false };
+const editFormFixture: AccountEditForm = { remark: '新备注', cookie: 'new-cookie', auto_confirm: true, auto_consign: false, auto_bargain: true, bargain_soothe_template: '', pause_duration: 60, username: 'user@example.com', login_password: 'new-password', show_browser: true, notifications_disabled: false, showLoginPassword: false, clear_password: false };
 // aiFixture 是账号 AI 设置的服务端配置。
 const aiFixture: AIReplySettings = { ai_enabled: true, auto_adjust_price_enabled: true, max_discount_percent: 20, max_discount_amount: 50, max_bargain_rounds: 2, custom_prompts: '请礼貌回复' };
 // agentSupportFixture 是账号级客服 Agent 授权的服务端配置，档位覆盖值为空表示继承租户默认。
@@ -80,8 +72,6 @@ const agentSupportFixture: AccountAgentSupport = {
 describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知绑定和密码登录。 */ () => {
   beforeEach(/* 当前回调重置账号子模块 API 替身。 */ () => {
     vi.clearAllMocks();
-    channelsMock.mockResolvedValue({ success: true, data: [{ id: '1', name: '邮件', type: 'email', enabled: true } as never] });
-    bindingsMock.mockResolvedValue([1]);
     longLoginMock.mockResolvedValue({ can_open_long_login: true, enabled: false });
     setLongLoginMock.mockResolvedValue({ can_open_long_login: true, enabled: true });
     accountAIMock.mockResolvedValue(aiFixture as never);
@@ -95,7 +85,7 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     cancelPasswordMock.mockResolvedValue({ success: true });
   });
 
-  test('打开编辑和AI弹窗后可以保存账号、绑定、长期登录和暂停设置', /* 当前回调验证账号编辑子模块的成功路径。 */ async () => {
+  test('打开编辑和AI弹窗后可以保存账号、长期登录和暂停设置', /* 当前回调验证账号编辑子模块的成功路径。 */ async () => {
     // setEditingAccount 是编辑账号状态替身。
     const setEditingAccount = vi.fn();
     // setActiveModal 是编辑弹窗状态替身。
@@ -115,24 +105,17 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       async () => hook.result.current.openEditModal(accountFixture),
     );
     expect(hook.result.current.longLogin.canOpen).toBe(true);
-    expect(hook.result.current.notifChannels).toHaveLength(1);
-    expect(hook.result.current.selectedChannelIds).toEqual([1]);
     expect(setEditForm).toHaveBeenCalledWith(expect.objectContaining({ cookie: '', login_password: '' }));
-    await act(
-      // toggleAction 切换通知渠道绑定。
-      () => hook.result.current.toggleNotificationChannel(2),
-    );
-    expect(hook.result.current.bindingsDirty).toBe(true);
     await act(
       // longLoginAction 切换长期登录设置。
       async () => hook.result.current.handleLongLoginToggle(),
     );
     expect(setLongLoginMock).toHaveBeenCalledWith('account-1', true);
     await act(
-      // saveEditAction 保存账号表单和通知绑定。
+      // saveEditAction 保存账号表单。
       async () => hook.result.current.handleSaveEdit(),
     );
-    expect(updateAccountMock).toHaveBeenCalledWith('account-1', expect.objectContaining({ remark: '新备注', cookie: 'new-cookie', channel_ids: [1, 2] }));
+    expect(updateAccountMock).toHaveBeenCalledWith('account-1', expect.objectContaining({ remark: '新备注', cookie: 'new-cookie' }));
     expect(loadAccounts).toHaveBeenCalled();
 
     await act(
@@ -406,7 +389,7 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     hook.unmount();
   });
 
-  test('绑定、长期登录和AI请求失败时保留可恢复状态', /* 当前回调验证账号子模块的失败隔离分支。 */ async () => {
+  test('长期登录和AI请求失败时保留可恢复状态', /* 当前回调验证账号子模块的失败隔离分支。 */ async () => {
     // setEditingAccount 是失败场景的账号状态替身。
     const setEditingAccount = vi.fn();
     // setActiveModal 是失败场景的弹窗状态替身。
@@ -415,8 +398,6 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     const setEditForm = vi.fn();
     // loadAccounts 是失败场景的列表刷新替身。
     const loadAccounts = vi.fn().mockResolvedValue(undefined);
-    channelsMock.mockRejectedValueOnce(new Error('渠道失败'));
-    bindingsMock.mockRejectedValueOnce(new Error('绑定失败'));
     longLoginMock.mockRejectedValueOnce(new Error('长登录失败'));
     // hook 是账号子模块失败场景的渲染结果。
     const hook = renderHook(
@@ -427,7 +408,6 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
       // editErrorAction 打开编辑弹窗并等待失败结果收口。
       async () => hook.result.current.openEditModal(accountFixture),
     );
-    expect(hook.result.current.bindingsLoadError).toContain('绑定加载失败');
     expect(hook.result.current.longLogin.error).toContain('无法读取');
     await act(
       // aiErrorAction 打开AI弹窗并隔离读取失败。
@@ -451,17 +431,11 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     const setEditForm = vi.fn();
     // loadAccounts 是通知渠道边界测试的列表刷新替身。
     const loadAccounts = vi.fn().mockResolvedValue(undefined);
-    channelsMock.mockRejectedValueOnce(new Error('渠道读取失败'));
     // hook 是通知渠道单独失败场景的 Hook 渲染结果。
     const hook = renderHook(
       // bindingsErrorHookFactory 创建通知渠道单独失败场景的子模块 Hook。
       () => useAccountSubmodules({ editingAccount: accountFixture, setEditingAccount, setActiveModal, editForm: editFormFixture, setEditForm, loadAccounts }),
     );
-    await act(
-      // editAction 打开编辑弹窗并等待通知渠道请求完成。
-      async () => hook.result.current.openEditModal(accountFixture),
-    );
-    expect(hook.result.current.bindingsLoadError).toContain('通知渠道列表加载失败');
     await act(
       // aiAction 打开 AI 设置弹窗。
       async () => hook.result.current.openAIModal(accountFixture),
@@ -525,20 +499,11 @@ describe('useAccountSubmodules', /* 当前回调处理账号编辑、AI、通知
     const setEditForm = vi.fn();
     // loadAccounts 是派生默认值测试的账号刷新替身。
     const loadAccounts = vi.fn().mockResolvedValue(undefined);
-    // hook 是通知绑定移除和密码终态场景的 Hook 渲染结果。
+    // hook 是派生默认值场景的 Hook 渲染结果。
     const hook = renderHook(
       // derivedHookFactory 创建派生默认值场景的子模块 Hook。
       () => useAccountSubmodules({ editingAccount: accountFixture, setEditingAccount, setActiveModal, editForm: editFormFixture, setEditForm, loadAccounts }),
     );
-    await act(
-      // editAction 打开编辑弹窗并加载通知绑定。
-      async () => hook.result.current.openEditModal(accountFixture),
-    );
-    await act(
-      // removeBindingAction 移除已经绑定的通知渠道。
-      () => hook.result.current.toggleNotificationChannel(1),
-    );
-    expect(hook.result.current.selectedChannelIds).toEqual([]);
 
     accountAIMock.mockResolvedValueOnce({ ai_enabled: undefined, max_discount_percent: undefined, max_discount_amount: undefined, max_bargain_rounds: undefined, custom_prompts: undefined } as never);
     await act(

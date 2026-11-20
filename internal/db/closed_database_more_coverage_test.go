@@ -43,7 +43,11 @@ func TestClosedDatabaseCoversCoreRepositoryErrors(t *testing.T) {
 		store.Items.Delete(ctx, "cid", "item"),
 		store.ItemReps.Set(ctx, "cid", "item", "reply"),
 		store.Keywords.UpdateByID(ctx, KeywordRow{ID: 1, CookieID: "cid", Keyword: "keyword", Reply: "reply"}),
-		store.Notifications.SetBindings(ctx, "cid", []int64{1}),
+		func() error {
+			// err 保存账号通知渠道查询在关闭连接后的错误。
+			_, err := store.Notifications.AccountChannels(ctx, "cid")
+			return err
+		}(),
 		func() error {
 			// err 保存批量取消请求在关闭连接后的错误。
 			_, _, err := store.PublishBatches.RequestCancel(ctx, "batch")

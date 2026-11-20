@@ -40,7 +40,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'delivery-templates', icon: FileStack, label: '发货模板' },
     { id: 'rules', icon: Zap, label: '自动化规则' },
     { id: 'connectors', icon: Bell, label: '连接器' },
-    ...(isAdmin ? [{ id: 'settings', icon: Settings, label: '系统设置' }, { id: 'customer-agent', icon: Bot, label: '客服 Agent' }, { id: 'ops-agent', icon: Radio, label: '运营 Agent' }] : []),
+    { id: 'ops-agent', icon: Radio, label: '运营 Agent' },
+    ...(isAdmin ? [{ id: 'settings', icon: Settings, label: '系统设置' }, { id: 'customer-agent', icon: Bot, label: '客服 Agent' }] : []),
   ];
   // displayVersion 显示版本号。
   const displayVersion = /^\d+\.\d+\.\d+$/.test(buildInfo.version)

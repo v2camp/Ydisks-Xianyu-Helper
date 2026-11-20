@@ -25,6 +25,10 @@ type settingsRepositoryFake struct {
 	aiSettings map[string]AIReplySettings
 	// systemValues 保存系统设置读取值。
 	systemValues map[string]string
+	// userValues 保存用户级设置读取值；未命中时回落测试默认值。
+	userValues map[string]string
+	// userErr 模拟用户级设置读取失败。
+	userErr error
 	// systemErr 保存系统设置读取失败原因。
 	systemErr error
 	// readSecretErr 保存敏感系统设置读取失败原因。
@@ -132,12 +136,50 @@ func (r *settingsRepositoryFake) ListUser(context.Context, int64) (map[string]st
 }
 
 // GetUser 返回测试用户单项设置。
-func (r *settingsRepositoryFake) GetUser(context.Context, int64, string) (string, error) {
+func (r *settingsRepositoryFake) GetUser(_ context.Context, _ int64, key string) (string, error) {
+	if r.userErr != nil {
+		return "", r.userErr
+	}
+	// value、ok 是当前键的用户级值与是否存在。
+	if value, ok := r.userValues[key]; ok {
+		return value, nil
+	}
 	return "dark", nil
 }
 
 // SetUser 保存测试用户单项设置。
 func (r *settingsRepositoryFake) SetUser(context.Context, int64, string, string) error { return nil }
+
+// IsUserIntegrationSettingKey 判断测试键是否属于用户集成配置。
+func (r *settingsRepositoryFake) IsUserIntegrationSettingKey(key string) bool {
+	switch key {
+	case "ai_api_url", "ai_base_url", "ai_model", "ai_api_key",
+		"smtp_server", "smtp_port", "smtp_user", "smtp_password",
+		"smtp_from_name", "smtp_from_address", "smtp_use_tls", "smtp_use_ssl",
+		"qqbot.app_id", "qqbot.app_secret", "qqbot.commands_enabled", "qqbot.command_openids":
+		return true
+	default:
+		return false
+	}
+}
+
+// RedactedUser 返回测试用户集成配置的脱敏视图。
+func (r *settingsRepositoryFake) RedactedUser(context.Context, int64) (map[string]string, error) {
+	return map[string]string{"ai_api_key_configured": "true"}, nil
+}
+
+// ApplyUserChanges 保存测试用户集成配置变更。
+func (r *settingsRepositoryFake) ApplyUserChanges(context.Context, int64, map[string]string, map[string]SecretChange) error {
+	return r.applyErr
+}
+
+// ReadSensitiveUser 返回测试用户秘密。
+func (r *settingsRepositoryFake) ReadSensitiveUser(context.Context, int64, string, string, string) (string, error) {
+	if r.readSecretErr != nil {
+		return "", r.readSecretErr
+	}
+	return "stored-secret", nil
+}
 
 // CheckOwnership 返回测试账号所有者。
 func (r *settingsRepositoryFake) CheckOwnership(context.Context, int64, string) (int64, error) {
@@ -215,19 +257,19 @@ func (c *modelClientFake) TestConnection(_ context.Context, baseURL, apiKey, mod
 // TestServiceApplySystemChangesAuditsSecrets 验证敏感系统设置写入先审计再进入 Port。
 func TestServiceApplySystemChangesAuditsSecrets(t *testing.T) {
 	// repository 保存测试设置 Port。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// service 保存待测试的设置应用服务。
 	service := NewService(repository, nil)
 	// err 表示敏感系统设置写入结果。
-	err := service.ApplySystemChanges(context.Background(), 7, map[string]string{"theme_color": "blue"}, map[string]SecretChange{"ai_api_key": {Action: "replace", Value: "secret"}})
+	err := service.ApplySystemChanges(context.Background(), 7, map[string]string{"theme_color": "blue"}, map[string]SecretChange{"qq_reply_secret_key": {Action: "replace", Value: "secret"}})
 	if err != nil {
 		t.Fatalf("apply settings: %v", err)
 	}
-	if len(repository.audits) != 1 || repository.audits[0].Action != "settings.write" || repository.audits[0].Keys[0] != "ai_api_key" {
+	if len(repository.audits) != 1 || repository.audits[0].Action != "settings.write" || repository.audits[0].Keys[0] != "qq_reply_secret_key" {
 		t.Fatalf("unexpected audit records: %+v", repository.audits)
 	}
 	// forwarded 表示敏感命令是否完整传递到 Port；断言失败时不输出秘密值。
-	forwarded, ok := repository.secrets["ai_api_key"]
+	forwarded, ok := repository.secrets["qq_reply_secret_key"]
 	if !ok || forwarded.Action != "replace" || forwarded.Value != "secret" {
 		t.Fatalf("secret command was not forwarded: action=%q present=%t", forwarded.Action, ok)
 	}
@@ -236,11 +278,11 @@ func TestServiceApplySystemChangesAuditsSecrets(t *testing.T) {
 // TestServiceRejectsSensitivePlainValue 验证敏感键不能通过普通设置值写入。
 func TestServiceRejectsSensitivePlainValue(t *testing.T) {
 	// repository 保存测试设置 Port。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// service 保存待测试的设置应用服务。
 	service := NewService(repository, nil)
 	// err 记录当前操作失败原因的普通敏感值写入结果。
-	err := service.ApplySystemChanges(context.Background(), 7, map[string]string{"ai_api_key": "secret"}, nil)
+	err := service.ApplySystemChanges(context.Background(), 7, map[string]string{"qq_reply_secret_key": "secret"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "敏感设置") {
 		t.Fatalf("sensitive plain value should fail: %v", err)
 	}
@@ -289,7 +331,7 @@ func TestServiceAIReplyOwnershipAndValidation(t *testing.T) {
 // TestServiceListAIModelsAuditsExplicitKey 验证外部传入 API 密钥也必须留下使用审计。
 func TestServiceListAIModelsAuditsExplicitKey(t *testing.T) {
 	// repository 保存测试系统设置 Port。
-	repository := &settingsRepositoryFake{systemValues: map[string]string{"ai_api_url": "https://example.test/v1"}}
+	repository := &settingsRepositoryFake{userValues: map[string]string{"ai_api_url": "https://example.test/v1"}}
 	// client 保存模型目录测试客户端。
 	client := &modelClientFake{}
 	// service 保存待测试的设置应用服务。
@@ -322,7 +364,7 @@ func TestServiceListAIModelsFailsClosedWhenAuditUnavailable(t *testing.T) {
 // TestServiceTestAIConnectionAuditsByPurpose 验证连接测试使用独立审计资源，并按空字段回退保存的端点、密钥和模型。
 func TestServiceTestAIConnectionAuditsByPurpose(t *testing.T) {
 	// repository 保存连接测试需要回退读取的系统设置和敏感键声明。
-	repository := &settingsRepositoryFake{systemValues: map[string]string{"ai_api_url": "https://configured.test/v1", "ai_model": "configured-model"}, sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{userValues: map[string]string{"ai_api_url": "https://configured.test/v1", "ai_model": "configured-model"}, sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// client 记录应用服务最终转交给连接测试 Port 的参数。
 	client := &modelClientFake{}
 	// service 是待验证的设置应用服务。
@@ -379,8 +421,8 @@ func TestServiceCoversSettingsAndAIReadWrite(t *testing.T) {
 	ctx := context.Background()
 	// repository 是带有敏感键、系统值和账号所有者的内存设置端口。
 	repository := &settingsRepositoryFake{
-		sensitiveKeys: []string{"ai_api_key", "smtp_password"},
-		systemValues:  map[string]string{"ai_api_url": "https://configured.test/v1"},
+		sensitiveKeys: []string{"qq_reply_secret_key", "captcha.remote_secret_key"},
+		userValues:    map[string]string{"ai_api_url": "https://configured.test/v1"},
 		ownerID:       7,
 		aiSettings:    map[string]AIReplySettings{"acc-1": {CookieID: "acc-1", AIEnabled: true}},
 	}
@@ -390,7 +432,7 @@ func TestServiceCoversSettingsAndAIReadWrite(t *testing.T) {
 	policy := &outboundPolicyFake{}
 	// service 是待验证的设置应用服务。
 	service := NewService(repository, client, policy)
-	if !service.IsSensitiveSettingKey("ai_api_key") || service.IsSensitiveSettingKey("theme_color") || (*Service)(nil).IsSensitiveSettingKey("ai_api_key") {
+	if !service.IsSensitiveSettingKey("qq_reply_secret_key") || service.IsSensitiveSettingKey("theme_color") || (*Service)(nil).IsSensitiveSettingKey("qq_reply_secret_key") {
 		t.Fatal("敏感键判断异常")
 	}
 	if // err 是公开系统设置读取错误。
@@ -406,15 +448,15 @@ func TestServiceCoversSettingsAndAIReadWrite(t *testing.T) {
 		t.Fatalf("普通系统设置写入失败: %v", err)
 	}
 	if // err 是敏感设置 retain 命令写入错误。
-	err := service.SetSystem(ctx, 7, "ai_api_key", "", "retain"); err != nil {
+	err := service.SetSystem(ctx, 7, "qq_reply_secret_key", "", "retain"); err != nil {
 		t.Fatalf("敏感 retain 写入失败: %v", err)
 	}
 	if // err 是敏感设置 clear 命令写入错误。
-	err := service.SetSystem(ctx, 7, "ai_api_key", "", "clear"); err != nil {
+	err := service.SetSystem(ctx, 7, "qq_reply_secret_key", "", "clear"); err != nil {
 		t.Fatalf("敏感 clear 写入失败: %v", err)
 	}
 	if // err 是敏感设置 replace 命令写入错误。
-	err := service.SetSystem(ctx, 7, "ai_api_key", "new-secret", "replace"); err != nil {
+	err := service.SetSystem(ctx, 7, "qq_reply_secret_key", "new-secret", "replace"); err != nil {
 		t.Fatalf("敏感 replace 写入失败: %v", err)
 	}
 	if // err 是用户设置列表读取错误。
@@ -635,13 +677,13 @@ func TestServicePropagatesSettingsPortErrors(t *testing.T) {
 	err := conflictService.UpsertAIReply(ctx, 7, "acc", AIReplySettings{AIEnabled: true, MaxBargainRounds: 1}); !errors.Is(err, conflictFailure) {
 		t.Fatalf("规则查询错误未透传: %v", err)
 	}
-	// systemFailure 是系统 AI 地址读取错误。
+	// systemFailure 是用户级 AI 地址读取错误。
 	systemFailure := errors.New("system lookup failed")
-	// systemService 是注入系统地址读取错误的应用服务。
-	systemService := NewService(&settingsRepositoryFake{systemErr: systemFailure}, &modelClientFake{})
-	if // err 是系统 AI 地址读取错误。
+	// systemService 是注入用户级地址读取错误的应用服务。
+	systemService := NewService(&settingsRepositoryFake{userErr: systemFailure}, &modelClientFake{})
+	if // err 是用户级 AI 地址读取错误。
 	_, err := systemService.ListAIModels(ctx, 7, "", "provided"); !errors.Is(err, systemFailure) {
-		t.Fatalf("系统地址读取错误未透传: %v", err)
+		t.Fatalf("用户级地址读取错误未透传: %v", err)
 	}
 	// secretFailure 是受控读取敏感 API 密钥错误。
 	secretFailure := errors.New("secret lookup failed")
@@ -652,7 +694,7 @@ func TestServicePropagatesSettingsPortErrors(t *testing.T) {
 		t.Fatalf("敏感密钥读取错误未透传: %v", err)
 	}
 	// blankSystemService 是系统地址为空时使用默认地址的应用服务。
-	blankSystemService := NewService(&settingsRepositoryFake{systemValues: map[string]string{"ai_api_url": ""}, readSecretErr: nil}, &modelClientFake{})
+	blankSystemService := NewService(&settingsRepositoryFake{userValues: map[string]string{"ai_api_url": ""}, readSecretErr: nil}, &modelClientFake{})
 	if // err 是默认 AI 地址和受控密钥读取的成功结果。
 	_, err := blankSystemService.ListAIModels(ctx, 7, "", ""); err != nil {
 		t.Fatalf("默认 AI 地址读取失败: %v", err)
@@ -910,8 +952,8 @@ func (f *credentialInvalidatorFake) InvalidateAll() {
 
 // TestServiceInvalidatesCredentialCacheOnSensitiveWrite 敏感键写入成功后必须立即失效凭据缓存。
 func TestServiceInvalidatesCredentialCacheOnSensitiveWrite(t *testing.T) {
-	// repository 保存测试设置 Port，ai_api_key 是敏感键。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	// repository 保存测试设置 Port，qq_reply_secret_key 是实例级敏感键。
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// invalidator 记录失效次数。
 	invalidator := &credentialInvalidatorFake{}
 	// service 是接入失效端口后的设置应用服务。
@@ -919,7 +961,7 @@ func TestServiceInvalidatesCredentialCacheOnSensitiveWrite(t *testing.T) {
 	service.SetCredentialCacheInvalidator(invalidator)
 	// err 是敏感键写入结果。
 	err := service.ApplySystemChanges(context.Background(), 7, nil,
-		map[string]SecretChange{"ai_api_key": {Action: "replace", Value: "secret"}})
+		map[string]SecretChange{"qq_reply_secret_key": {Action: "replace", Value: "secret"}})
 	if err != nil {
 		t.Fatalf("写入敏感设置: %v", err)
 	}
@@ -931,7 +973,7 @@ func TestServiceInvalidatesCredentialCacheOnSensitiveWrite(t *testing.T) {
 // TestServiceSkipsInvalidationOnPlainWrite 普通键写入不得触发凭据缓存失效。
 func TestServiceSkipsInvalidationOnPlainWrite(t *testing.T) {
 	// repository 保存测试设置 Port。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// invalidator 记录失效次数。
 	invalidator := &credentialInvalidatorFake{}
 	// service 是接入失效端口后的设置应用服务。
@@ -953,14 +995,14 @@ func TestServiceSkipsInvalidationOnPlainWrite(t *testing.T) {
 // TestServiceSetSystemInvalidatesCredentialCache 单项敏感设置写入同样必须失效凭据缓存。
 func TestServiceSetSystemInvalidatesCredentialCache(t *testing.T) {
 	// repository 保存测试设置 Port。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// invalidator 记录失效次数。
 	invalidator := &credentialInvalidatorFake{}
 	// service 是接入失效端口后的设置应用服务。
 	service := NewService(repository, nil)
 	service.SetCredentialCacheInvalidator(invalidator)
 	// err 是单项敏感设置写入结果。
-	if err := service.SetSystem(context.Background(), 7, "ai_api_key", "secret", "replace"); err != nil {
+	if err := service.SetSystem(context.Background(), 7, "qq_reply_secret_key", "secret", "replace"); err != nil {
 		t.Fatalf("单项写入敏感设置: %v", err)
 	}
 	if invalidator.calls != 1 {
@@ -971,7 +1013,7 @@ func TestServiceSetSystemInvalidatesCredentialCache(t *testing.T) {
 // TestServiceDoesNotInvalidateWhenSensitiveWriteFails 落库失败时不得失效缓存，避免把未生效的写入当成已生效。
 func TestServiceDoesNotInvalidateWhenSensitiveWriteFails(t *testing.T) {
 	// repository 配置为写入失败。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}, applyErr: errors.New("写入失败")}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}, applyErr: errors.New("写入失败")}
 	// invalidator 记录失效次数。
 	invalidator := &credentialInvalidatorFake{}
 	// service 是接入失效端口后的设置应用服务。
@@ -979,7 +1021,7 @@ func TestServiceDoesNotInvalidateWhenSensitiveWriteFails(t *testing.T) {
 	service.SetCredentialCacheInvalidator(invalidator)
 	// err 是敏感设置落库结果；配置了 applyErr 时必须失败。
 	if err := service.ApplySystemChanges(context.Background(), 7, nil,
-		map[string]SecretChange{"ai_api_key": {Action: "replace", Value: "secret"}}); err == nil {
+		map[string]SecretChange{"qq_reply_secret_key": {Action: "replace", Value: "secret"}}); err == nil {
 		t.Fatal("落库失败必须返回错误")
 	}
 	if invalidator.calls != 0 {
@@ -990,16 +1032,16 @@ func TestServiceDoesNotInvalidateWhenSensitiveWriteFails(t *testing.T) {
 // TestServiceWorksWithoutCredentialInvalidator 未注入失效器时写入口行为不变且不得 panic。
 func TestServiceWorksWithoutCredentialInvalidator(t *testing.T) {
 	// repository 保存测试设置 Port。
-	repository := &settingsRepositoryFake{sensitiveKeys: []string{"ai_api_key"}}
+	repository := &settingsRepositoryFake{sensitiveKeys: []string{"qq_reply_secret_key"}}
 	// service 未注入失效器，等价于未接入缓存。
 	service := NewService(repository, nil)
 	// err 是未注入失效器时的批量写入结果；必须照常成功。
 	if err := service.ApplySystemChanges(context.Background(), 7, nil,
-		map[string]SecretChange{"ai_api_key": {Action: "clear"}}); err != nil {
+		map[string]SecretChange{"qq_reply_secret_key": {Action: "clear"}}); err != nil {
 		t.Fatalf("未注入失效器时写入应成功: %v", err)
 	}
 	// err 是未注入失效器时的单项写入结果；必须照常成功。
-	if err := service.SetSystem(context.Background(), 7, "ai_api_key", "", "clear"); err != nil {
+	if err := service.SetSystem(context.Background(), 7, "qq_reply_secret_key", "", "clear"); err != nil {
 		t.Fatalf("未注入失效器时单项写入应成功: %v", err)
 	}
 }

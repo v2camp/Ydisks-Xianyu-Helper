@@ -69,12 +69,12 @@ func TestSendQQ_SingleChatPriority(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{}
 	withFakeQQClient(t, fake)
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
 	// cfg 同时配置单聊与群聊目标，应只走单聊。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1", "group_openid": "g1"}
+	cfg := map[string]any{"user_openid": "u1", "group_openid": "g1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hello", 0); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hello", 1); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
 	if fake.c2cCalls != 1 {
@@ -93,12 +93,12 @@ func TestSendQQ_GroupFallback(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{}
 	withFakeQQClient(t, fake)
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
 	// cfg 仅配置群聊目标。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "group_openid": "g1"}
+	cfg := map[string]any{"group_openid": "g1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
 	if fake.groupCalls != 1 || fake.c2cCalls != 0 {
@@ -119,12 +119,12 @@ func TestSendQQ_BothOpenIDEmpty(t *testing.T) {
 		return fake, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
 	// cfg 缺省两个目标 openid。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec"}
+	cfg := map[string]any{}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err == nil {
 		t.Fatal("期望缺目标配置错误")
 	}
 	if constructed {
@@ -132,7 +132,7 @@ func TestSendQQ_BothOpenIDEmpty(t *testing.T) {
 	}
 }
 
-// TestSendQQ_MissingCredentials 验证缺 app_id/app_secret 时返回配置错误且不构造客户端。
+// TestSendQQ_MissingCredentials 验证缺用户级 app_id/app_secret 时返回配置错误且不构造客户端。
 func TestSendQQ_MissingCredentials(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{}
@@ -145,12 +145,12 @@ func TestSendQQ_MissingCredentials(t *testing.T) {
 		return fake, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
-	// cfg 仅有单聊目标，缺少 app_id/app_secret。
+	// notifier 的仓储没有用户级 QQ 凭据。
+	notifier := &Notifier{repository: &settingsRepositoryFake{}}
+	// cfg 仅有单聊目标，缺少用户级凭据。
 	cfg := map[string]any{"user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err == nil {
 		t.Fatal("期望缺凭据配置错误")
 	}
 	if constructed {
@@ -165,12 +165,12 @@ func TestSendQQ_SendErrorWrapped(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{c2cErr: platformErr}
 	withFakeQQClient(t, fake)
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
 	// cfg 配置单聊目标以触发单聊发送路径。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1"}
+	cfg := map[string]any{"user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err == nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err == nil {
 		t.Fatal("期望发送错误")
 	} else if !strings.Contains(err.Error(), "qq 单聊发送失败") {
 		t.Errorf("错误信息缺少中文包装: %v", err)
@@ -190,12 +190,12 @@ func TestSendQQ_ClientCacheByAppID(t *testing.T) {
 		return shared, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
-	// cfg 两次发送使用相同 AppID，应命中缓存。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1"}
-	_ = notifier.sendQQ(qqTestContext(t), cfg, "m1", 0)
-	_ = notifier.sendQQ(qqTestContext(t), cfg, "m2", 0)
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
+	// cfg 两次发送使用相同目标，应命中缓存。
+	cfg := map[string]any{"user_openid": "u1"}
+	_ = notifier.sendQQ(qqTestContext(t), cfg, "m1", 1)
+	_ = notifier.sendQQ(qqTestContext(t), cfg, "m2", 1)
 	if constructCount != 1 {
 		t.Errorf("constructCount=%d want 1", constructCount)
 	}
@@ -216,10 +216,10 @@ func TestSendQQ_ConcurrentConstruct(t *testing.T) {
 		return fake, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
-	// cfg 所有并发使用同一 AppID。
-	cfg := map[string]any{"app_id": "aid", "app_secret": "sec", "user_openid": "u1"}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
+	// cfg 所有并发使用同一用户与 AppID。
+	cfg := map[string]any{"user_openid": "u1"}
 	// wg 用于等待全部并发发送完成。
 	var wg sync.WaitGroup
 	for // i 用于本次流程后续判断的i
@@ -227,7 +227,7 @@ func TestSendQQ_ConcurrentConstruct(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = notifier.sendQQ(qqTestContext(t), cfg, "m", 0)
+			_ = notifier.sendQQ(qqTestContext(t), cfg, "m", 1)
 		}()
 	}
 	wg.Wait()
@@ -305,8 +305,8 @@ func (f *settingsRepositoryFake) GetSettingForUser(ctx context.Context, userID i
 	return f.scoped[key], nil
 }
 
-// TestSendQQ_FallsBackToSystemConnector 验证渠道配置未填凭据时使用系统连接器设置。
-func TestSendQQ_FallsBackToSystemConnector(t *testing.T) {
+// TestSendQQ_UsesUserScopedConnector 验证凭据只从渠道所有者用户级配置读取。
+func TestSendQQ_UsesUserScopedConnector(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{}
 	// capturedID、capturedSecret 记录工厂实际收到的凭据，用于断言来源。
@@ -318,27 +318,27 @@ func TestSendQQ_FallsBackToSystemConnector(t *testing.T) {
 		return fake, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// repository 提供系统连接器中已配置的机器人凭据。
-	repository := &settingsRepositoryFake{settings: map[string]string{"qqbot.app_id": "sys_id", "qqbot.app_secret": "sys_secret"}}
-	// notifier 是带仓储的通知器，凭据唯一来源为系统连接器。
+	// repository 提供用户级 QQ 凭据。
+	repository := &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "user_id", "qqbot.app_secret": "user_secret"}}
+	// notifier 是带仓储的通知器，凭据唯一来源为用户级连接器配置。
 	notifier := &Notifier{repository: repository}
 	// cfg 只配置目标 openid，不含凭据。
 	cfg := map[string]any{"user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
-	if capturedID != "sys_id" || capturedSecret != "sys_secret" {
-		t.Errorf("凭据未回退到系统连接器: id=%s secret=%s", capturedID, capturedSecret)
+	if capturedID != "user_id" || capturedSecret != "user_secret" {
+		t.Errorf("凭据未从用户级读取: id=%s secret=%s", capturedID, capturedSecret)
 	}
 	if fake.c2cCalls != 1 {
 		t.Errorf("c2cCalls=%d want 1", fake.c2cCalls)
 	}
 }
 
-// TestSendQQ_ChannelConfigOverridesSystemConnector 验证渠道配置凭据优先于系统连接器设置。
-func TestSendQQ_ChannelConfigOverridesSystemConnector(t *testing.T) {
-	// capturedID 记录工厂最终收到的 AppID，用于断言优先级。
+// TestSendQQ_IgnoresChannelLevelCredentials 验证渠道级旧凭据字段被忽略，仍使用用户级配置。
+func TestSendQQ_IgnoresChannelLevelCredentials(t *testing.T) {
+	// capturedID 记录工厂最终收到的 AppID，用于断言来源。
 	capturedID := ""
 	// original 保存原工厂实现。
 	original := newQQBotClient
@@ -347,18 +347,18 @@ func TestSendQQ_ChannelConfigOverridesSystemConnector(t *testing.T) {
 		return &fakeQQClient{}, nil
 	}
 	t.Cleanup(func() { newQQBotClient = original })
-	// repository 提供与渠道配置不同的系统连接器凭据。
-	repository := &settingsRepositoryFake{settings: map[string]string{"qqbot.app_id": "sys_id", "qqbot.app_secret": "sys_secret"}}
+	// repository 提供用户级凭据。
+	repository := &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "user_id", "qqbot.app_secret": "user_secret"}}
 	// notifier 是带仓储的通知器。
 	notifier := &Notifier{repository: repository}
-	// cfg 在渠道级显式填写凭据，应优先于系统连接器。
+	// cfg 残留渠道级凭据，必须被忽略。
 	cfg := map[string]any{"app_id": "ch_id", "app_secret": "ch_secret", "user_openid": "u1"}
 	if // err 用于本次流程后续判断的err
-	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 0); err != nil {
+	err := notifier.sendQQ(qqTestContext(t), cfg, "hi", 1); err != nil {
 		t.Fatalf("sendQQ: %v", err)
 	}
-	if capturedID != "ch_id" {
-		t.Errorf("capturedID=%s want ch_id（渠道配置应优先）", capturedID)
+	if capturedID != "user_id" {
+		t.Errorf("capturedID=%s want user_id（应忽略渠道级凭据）", capturedID)
 	}
 }
 
@@ -367,10 +367,10 @@ func TestRouteByChannelType_QQ(t *testing.T) {
 	// fake 用于本次流程后续判断的fake
 	fake := &fakeQQClient{}
 	withFakeQQClient(t, fake)
-	// notifier 用于本次流程后续判断的notifier
-	notifier := &Notifier{}
-	// ch 配置完整且使用 qq 类型，send 应路由到 QQ 发送实现。
-	ch := db.NotificationChannel{Type: "qq", Config: `{"app_id":"aid","app_secret":"sec","user_openid":"u1"}`}
+	// notifier 使用带用户级 QQ 凭据的仓储。
+	notifier := &Notifier{repository: &settingsRepositoryFake{scoped: map[string]string{"qqbot.app_id": "aid", "qqbot.app_secret": "sec"}}}
+	// ch 配置目标 openid 且使用 qq 类型，send 应路由到 QQ 发送实现。
+	ch := db.NotificationChannel{Type: "qq", UserID: 1, Config: `{"user_openid":"u1"}`}
 	if // err 用于本次流程后续判断的err
 	err := notifier.send(ch, "hi"); err != nil {
 		t.Fatalf("send qq: %v", err)

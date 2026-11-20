@@ -1,15 +1,13 @@
-import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
-import type { NotificationChannel,SystemSettings } from './api';
-import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,getSystemSettings,testNotificationChannel,updateNotificationChannel,updateSystemSettings } from './api';
-import { connectorTypes } from './registry';
-import { buildConnectorSettings,buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,resolveCredentialSource,validateNotificationForm } from './state';
+import { useCallback,useEffect,useRef,useState } from 'react';
+import type { NotificationChannel } from './api';
+import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,testNotificationChannel,updateNotificationChannel } from './api';
+import { buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
 import type { ConnectorsState,NotificationForm } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
-import type { SaveBarState } from '../../../shared/ui/SaveBar';
 
-// useConnectors 统一管理连接器凭据、通知渠道、事件订阅和系统 SMTP 的异步状态。
-export const useConnectors = (isAdmin: boolean): ConnectorsState => {
-  // channels 保存当前用户可用的通知渠道。
+// useConnectors 统一管理当前用户通知渠道列表、编辑表单与渠道动作的异步状态。
+export const useConnectors = (): ConnectorsState => {
+  // channels 保存当前用户的通知渠道。
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   // loading 表示通知渠道列表是否正在加载。
   const [loading, setLoading] = useState(true);
@@ -19,56 +17,18 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const [editing, setEditing] = useState<NotificationChannel | null>(null);
   // savedCredentialKeys 保存当前编辑渠道已保存的凭据键名，只含键名不含值，供弹窗提示「留空则保持原值」。
   const [savedCredentialKeys, setSavedCredentialKeys] = useState<string[]>([]);
-  // saving 表示渠道保存或删除动作是否正在执行。
+  // saving 表示渠道保存动作是否正在执行。
   const [saving, setSaving] = useState(false);
   // testingId 保存当前正在测试发送的渠道 ID。
   const [testingId, setTestingId] = useState('');
   // toast 保存当前短暂操作提示。
   const [toast, setToast] = useState<ConnectorsState['toast']>(null);
-  // smtp 保存系统级邮件发送配置。
-  const [smtp, setSmtp] = useState<SystemSettings>({});
-  // connectorSettings 保存连接器凭据与能力开关的系统配置草稿，与 SMTP 草稿分开以免互相提交。
-  const [connectorSettings, setConnectorSettings] = useState<SystemSettings>({});
-  // connectorSaving 表示连接器配置保存是否正在执行。
-  const [connectorSaving, setConnectorSaving] = useState(false);
-  // smtpSaving 表示系统 SMTP 保存是否正在执行。
-  const [smtpSaving, setSmtpSaving] = useState(false);
-  // settingsLoading 表示管理员的系统设置（连接器草稿与 SMTP）是否仍在读取；管理员首帧即进入读取态，避免先闪出「未配置」。
-  const [settingsLoading, setSettingsLoading] = useState(isAdmin);
-  // settingsError 是系统设置读取失败的用户可见文案，非空时平台连接器与 SMTP 区块展示错误态。
-  const [settingsError, setSettingsError] = useState('');
-  // connectorSaveState 是连接器区块保存条的四态，由保存请求的进展与结果驱动。
-  const [connectorSaveState, setConnectorSaveState] = useState<SaveBarState>('idle');
-  // connectorSaveError 保存连接器保存失败的具体原因，供保存条失败态展示。
-  const [connectorSaveError, setConnectorSaveError] = useState('');
-  // smtpSaveState 是 SMTP 区块保存条的四态，与连接器保存条互不影响。
-  const [smtpSaveState, setSmtpSaveState] = useState<SaveBarState>('idle');
-  // smtpSaveError 保存 SMTP 保存失败的具体原因，供保存条失败态展示。
-  const [smtpSaveError, setSmtpSaveError] = useState('');
-  // showSmtpPassword 控制系统 SMTP 密码是否明文显示。
-  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
-  // showChannelSmtpPassword 控制独立 SMTP 密码是否明文显示。
-  const [showChannelSmtpPassword, setShowChannelSmtpPassword] = useState(false);
   // form 保存渠道编辑弹窗的当前表单。
   const [form, setForm] = useState<NotificationForm>(emptyNotificationForm);
-  // credentialSource 是当前渠道类型的凭据来源：连接器就绪时凭据由系统级配置接管。普通用户不读系统设置，草稿为空时自然为空。
-  const credentialSource = useMemo(
-    // credentialSourceResolver 只在该类型连接器或系统设置草稿变化时重新判定。
-    () => resolveCredentialSource(form.type, connectorSettings, connectorTypes),
-    [form.type, connectorSettings],
-  );
   // channelGeneration 隔离渠道加载和刷新产生的旧响应。
   const channelGeneration = useRef(0);
   // channelAbort 保存当前渠道列表请求的取消控制器。
   const channelAbort = useRef<AbortController | null>(null);
-  // smtpGeneration 隔离 SMTP 设置切换管理员状态后的旧响应。
-  const smtpGeneration = useRef(0);
-  // smtpAbort 保存当前 SMTP 设置请求的取消控制器。
-  const smtpAbort = useRef<AbortController | null>(null);
-  // connectorGeneration 隔离连接器保存动作的旧响应，不与 SMTP 保存共用代次。
-  const connectorGeneration = useRef(0);
-  // connectorAbort 保存当前连接器保存请求的取消控制器。
-  const connectorAbort = useRef<AbortController | null>(null);
   // actionGeneration 隔离保存、删除和测试动作的旧响应。
   const actionGeneration = useRef(0);
   // actionAbort 保存当前渠道变更动作的取消控制器。
@@ -84,16 +44,16 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const showToast = useCallback(
     // 提示回调写入提示状态并安排自动清理。
     (type: NonNullable<ConnectorsState['toast']>['type'], text: string) => {
-    setToast({ type, text });
-    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(
-      // toastCleanup 在提示展示三秒后清理状态。
-      () => {
-      toastTimer.current = null;
-      setToast(null);
-      },
-      3000,
-    );
+      setToast({ type, text });
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+      toastTimer.current = window.setTimeout(
+        // toastCleanup 在提示展示三秒后清理状态。
+        () => {
+          toastTimer.current = null;
+          setToast(null);
+        },
+        3000,
+      );
     },
     [],
   );
@@ -102,107 +62,44 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const loadChannels = useCallback(
     // 渠道加载回调读取最新通知渠道列表。
     async () => {
-    // generation 标记本次渠道查询的代次。
-    const generation = ++channelGeneration.current;
-    channelAbort.current?.abort();
-    // controller 允许刷新或卸载时取消渠道请求。
-    const controller = new AbortController();
-    channelAbort.current = controller;
-    setLoading(true);
-    try {
-      // result 是当前用户的通知渠道列表响应。
-      const result = await getNotificationChannels({ signal: controller.signal });
-      if (!isCurrentNotificationRequest(generation, channelGeneration.current)) return;
-      setChannels(result.data || []);
-    } catch (error: unknown /* 渠道加载异常 */) {
-      if (isCurrentNotificationRequest(generation, channelGeneration.current) && !controller.signal.aborted) {
-        console.error('加载通知渠道失败', error);
+      // generation 标记本次渠道查询的代次。
+      const generation = ++channelGeneration.current;
+      channelAbort.current?.abort();
+      // controller 允许刷新或卸载时取消渠道请求。
+      const controller = new AbortController();
+      channelAbort.current = controller;
+      setLoading(true);
+      try {
+        // result 是当前用户的通知渠道列表响应。
+        const result = await getNotificationChannels({ signal: controller.signal });
+        if (!isCurrentNotificationRequest(generation, channelGeneration.current)) return;
+        setChannels(result.data || []);
+      } catch (error: unknown /* 渠道加载异常 */) {
+        if (isCurrentNotificationRequest(generation, channelGeneration.current) && !controller.signal.aborted) {
+          console.error('加载通知渠道失败', error);
+        }
+      } finally {
+        if (isCurrentNotificationRequest(generation, channelGeneration.current)) setLoading(false);
       }
-    } finally {
-      if (isCurrentNotificationRequest(generation, channelGeneration.current)) setLoading(false);
-    }
     },
     [],
-  );
-
-  // loadSmtp 加载管理员可见的系统 SMTP 配置并隔离过期响应。
-  const loadSmtp = useCallback(
-    // SMTP 加载回调读取管理员系统设置。
-    async () => {
-    // generation 标记本次 SMTP 查询的代次。
-    const generation = ++smtpGeneration.current;
-    smtpAbort.current?.abort();
-    // controller 允许管理员状态变化时取消 SMTP 查询。
-    const controller = new AbortController();
-    smtpAbort.current = controller;
-    setSettingsLoading(true);
-    setSettingsError('');
-    try {
-      // settings 是系统 SMTP 与连接器共用的系统设置快照。
-      const settings = await getSystemSettings({ signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) {
-        setSmtp(settings || {});
-        setConnectorSettings(settings || {});
-      }
-    } catch (error: unknown /* SMTP 加载异常 */) {
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current) && !controller.signal.aborted) {
-        console.error('加载 SMTP 配置失败', error);
-        // 读取失败必须落到界面可见的错误态，不能让连接器区块停在空草稿上假装「未配置」。
-        setSettingsError(notificationErrorMessage(error, '读取系统配置失败'));
-      }
-    } finally {
-      // 无论成功或失败都复位读取态，避免区块长期停在「加载中」。
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) setSettingsLoading(false);
-    }
-    },
-    [],
-  );
-
-  // refresh 是页头「刷新」的语义：管理员同时重载渠道列表与系统设置草稿，普通用户只刷新自己的渠道。
-  const refresh = useCallback(
-    // 刷新回调按权限决定是否连带重载系统设置。
-    async () => {
-    if (isAdmin) {
-      await Promise.all([loadChannels(), loadSmtp()]);
-      return;
-    }
-    await loadChannels();
-    },
-    [isAdmin, loadChannels, loadSmtp],
   );
 
   useEffect(
-    // 通知数据副作用并行加载渠道和管理员 SMTP 配置。
+    // 通知数据副作用在挂载时加载渠道，卸载时取消未完成请求。
     () => {
       void loadChannels();
-      if (isAdmin) {
-        void loadSmtp();
-      } else {
-        smtpGeneration.current += 1;
-        smtpAbort.current?.abort();
-        connectorGeneration.current += 1;
-        connectorAbort.current?.abort();
-        setSmtp({});
-        setConnectorSettings({});
-        // 普通用户不读取系统设置，读取态与错误态一并清空，避免区块误报加载中或读取失败。
-        setSettingsLoading(false);
-        setSettingsError('');
-      }
       return (
-        // 通知数据清理回调取消渠道和 SMTP 请求。
+        // 通知数据清理回调取消渠道请求并使编辑读取失效。
         () => {
           channelGeneration.current += 1;
           channelAbort.current?.abort();
-          smtpGeneration.current += 1;
-          smtpAbort.current?.abort();
-          connectorGeneration.current += 1;
-          connectorAbort.current?.abort();
           editorGeneration.current += 1;
           editorAbort.current?.abort();
         }
       );
     },
-    [isAdmin, loadChannels, loadSmtp],
+    [loadChannels],
   );
 
   useEffect(
@@ -235,13 +132,12 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const openCreate = useCallback(
     // 新建回调重置表单并打开渠道弹窗。
     () => {
-    editorGeneration.current += 1;
-    editorAbort.current?.abort();
-    setEditing(null);
-    setSavedCredentialKeys([]);
-    setForm(emptyNotificationForm());
-    setShowChannelSmtpPassword(false);
-    setShowModal(true);
+      editorGeneration.current += 1;
+      editorAbort.current?.abort();
+      setEditing(null);
+      setSavedCredentialKeys([]);
+      setForm(emptyNotificationForm());
+      setShowModal(true);
     },
     [],
   );
@@ -262,38 +158,39 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
         const editor = await getNotificationChannel(channel.id, { signal: controller.signal });
         if (generation !== editorGeneration.current || controller.signal.aborted) return;
         // initialForm 是读取完成后一次性建立的表单，之后不再由该请求回填。
-        const initialForm = normalizeNotificationForm(channel, smtp);
+        const initialForm = normalizeNotificationForm(channel);
         setEditing(channel);
         setSavedCredentialKeys(editor.saved_credential_keys ?? []);
-        setForm(channel.type === 'email' ? {
-          ...initialForm, preserveSMTP: true,
-          config: { to_email: editor.to_email || '', use_custom_smtp: editor.use_custom_smtp === true },
-        } : {
-          // 非邮件渠道回填服务端可安全回显的配置；敏感凭据键不在其中，留空保存即沿用服务端原值。
-          ...initialForm, credentialAction: undefined,
-          config: { ...initialForm.config, ...(editor.config ?? {}) },
+        setForm({
+          ...initialForm,
+          credentialAction: undefined,
+          // 非邮件渠道回填服务端可安全回显的配置；邮件渠道只回填收件地址，敏感凭据键留空保存即沿用服务端原值。
+          config: {
+            ...initialForm.config,
+            ...(editor.config ?? {}),
+            ...(editor.type === 'email' && editor.to_email ? { to_email: editor.to_email } : {}),
+          },
         });
-        setShowChannelSmtpPassword(false);
         setShowModal(true);
       } catch (error: unknown /* 编辑读取失败时仅显示可读错误，不开放缺少配置的表单。 */) {
         if (generation === editorGeneration.current && !controller.signal.aborted) showToast('error', notificationErrorMessage(error, '读取渠道配置失败'));
       }
     },
-    [showToast, smtp],
+    [showToast],
   );
 
   // closeModal 关闭渠道弹窗并取消未完成的保存动作。
   const closeModal = useCallback(
     // 关闭回调使保存请求失效并隐藏弹窗。
     () => {
-    actionGeneration.current += 1;
-    setTestingId('');
-    actionAbort.current?.abort();
-    editorGeneration.current += 1;
-    editorAbort.current?.abort();
-    setSaving(false);
-    setShowModal(false);
-    setSavedCredentialKeys([]);
+      actionGeneration.current += 1;
+      setTestingId('');
+      actionAbort.current?.abort();
+      editorGeneration.current += 1;
+      editorAbort.current?.abort();
+      setSaving(false);
+      setShowModal(false);
+      setSavedCredentialKeys([]);
     },
     [],
   );
@@ -302,69 +199,69 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const handleSave = useCallback(
     // 保存回调执行渠道校验、请求和成功刷新。
     async () => {
-    // validationError 是渠道表单预检失败时的用户提示；凭据键可由连接器接管或沿用已保存值。
-    const validationError = validateNotificationForm(form, { hiddenKeys: credentialSource?.hiddenKeys, savedCredentialKeys });
-    if (validationError) {
-      showToast('error', validationError);
-      return;
-    }
-    // generation 标记当前渠道保存动作的代次。
-    const generation = ++actionGeneration.current;
-    // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
-    setTestingId('');
-    actionAbort.current?.abort();
-    // controller 允许关闭弹窗时取消保存请求。
-    const controller = new AbortController();
-    actionAbort.current = controller;
-    setSaving(true);
-    try {
-      // payload 是后端渠道接口使用的规范化请求体。
-      const payload = buildNotificationPayload(form);
-      if (editing) {
-        await updateNotificationChannel(editing.id, payload, { signal: controller.signal });
-      } else {
-        await createNotificationChannel({ ...payload, config: payload.config || {} }, { signal: controller.signal });
+      // validationError 是渠道表单预检失败时的用户提示；已保存凭据可留空沿用。
+      const validationError = validateNotificationForm(form, { savedCredentialKeys });
+      if (validationError) {
+        showToast('error', validationError);
+        return;
       }
-      if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
-      setShowModal(false);
-      await loadChannels();
-      if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
-      showToast('success', editing ? '已更新' : '已创建');
-    } catch (error: unknown /* 渠道保存异常 */) {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '保存失败'));
+      // generation 标记当前渠道保存动作的代次。
+      const generation = ++actionGeneration.current;
+      // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
+      setTestingId('');
+      actionAbort.current?.abort();
+      // controller 允许关闭弹窗时取消保存请求。
+      const controller = new AbortController();
+      actionAbort.current = controller;
+      setSaving(true);
+      try {
+        // payload 是后端渠道接口使用的规范化请求体，邮件渠道只含收件地址。
+        const payload = buildNotificationPayload(form);
+        if (editing) {
+          await updateNotificationChannel(editing.id, payload, { signal: controller.signal });
+        } else {
+          await createNotificationChannel({ ...payload, config: payload.config || {} }, { signal: controller.signal });
+        }
+        if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
+        setShowModal(false);
+        await loadChannels();
+        if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
+        showToast('success', editing ? '已更新' : '已创建');
+      } catch (error: unknown /* 渠道保存异常 */) {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
+          showToast('error', notificationErrorMessage(error, '保存失败'));
+        }
+      } finally {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current)) setSaving(false);
       }
-    } finally {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current)) setSaving(false);
-    }
     },
-    [credentialSource, editing, form, loadChannels, savedCredentialKeys, showToast],
+    [editing, form, loadChannels, savedCredentialKeys, showToast],
   );
 
   // handleDelete 删除渠道并在成功后刷新列表。
   const handleDelete = useCallback(
     // 删除回调执行渠道删除请求并刷新列表。
     async (channel: NotificationChannel) => {
-    if (!(await appDialog.confirm(`确认删除渠道「${channel.name}」吗？已绑定该渠道的账号会自动解绑。`, { variant: 'danger', confirmText: '删除' }))) return;
-    // generation 标记当前删除动作的代次。
-    const generation = ++actionGeneration.current;
-    // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
-    setTestingId('');
-    actionAbort.current?.abort();
-    // controller 允许刷新页面时取消删除请求。
-    const controller = new AbortController();
-    actionAbort.current = controller;
-    try {
-      await deleteNotificationChannel(channel.id, { signal: controller.signal });
-      if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
-      await loadChannels();
-      if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
-      showToast('success', '已删除');
-    } catch (error: unknown /* 渠道删除异常 */) {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '删除失败'));
+      if (!(await appDialog.confirm(`确认删除渠道「${channel.name}」吗？`, { variant: 'danger', confirmText: '删除' }))) return;
+      // generation 标记当前删除动作的代次。
+      const generation = ++actionGeneration.current;
+      // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
+      setTestingId('');
+      actionAbort.current?.abort();
+      // controller 允许刷新页面时取消删除请求。
+      const controller = new AbortController();
+      actionAbort.current = controller;
+      try {
+        await deleteNotificationChannel(channel.id, { signal: controller.signal });
+        if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
+        await loadChannels();
+        if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
+        showToast('success', '已删除');
+      } catch (error: unknown /* 渠道删除异常 */) {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
+          showToast('error', notificationErrorMessage(error, '删除失败'));
+        }
       }
-    }
     },
     [loadChannels, showToast],
   );
@@ -373,29 +270,29 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const handleToggleEnabled = useCallback(
     // 启用切换回调更新渠道状态并保留最新响应。
     async (channel: NotificationChannel) => {
-    // generation 标记当前启用状态动作的代次。
-    const generation = ++actionGeneration.current;
-    // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
-    setTestingId('');
-    actionAbort.current?.abort();
-    // controller 允许新的渠道动作取消旧请求。
-    const controller = new AbortController();
-    actionAbort.current = controller;
-    try {
-      await updateNotificationChannel(channel.id, { enabled: !channel.enabled }, { signal: controller.signal });
-      if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
-      setChannels(
-        // nextChannelsUpdater 使用函数式更新渠道列表。
-        current => current.map(
-          // item 是当前待更新的渠道项。
-          item => item.id === channel.id ? { ...item, enabled: !item.enabled } : item,
-        ),
-      );
-    } catch (error: unknown /* 渠道状态异常 */) {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '切换失败'));
+      // generation 标记当前启用状态动作的代次。
+      const generation = ++actionGeneration.current;
+      // 替换动作时主动清理被取消测试的忙碌状态；旧 finally 已没有当前代次。
+      setTestingId('');
+      actionAbort.current?.abort();
+      // controller 允许新的渠道动作取消旧请求。
+      const controller = new AbortController();
+      actionAbort.current = controller;
+      try {
+        await updateNotificationChannel(channel.id, { enabled: !channel.enabled }, { signal: controller.signal });
+        if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
+        setChannels(
+          // nextChannelsUpdater 使用函数式更新渠道列表。
+          current => current.map(
+            // item 是当前待更新的渠道项。
+            item => item.id === channel.id ? { ...item, enabled: !item.enabled } : item,
+          ),
+        );
+      } catch (error: unknown /* 渠道状态异常 */) {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
+          showToast('error', notificationErrorMessage(error, '切换失败'));
+        }
       }
-    }
     },
     [showToast],
   );
@@ -404,123 +301,31 @@ export const useConnectors = (isAdmin: boolean): ConnectorsState => {
   const handleTest = useCallback(
     // 测试回调发送测试通知并显示结果。
     async (channel: NotificationChannel) => {
-    setTestingId(channel.id);
-    // generation 标记当前测试通知动作的代次。
-    const generation = ++actionGeneration.current;
-    actionAbort.current?.abort();
-    // controller 允许新动作取消旧的测试发送。
-    const controller = new AbortController();
-    actionAbort.current = controller;
-    try {
-      await testNotificationChannel(channel.id, { signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, actionGeneration.current)) showToast('success', '测试通知已发送，请检查对应渠道');
-    } catch (error: unknown /* 测试通知异常 */) {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
-        showToast('error', notificationErrorMessage(error, '发送失败'));
+      setTestingId(channel.id);
+      // generation 标记当前测试通知动作的代次。
+      const generation = ++actionGeneration.current;
+      actionAbort.current?.abort();
+      // controller 允许新动作取消旧的测试发送。
+      const controller = new AbortController();
+      actionAbort.current = controller;
+      try {
+        await testNotificationChannel(channel.id, { signal: controller.signal });
+        if (isCurrentNotificationRequest(generation, actionGeneration.current)) showToast('success', '测试通知已发送，请检查对应渠道');
+      } catch (error: unknown /* 测试通知异常 */) {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
+          showToast('error', notificationErrorMessage(error, '发送失败'));
+        }
+      } finally {
+        if (isCurrentNotificationRequest(generation, actionGeneration.current)) setTestingId('');
       }
-    } finally {
-      if (isCurrentNotificationRequest(generation, actionGeneration.current)) setTestingId('');
-    }
     },
     [showToast],
   );
 
-  // handleSaveSmtp 保存系统 SMTP 配置并支持取消旧保存请求。
-  const handleSaveSmtp = useCallback(
-    // SMTP 保存回调提交系统邮件配置。
-    async () => {
-    // generation 标记当前 SMTP 保存动作的代次。
-    const generation = ++smtpGeneration.current;
-    smtpAbort.current?.abort();
-    // controller 允许重复保存时取消上一轮请求。
-    const controller = new AbortController();
-    smtpAbort.current = controller;
-    setSmtpSaving(true);
-    // 区块保存条进入「保存中」，同时清掉上一次的失败文案。
-    setSmtpSaveState('saving');
-    setSmtpSaveError('');
-    try {
-      const payload: SystemSettings = {
-        smtp_server: smtp.smtp_server || '', smtp_port: smtp.smtp_port || 587, smtp_user: smtp.smtp_user || '',
-        smtp_from_name: smtp.smtp_from_name || '',
-        smtp_from_address: smtp.smtp_from_address || smtp.smtp_user || '', smtp_use_tls: smtp.smtp_use_tls !== false,
-        smtp_use_ssl: smtp.smtp_use_ssl === true,
-      };
-      // 仅在管理员主动编辑过密码字段时提交，避免加载配置后意外清空服务端秘密。
-      if (Object.prototype.hasOwnProperty.call(smtp, 'smtp_password')) {
-        payload.smtp_password = smtp.smtp_password;
-      }
-      await updateSystemSettings(payload, { signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) {
-        showToast('success', 'SMTP 配置已保存');
-        setSmtpSaveState('success');
-      }
-    } catch (error: unknown /* SMTP 保存异常 */) {
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current) && !controller.signal.aborted) {
-        // message 是本次保存失败的用户可读原因，同时用于底部提示与保存条失败态。
-        const message = notificationErrorMessage(error, '保存失败');
-        showToast('error', message);
-        setSmtpSaveError(message);
-        setSmtpSaveState('error');
-      }
-    } finally {
-      if (isCurrentNotificationRequest(generation, smtpGeneration.current)) setSmtpSaving(false);
-    }
-    },
-    [showToast, smtp],
-  );
-
-  // handleSaveConnector 保存连接器配置：仅提交注册表登记的键，敏感键由传输层转成三态命令。
-  const handleSaveConnector = useCallback(
-    // 连接器保存回调提交当前连接器草稿。
-    async () => {
-    // generation 标记当前连接器保存动作的代次。
-    const generation = ++connectorGeneration.current;
-    connectorAbort.current?.abort();
-    // controller 允许重复保存时取消上一轮请求。
-    const controller = new AbortController();
-    connectorAbort.current = controller;
-    setConnectorSaving(true);
-    // 区块保存条进入「保存中」，同时清掉上一次的失败文案。
-    setConnectorSaveState('saving');
-    setConnectorSaveError('');
-    try {
-      // payload 是按连接器注册表收窄后的系统设置提交字段。
-      const payload = buildConnectorSettings(connectorTypes, connectorSettings);
-      await updateSystemSettings(payload, { signal: controller.signal });
-      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) {
-        showToast('success', '连接器配置已保存');
-        setConnectorSaveState('success');
-      }
-    } catch (error: unknown /* 连接器保存异常 */) {
-      if (isCurrentNotificationRequest(generation, connectorGeneration.current) && !controller.signal.aborted) {
-        // message 是本次保存失败的用户可读原因，同时用于底部提示与保存条失败态。
-        const message = notificationErrorMessage(error, '保存失败');
-        showToast('error', message);
-        setConnectorSaveError(message);
-        setConnectorSaveState('error');
-      }
-    } finally {
-      if (isCurrentNotificationRequest(generation, connectorGeneration.current)) setConnectorSaving(false);
-    }
-    },
-    [connectorSettings, showToast],
-  );
-
-  // resetConnectorSaveState 在成功提示展示完毕后把连接器保存条复位为空闲待提交。
-  const resetConnectorSaveState = useCallback(/* 复位回调只改保存条状态，不动草稿。 */ () => setConnectorSaveState('idle'), []);
-  // resetSmtpSaveState 在成功提示展示完毕后把 SMTP 保存条复位为空闲待提交。
-  const resetSmtpSaveState = useCallback(/* 复位回调只改保存条状态，不动 SMTP 草稿。 */ () => setSmtpSaveState('idle'), []);
-
   return {
-    channels, loading, showModal, editing, saving, testingId, toast, smtp, smtpSaving,
-    connectorSettings, connectorSaving,
-    credentialSource, savedCredentialKeys,
-    settingsLoading, settingsError,
-    connectorSaveState, connectorSaveError, smtpSaveState, smtpSaveError,
-    showSmtpPassword, showChannelSmtpPassword, form, setForm, setSmtp, setConnectorSettings, setShowSmtpPassword,
-    setShowChannelSmtpPassword, loadChannels, loadSmtp, refresh, openCreate, openEdit, closeModal, resetCredentialState, showToast,
-    handleSave, handleDelete, handleToggleEnabled, handleTest, handleSaveSmtp, handleSaveConnector,
-    resetConnectorSaveState, resetSmtpSaveState,
+    channels, loading, showModal, editing, saving, testingId, toast,
+    savedCredentialKeys, form, setForm,
+    loadChannels, openCreate, openEdit, closeModal, resetCredentialState, showToast,
+    handleSave, handleDelete, handleToggleEnabled, handleTest,
   };
 };

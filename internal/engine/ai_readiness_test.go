@@ -42,7 +42,7 @@ func TestCheckAIReadiness_MasterOffBlocks(t *testing.T) {
 	// ctx 是测试上下文。
 	ctx := context.Background()
 	// 先补齐密钥，确保唯一的阻断来源是总闸而不是凭据。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// 关闭全局总闸。
@@ -81,7 +81,7 @@ func TestCheckAIReadiness_DefaultOnAccountIsReady(t *testing.T) {
 	// ctx 是测试上下文。
 	ctx := context.Background()
 	// 只配密钥，不写任何 ai_reply_settings 行。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// rep、err 是本次自检结果与失败原因。
@@ -136,7 +136,7 @@ func TestCheckAIReadiness_ReadyWithKeyAndScope(t *testing.T) {
 		t.Fatalf("插入启用行: %v", err)
 	}
 	// err 是密钥写入失败原因；缺密钥会走 G4 阻断分支。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// err 是边界配置写入失败原因；写入后 ScopeConfigured 应为真。
@@ -172,7 +172,7 @@ func TestCheckAIReadiness_ReusesKeyCache(t *testing.T) {
 		t.Fatalf("插入启用行: %v", err)
 	}
 	// err 是密钥写入失败原因；缺密钥时自检不会进入解密分支。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-readiness"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-readiness"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// provider 是本用例显式持有的缓存实例，避免与进程级缓存互相影响。
