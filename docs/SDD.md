@@ -43,9 +43,9 @@
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 | 方案出处 |
 |---|---|---|---|---|
 | A1 | 评测口径修正 | `已生效` | 提交 `c9200229`；2026-11-07 在容器网络内完成真实模型跑分（`deepseek-flash`，70 条，采样 1 次）：通过率 72.9%(51/70)、内容层 70.3%(45/64)、决策层 100%(6/6)、判定失败 0，门禁通过。分层与按标签报告均正常产出 → 口径已可用 | `docs/eval-harness-validity-diagnosis-20261101.md` §7 |
-| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07)：`ai_generation_log.grounding_source=card-channel` 占 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
-| A3 | FAQ 通用话术降权 | `在树` | 配置 `system_settings.ai_knowledge_config` 已改。**差**线上版本号确认（本机无库） | `docs/customer-service-agent-upgrade-plan.md` §12 |
-| A4 | 生成后确定性校验兜底 | `已发布` | 提交 `2cc93e09` 已随镜像 `672a9310` 发布（`build_time 2026-11-07T16:00:03Z`，`/health` 已核）。守卫四层齐备：价格守卫 / 回避共现判定 `03079506` / 合规守卫 `0d7b055a` / **话题门控**（本轮）。**跑分(11-07 门控后)**：通过率 77.1%(54/70)，守卫仅触发 4 条且全通过，**守卫导致的回归 0 条**（门控前为 5 条）；`delivery` 7/7、`compliance` 5/7。**差**线上真实信号：`ai_generation_log` 迄 11-04 仍只有 `llm`/`policy-min-price`，`policy-guard`/`policy-compliance` 需等新流量。**残留**：#42 裸「不是」、#39 发票、#41 时效属事实缺口，不在守卫能力内 | 同上 §12 |
+| A2 | 发货渠道事实化覆盖率 | `在树` | `ai_live_context.go:47` 的 `deliverySourceCard`、`cards.delivery_channels`、`internal/netpan` 均已建。**差**覆盖率：27 个在售商品仅 21 个映射到渠道；A4 只在 `card-channel` 下断言，覆盖不到的商品仍靠提示词。**线上证据**(11-07/11-14 两次只读)：`ai_generation_log.grounding_source=card-channel` 维持 3/4(75%)，机制对已映射商品已生效；覆盖率缺口(27 中仅 21 映射)仍开；gen_log 自 11-04 起无新 AI 流量 | 同上文档 · `docs/customer-service-roi-optimization-20261018.md` |
+| A3 | FAQ 通用话术降权 | `已发布` | 配置 `system_settings.ai_knowledge_config` 线上已确认含发货 FAQ 降权条目（match：百度\|度盘\|...\|夸克\|迅雷，answer 降级为「以商品实际为准」，11-14 只读核对）。无评测侧独立信号故不标已生效 | `docs/customer-service-agent-upgrade-plan.md` §12 |
+| A4 | 生成后确定性校验兜底 | `已发布` | 提交 `2cc93e09` 已随镜像 `672a9310` 发布（`build_time 2026-11-07T16:00:03Z`，`/health` 已核）。守卫四层齐备：价格守卫 / 回避共现判定 `03079506` / 合规守卫 `0d7b055a` / **话题门控**（本轮）。**跑分(11-07 门控后)**：通过率 77.1%(54/70)，守卫仅触发 4 条且全通过，**守卫导致的回归 0 条**（门控前为 5 条）；`delivery` 7/7、`compliance` 5/7。**差**线上真实信号：`ai_generation_log` 迄 11-04 仍只有 `llm`/`policy-min-price`，`policy-guard`/`policy-compliance` 需等新流量。**残留**：#42 裸「不是」、#39 发票、#41 时效属事实缺口，不在守卫能力内。**11-14 只读**：`ai_generation_log` 迄 11-04 仍无 `policy-guard`/`policy-compliance` 行 → **仍非已生效**，待真实流量出现对应 `answer_source` | 同上 §12 |
 | A5 | 多意图优先级（refund vs order） | `在树` | `IntentRefund` 已 allowAI（10-17 修问题 F）。**差** `ai_scope.go:268` 的 `decide` 是纯 OR，同时命中时两份 FAQ 一起进提示 | 同上 §12 |
 | A6 | AI 启用态与凭据启动自检 | `已发布` | 提交 `76542eed` 已随 2026-11-01 镜像发布(`build_time 2026-11-01T15:37:20Z`)；`ai_master_enabled=true`、两账号 `ai_enabled=1`，`ai_decision_log` 录得 `taken`(迄 11-07) → 自检链路**已生效**。G1(商品归属)依赖具体消息，不在自检范围 | 同上 §12 |
 
@@ -202,3 +202,23 @@
 **仍未生效的部分（单独成行）**：`ai_generation_log` 迄 11-04 仍只有 `llm`=3、`policy-min-price`=1，`policy-guard`/`policy-compliance` 尚无线上行 → A4 **不是** `已生效`，需真实流量出现对应 `answer_source` 才能转态。
 
 **测量口径警示**：单样本 + 非零温度下，逐条通过与失败会随机翻转（本轮 6 条无人为改写翻转），因此**不接受单次跑分的逐条差分作为守卫归因**；归因只看「该条是否被守卫改写」（`GuardSource` 非空）。
+
+### 2026-11-14
+
+**数据可得性**：只读连接生产库成功（`docker exec` 进 `ydisks-xianyu-helper-postgres-1`，纯 SELECT，未触发迁移）。运行镜像仍为 `672a9310`（`build_time 2026-11-07T16:00:03Z`，`/health` 已核），自 11-07 起无新部署；HEAD 的 4 个提交（含 `e7750a55 docs(sdd)`）均不在运行镜像内，但无客服 AI 代码改动。`samples-all.jsonl` 仍为 10-11 导出，本周无新导出 → 规则层用旧快照（降级说明）。
+
+**离线评测（dry-run）**：70 条；9 条可机检期望全部未通过（均为 10-11 样本历史回避话术「以商品详情/拍下后的发货消息为准」，期望 百度/夸克网盘）；6 条 decision 通过（escalation）；其余 55 条判定失败（dry-run 无历史 AI 回复可判）。9/9 失败与 11-07 一致，**无新增失败、无从失败变通过**（样本库未更新、规则层无代码改动）。
+
+**「在树≠已发布」复核（单独成行）**：运行镜像仍 `672a9310`（11-07 构建）。A4（提交 `2cc93e09`）随该镜像已发布，但线上迄 11-04 仍无 `policy-guard`/`policy-compliance` 行 → **仍非已生效**。A2/A5 代码随镜像在树，但覆盖率缺口与 `decide` 纯 OR 未解 → 仍 `在树`。HEAD 4 提交（连接器/前端/文档）不在运行镜像，且不影响客服 AI 项。
+
+**状态变化**：A3 `在树`→`已发布`（11-14 只读确认 `system_settings.ai_knowledge_config` 线上含发货 FAQ 降权条目，此前因本机无库未确认）；其余项状态不变。
+
+**归因分布（线上实时,30 天窗口）**：
+
+| 维度 | 分布 |
+|---|---|
+| grounding_source | card-channel 3/4(75%)、none 1（与 11-07 同） |
+| answer_source | llm 3、policy-min-price 1（仍无 policy-guard/compliance） |
+| 决策接管 | taken 4、no-intent 18、item-sync 6；接管率≈14%(4/28)，近期流量全部 no-intent（gen_log 最新 11-04） |
+
+**优先级**：未落地项仍按 准确性>通用性>热点>性能。准确性焦点：A2（9/9 失败直接根因之一，覆盖率缺口）居首，A5（多意图 OR）次之；B/C/D 全组仍 `未开始`，本周无对应提交。
