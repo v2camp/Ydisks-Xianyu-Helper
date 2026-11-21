@@ -128,14 +128,14 @@
 | T3 | AI 模型与密钥按用户，保留实例级 AI 总闸 | `已发布` | 实现与测试提交 `106da63b`，合并提交 `0ff3e566`；用户级 AI 配置与迁移测试通过 |
 | T4 | 运营 Agent QQ 网关、白名单与会话按用户隔离 | `已发布` | 实现与测试提交 `106da63b`，合并提交 `0ff3e566`；`webui-e2e-test` 通过（17.5s） |
 
-### 1.9 N 组：系统通知隔离与站内通知中心（在树）
+### 1.9 N 组：系统通知隔离与站内通知中心（已发布）
 
 | 编号 | 事项 | 状态 | 判定依据 / 还差什么 |
 |---|---|---|---|
-| N1 | 通知事件增加 tenant/system 作用域，系统事件改走管理员系统告警渠道 | `在树` | 实现与测试完成；待全量门禁通过后合并 main |
-| N2 | 新增 `notification_events` 站内事件表与租户/系统读写接口 | `在树` | 实现与迁移完成；待合并 main |
-| N3 | 新增租户通知中心与管理员系统告警页 | `在树` | 页面与路由完成；待 Web UI e2e 与合并 |
-| N4 | 系统告警渠道与租户渠道完全隔离 | `在树` | 渠道 scope 与管理员接口完成；待合并 main |
+| N1 | 通知事件增加 tenant/system 作用域，系统事件改走管理员系统告警渠道 | `已发布` | 实现提交 `c565bcbe`，合并提交 `403db339`；Go 全量测试与五链路覆盖率通过 |
+| N2 | 新增 `notification_events` 站内事件表与租户/系统读写接口 | `已发布` | 实现与 00070 迁移提交 `fdfdf46a`/`7cf8410a`，合并 `403db339`；SQLite/PostgreSQL 迁移一致 |
+| N3 | 新增租户通知中心与管理员系统告警页 | `已发布` | 前端提交 `75efe903`，e2e 提交 `16f2d537`；`webui-e2e-test` 通过（17.5s，迁移版本 70） |
+| N4 | 系统告警渠道与租户渠道完全隔离 | `已发布` | 渠道 scope 与管理员接口提交 `7cf8410a`，合并 `403db339`；租户查询全部收敛 scope='tenant' |
 
 ## 2. 索引：方案与设计文档
 
@@ -155,7 +155,7 @@
 | `docs/architecture/ai-agent-config-domain-plan.md` | AI 配置域设计 | 已落地，留 2 项待决策 |
 | `docs/architecture/agent-console-split-plan.md` | Agent 控制台拆分与运营 Agent 对话模块设计 | 已落地（v1.0.42-local-20261120） |
 | `docs/architecture/tenant-integration-assets-plan.md` | 租户级集成资产归属与迁移方案 | `已发布`（实现 `106da63b`，合并 `0ff3e566`） |
-| `docs/architecture/system-notification-isolation-plan.md` | 系统通知隔离与站内通知中心方案 | `在树`（待合并） |
+| `docs/architecture/system-notification-isolation-plan.md` | 系统通知隔离与站内通知中心方案 | `已发布`（合并 `403db339`） |
 | `docs/slider-captcha-frozen-spec.md` | 滑块验证码冻结规范 | 长期冻结，禁止改动 |
 
 ## 3. 索引：证据与复盘（只读，不再产出同类新文档）
