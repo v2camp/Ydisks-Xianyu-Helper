@@ -43,13 +43,15 @@ describe('frontend navigation routing', () => {
     const app = readFrontendFile('app/shell/AuthenticatedShell.tsx'); /* app 表示认证后页面组合器源码。 */
     const lazyPageCount = (app.match(lazyPagePattern) || []).length; /* lazyPageCount 表示按路由懒加载的页面数量，期望值与页面清单长度一致。 */
 
-    expect(lazyPageCount).toBe(12);
+    expect(lazyPageCount).toBe(14);
     expect(app).toContain('const PageLoading: React.FC');
     expect(app).toContain('<Suspense fallback={<PageLoading />}>');
     expect(app).not.toContain("import Dashboard from '../../components/Dashboard'");
     expect(app).toContain("import('../features/dashboard/pages/Dashboard')");
     expect(app).toContain("import('../features/settings/pages/CustomerAgent')");
     expect(app).toContain("import('../features/settings/pages/OpsAgent')");
+    expect(app).toContain("import('../features/connectors/pages/NotificationCenter')");
+    expect(app).toContain("import('../features/connectors/pages/SystemAlerts')");
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);
 
   test('authenticated shell owns sidebar and page composition', () => {
@@ -108,7 +110,7 @@ describe('frontend navigation routing', () => {
 
     expect(app).toContain('const { isLoggedIn, isAdmin, signOut } = useSession();');
     expect(sessionProvider).toContain('setIsAdmin(response.is_admin === true)');
-    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent'];");
+    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent', 'system-alerts'];");
     expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
     expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
@@ -116,8 +118,11 @@ describe('frontend navigation routing', () => {
     // 运营 Agent 属于所有登录用户，壳层不再按管理员分流。
     expect(shell).toContain('case \'ops-agent\': return <OpsAgent onNavigate={onNavigate} />;');
     expect(sidebar).toContain('isAdmin = false');
-    expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
+    expect(sidebar).toContain("...(isAdmin ? [{ id: 'system-alerts'");
+    expect(sidebar).toContain("{ id: 'settings', icon: Settings, label: '系统设置' }");
     expect(sidebar).toContain("{ id: 'customer-agent', icon: Bot, label: '客服 Agent' }");
+    // 通知中心在通用菜单中，所有登录用户都可见。
+    expect(sidebar).toContain("{ id: 'notifications', icon: Bell, label: '通知中心' },");
     // 运营 Agent 在通用菜单中，不再受管理员菜单条件限制。
     expect(sidebar).toContain("{ id: 'ops-agent', icon: Radio, label: '运营 Agent' },");
     expect(settingsHook).toContain('setLoadError');

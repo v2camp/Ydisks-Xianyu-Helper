@@ -30,6 +30,10 @@ const PAGE_CHUNK_BUDGETS: Record<string, number> = {
   DeliveryTemplates: 14 * 1024,
   // Connectors 页面承载连接器卡、渠道编辑器、SMTP、页面分区与按类型的凭据继承提示，实测 52683 字节。
   Connectors: 54 * 1024,
+  // NotificationCenter 页面承载租户站内事件列表、未读筛选与已读动作。
+  NotificationCenter: 24 * 1024,
+  // SystemAlerts 页面承载系统事件列表、管理员共享告警渠道与渠道编辑器。
+  SystemAlerts: 36 * 1024,
   Chat: 50 * 1024,
 };
 
@@ -50,10 +54,10 @@ describe('frontend production bundle boundary', /* 当前回调验证生产入�
     expect(preloadedAssets.some(/* 当前回调判断图表依赖是否被首屏预加载。 */ asset => asset.startsWith('charts-vendor-'))).toBe(false);
   });
 
-  test('十二个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
+  test('十四个业务页面都生成独立页面 chunk', /* 当前回调验证各页面可按路由延迟下载。 */ () => {
     // pageChunkNames 保存 Vite 输出的业务页面 chunk 文件名。
     const pageChunkNames = readdirSync(resolve(staticRoot, 'assets')).filter(/* 当前回调筛选业务页面分片文件。 */ fileName => pageChunkPattern.test(fileName));
-    expect(pageChunkNames).toHaveLength(12);
+    expect(pageChunkNames).toHaveLength(14);
   });
 
   test('每个产生独立分片的页面都在分片预算表登记', /* 当前回调验证页面清单与预算表不会互相缺漏。 */ () => {

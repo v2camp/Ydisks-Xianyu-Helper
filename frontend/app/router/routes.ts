@@ -1,5 +1,5 @@
 /** AppRoute 表示认证后可通过浏览器地址直接访问的业务页面；customer-agent 与 settings 为管理员专用配置页。 */
-export type AppRoute = 'dashboard' | 'accounts' | 'chat' | 'orders' | 'cards' | 'items' | 'rules' | 'delivery-templates' | 'connectors' | 'settings' | 'customer-agent' | 'ops-agent';
+export type AppRoute = 'dashboard' | 'accounts' | 'chat' | 'orders' | 'cards' | 'items' | 'rules' | 'delivery-templates' | 'connectors' | 'notifications' | 'system-alerts' | 'settings' | 'customer-agent' | 'ops-agent';
 
 /** routeByPath 保存浏览器地址到业务路由标识的唯一映射，避免页面各自解析 URL。 */
 export const routeByPath: Readonly<Record<string, AppRoute>> = {
@@ -12,6 +12,8 @@ export const routeByPath: Readonly<Record<string, AppRoute>> = {
   '/app/rules': 'rules',
   '/app/delivery-templates': 'delivery-templates',
   '/app/connectors': 'connectors',
+  '/app/notifications': 'notifications',
+  '/app/system-alerts': 'system-alerts',
   '/app/settings': 'settings',
   '/app/customer-agent': 'customer-agent',
   '/app/ops-agent': 'ops-agent',

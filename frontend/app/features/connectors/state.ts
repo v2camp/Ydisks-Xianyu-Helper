@@ -84,8 +84,40 @@ export const notificationEvents: NotificationEventMeta[] = [
   { value: 'manual_delivery_result', label: '手动发货结果', description: '人工发货或确认发货的结果，不属于自动化任务分类' },
   { value: 'manual_intervention_required', label: '需要人工处理', description: '自动化因结果不确定、状态缺失或无法安全续跑而停止，需要用户检查订单' },
   { value: 'token_renewal', label: '续期通知', description: 'Cookie/token 续期和自动恢复过程' },
-  { value: 'system_error', label: '系统错误', description: '后台任务或系统级异常' },
+  { value: 'system_error', label: '账号异常（未分类）', description: '账号级未知异常；实例级告警在系统告警页单独配置' },
 ];
+
+// systemAlertEvents 是管理员系统告警渠道可订阅的实例级事件。
+export const systemAlertEvents: NotificationEventMeta[] = [
+  { value: 'business_silence', label: '业务静默', description: '进程健康但业务表长时间没有新事件' },
+];
+
+// notificationEventLabel 返回事件编码对应的中文名称；未知编码回退为原值。
+export const notificationEventLabel = (eventType: string): string =>
+  [...notificationEvents, ...systemAlertEvents].find(
+    // item 是当前待匹配的事件定义。
+    item => item.value === eventType,
+  )?.label || eventType;
+
+// notificationLevelLabel 返回事件级别的中文名称；未知级别回退为原值。
+export const notificationLevelLabel = (level: string): string => {
+  switch (level) {
+    case 'critical':
+      return '严重';
+    case 'warn':
+      return '警告';
+    case 'info':
+      return '提示';
+    default:
+      return level || '提示';
+  }
+};
+
+// notificationEventTime 把 Unix 秒时间戳格式化为本地时间文本。
+export const notificationEventTime = (createdAt: number): string => {
+  if (!createdAt) return '';
+  return new Date(createdAt * 1000).toLocaleString('zh-CN', { hour12: false });
+};
 
 // emptyNotificationForm 返回新建渠道的初始表单。
 export const emptyNotificationForm = (): NotificationForm => ({ name: '', type: 'bark', enabled: true, config: {}, event_types: [] });
@@ -95,10 +127,7 @@ export const notificationEventSummary = (events?: NotificationEventType[]): stri
   if (!events || events.length === 0) return '全部事件';
   return events.map(
     // event 是当前待转换的后端事件值。
-    event => notificationEvents.find(
-      // item 是当前事件定义。
-      item => item.value === event,
-    )?.label || event,
+    event => notificationEventLabel(event),
   ).join('、');
 };
 

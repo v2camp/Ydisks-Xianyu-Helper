@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Bell, Bot, Box, ChevronLeft, ChevronRight, CreditCard, FileStack, LayoutDashboard,
-  GitCommitHorizontal, LogOut, MessageCircleMore, Radio, Settings, ShoppingBag, Users, Zap,
+  GitCommitHorizontal, LogOut, MessageCircleMore, PlugZap, Radio, Settings, ShieldAlert, ShoppingBag, Users, Zap,
 } from 'lucide-react';
 import { YdisksBrandIcon } from './YdisksLogo';
 
@@ -39,9 +39,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'orders', icon: ShoppingBag, label: '订单管理' },
     { id: 'delivery-templates', icon: FileStack, label: '发货模板' },
     { id: 'rules', icon: Zap, label: '自动化规则' },
-    { id: 'connectors', icon: Bell, label: '连接器' },
+    { id: 'connectors', icon: PlugZap, label: '连接器' },
+    { id: 'notifications', icon: Bell, label: '通知中心' },
     { id: 'ops-agent', icon: Radio, label: '运营 Agent' },
-    ...(isAdmin ? [{ id: 'settings', icon: Settings, label: '系统设置' }, { id: 'customer-agent', icon: Bot, label: '客服 Agent' }] : []),
+    ...(isAdmin ? [{ id: 'system-alerts', icon: ShieldAlert, label: '系统告警' }, { id: 'settings', icon: Settings, label: '系统设置' }, { id: 'customer-agent', icon: Bot, label: '客服 Agent' }] : []),
   ];
   // displayVersion 显示版本号。
   const displayVersion = /^\d+\.\d+\.\d+$/.test(buildInfo.version)

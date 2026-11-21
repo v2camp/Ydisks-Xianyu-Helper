@@ -1,12 +1,48 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
-import type { NotificationChannel } from './api';
-import { createNotificationChannel,deleteNotificationChannel,getNotificationChannel,getNotificationChannels,testNotificationChannel,updateNotificationChannel } from './api';
+import type { ChannelRequestOptions,MutationIDResponse,NotificationChannel,NotificationChannelEditorResponse,NotificationChannelRequest,OperationResponse } from './api';
+import { createNotificationChannel,createSystemAlertChannel,deleteNotificationChannel,deleteSystemAlertChannel,getNotificationChannel,getNotificationChannels,getSystemAlertChannel,getSystemAlertChannels,testNotificationChannel,testSystemAlertChannel,updateNotificationChannel,updateSystemAlertChannel } from './api';
 import { buildNotificationPayload,emptyNotificationForm,isCurrentNotificationRequest,normalizeNotificationForm,notificationErrorMessage,validateNotificationForm } from './state';
 import type { ConnectorsState,NotificationForm } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 
-// useConnectors 统一管理当前用户通知渠道列表、编辑表单与渠道动作的异步状态。
-export const useConnectors = (): ConnectorsState => {
+/** ChannelAdminAPI 定义渠道 CRUD 的传输适配器；租户渠道与系统告警渠道各绑一套实现。 */
+export interface ChannelAdminAPI {
+  /** 读取渠道列表。 */
+  list: (options?: ChannelRequestOptions) => Promise<{ /** 操作是否完成。 */ success: boolean; /** 渠道列表。 */ data: NotificationChannel[] }>;
+  /** 读取单条渠道的脱敏编辑配置。 */
+  get: (channelID: string, options?: ChannelRequestOptions) => Promise<NotificationChannelEditorResponse>;
+  /** 创建渠道。 */
+  create: (data: Required<Pick<NotificationChannelRequest, 'name' | 'type' | 'config'>> & NotificationChannelRequest, options?: ChannelRequestOptions) => Promise<MutationIDResponse>;
+  /** 更新渠道。 */
+  update: (channelID: string, data: NotificationChannelRequest, options?: ChannelRequestOptions) => Promise<OperationResponse>;
+  /** 删除渠道。 */
+  remove: (channelID: string, options?: ChannelRequestOptions) => Promise<OperationResponse>;
+  /** 发送测试通知。 */
+  test: (channelID: string, options?: ChannelRequestOptions) => Promise<OperationResponse>;
+}
+
+// tenantChannelAPI 把租户渠道传输函数绑定为渠道管理适配器。
+const tenantChannelAPI: ChannelAdminAPI = {
+  list: getNotificationChannels,
+  get: getNotificationChannel,
+  create: createNotificationChannel,
+  update: updateNotificationChannel,
+  remove: deleteNotificationChannel,
+  test: testNotificationChannel,
+};
+
+// systemAlertChannelAPI 把系统告警渠道传输函数绑定为渠道管理适配器。
+const systemAlertChannelAPI: ChannelAdminAPI = {
+  list: getSystemAlertChannels,
+  get: getSystemAlertChannel,
+  create: createSystemAlertChannel,
+  update: updateSystemAlertChannel,
+  remove: deleteSystemAlertChannel,
+  test: testSystemAlertChannel,
+};
+
+// useChannelAdmin 统一管理一套渠道的列表、编辑表单与渠道动作异步状态。
+const useChannelAdmin = (api: ChannelAdminAPI): ConnectorsState => {
   // channels 保存当前用户的通知渠道。
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   // loading 表示通知渠道列表是否正在加载。
@@ -71,7 +107,7 @@ export const useConnectors = (): ConnectorsState => {
       setLoading(true);
       try {
         // result 是当前用户的通知渠道列表响应。
-        const result = await getNotificationChannels({ signal: controller.signal });
+        const result = await api.list({ signal: controller.signal });
         if (!isCurrentNotificationRequest(generation, channelGeneration.current)) return;
         setChannels(result.data || []);
       } catch (error: unknown /* 渠道加载异常 */) {
@@ -82,7 +118,7 @@ export const useConnectors = (): ConnectorsState => {
         if (isCurrentNotificationRequest(generation, channelGeneration.current)) setLoading(false);
       }
     },
-    [],
+    [api],
   );
 
   useEffect(
@@ -155,7 +191,7 @@ export const useConnectors = (): ConnectorsState => {
       setShowModal(false);
       try {
         // editor 只含可回显的非敏感配置与已保存的凭据键名，凭据明文始终留在服务端。
-        const editor = await getNotificationChannel(channel.id, { signal: controller.signal });
+        const editor = await api.get(channel.id, { signal: controller.signal });
         if (generation !== editorGeneration.current || controller.signal.aborted) return;
         // initialForm 是读取完成后一次性建立的表单，之后不再由该请求回填。
         const initialForm = normalizeNotificationForm(channel);
@@ -176,7 +212,7 @@ export const useConnectors = (): ConnectorsState => {
         if (generation === editorGeneration.current && !controller.signal.aborted) showToast('error', notificationErrorMessage(error, '读取渠道配置失败'));
       }
     },
-    [showToast],
+    [api, showToast],
   );
 
   // closeModal 关闭渠道弹窗并取消未完成的保存动作。
@@ -218,9 +254,9 @@ export const useConnectors = (): ConnectorsState => {
         // payload 是后端渠道接口使用的规范化请求体，邮件渠道只含收件地址。
         const payload = buildNotificationPayload(form);
         if (editing) {
-          await updateNotificationChannel(editing.id, payload, { signal: controller.signal });
+          await api.update(editing.id, payload, { signal: controller.signal });
         } else {
-          await createNotificationChannel({ ...payload, config: payload.config || {} }, { signal: controller.signal });
+          await api.create({ ...payload, config: payload.config || {} }, { signal: controller.signal });
         }
         if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
         setShowModal(false);
@@ -235,7 +271,7 @@ export const useConnectors = (): ConnectorsState => {
         if (isCurrentNotificationRequest(generation, actionGeneration.current)) setSaving(false);
       }
     },
-    [editing, form, loadChannels, savedCredentialKeys, showToast],
+    [api, editing, form, loadChannels, savedCredentialKeys, showToast],
   );
 
   // handleDelete 删除渠道并在成功后刷新列表。
@@ -252,7 +288,7 @@ export const useConnectors = (): ConnectorsState => {
       const controller = new AbortController();
       actionAbort.current = controller;
       try {
-        await deleteNotificationChannel(channel.id, { signal: controller.signal });
+        await api.remove(channel.id, { signal: controller.signal });
         if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
         await loadChannels();
         if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
@@ -263,7 +299,7 @@ export const useConnectors = (): ConnectorsState => {
         }
       }
     },
-    [loadChannels, showToast],
+    [api, loadChannels, showToast],
   );
 
   // handleToggleEnabled 更新渠道启用状态并采用函数式局部更新。
@@ -279,7 +315,7 @@ export const useConnectors = (): ConnectorsState => {
       const controller = new AbortController();
       actionAbort.current = controller;
       try {
-        await updateNotificationChannel(channel.id, { enabled: !channel.enabled }, { signal: controller.signal });
+        await api.update(channel.id, { enabled: !channel.enabled }, { signal: controller.signal });
         if (!isCurrentNotificationRequest(generation, actionGeneration.current)) return;
         setChannels(
           // nextChannelsUpdater 使用函数式更新渠道列表。
@@ -294,7 +330,7 @@ export const useConnectors = (): ConnectorsState => {
         }
       }
     },
-    [showToast],
+    [api, showToast],
   );
 
   // handleTest 发送渠道测试通知并展示结果。
@@ -309,7 +345,7 @@ export const useConnectors = (): ConnectorsState => {
       const controller = new AbortController();
       actionAbort.current = controller;
       try {
-        await testNotificationChannel(channel.id, { signal: controller.signal });
+        await api.test(channel.id, { signal: controller.signal });
         if (isCurrentNotificationRequest(generation, actionGeneration.current)) showToast('success', '测试通知已发送，请检查对应渠道');
       } catch (error: unknown /* 测试通知异常 */) {
         if (isCurrentNotificationRequest(generation, actionGeneration.current) && !controller.signal.aborted) {
@@ -319,7 +355,7 @@ export const useConnectors = (): ConnectorsState => {
         if (isCurrentNotificationRequest(generation, actionGeneration.current)) setTestingId('');
       }
     },
-    [showToast],
+    [api, showToast],
   );
 
   return {
@@ -329,3 +365,9 @@ export const useConnectors = (): ConnectorsState => {
     handleSave, handleDelete, handleToggleEnabled, handleTest,
   };
 };
+
+// useConnectors 管理当前用户的租户通知渠道。
+export const useConnectors = (): ConnectorsState => useChannelAdmin(tenantChannelAPI);
+
+// useSystemAlertChannels 管理管理员共享的系统告警渠道。
+export const useSystemAlertChannels = (): ConnectorsState => useChannelAdmin(systemAlertChannelAPI);

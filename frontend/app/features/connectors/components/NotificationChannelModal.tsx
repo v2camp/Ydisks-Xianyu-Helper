@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { NotificationChannel,NotificationChannelType,NotificationEventType } from '../api';
 import { notificationChannelTypes } from '../state';
 import type { NotificationForm } from '../types';
+import type { NotificationEventMeta } from '../types';
 import { NotificationEventSelector } from './NotificationEventSelector';
 
 // NotificationChannelModalProps 描述渠道编辑弹窗所需的状态和回调。
@@ -26,10 +27,12 @@ export interface NotificationChannelModalProps {
   onClose: () => void;
   // onSave 提交渠道表单。
   onSave: () => void | Promise<void>;
+  // events 是可绑定事件清单；系统告警渠道只展示实例级事件。
+  events?: NotificationEventMeta[];
 }
 
 // NotificationChannelModal 渲染渠道字段和事件绑定表单；连接器级凭据统一在用户集成配置中维护。
-export const NotificationChannelModal: React.FC<NotificationChannelModalProps> = ({ showModal, editing, form, setForm, saving, savedCredentialKeys = [], resetCredentialState, onClose, onSave }) => {
+export const NotificationChannelModal: React.FC<NotificationChannelModalProps> = ({ showModal, editing, form, setForm, saving, savedCredentialKeys = [], resetCredentialState, onClose, onSave, events }) => {
   // meta 是当前渠道类型对应的字段和指南。
   const meta = notificationChannelTypes[form.type];
   // credentialKeys 是当前渠道类型声明的凭据键，只有这些键参与留空沿用与清除。
@@ -140,7 +143,7 @@ export const NotificationChannelModal: React.FC<NotificationChannelModalProps> =
               邮件渠道使用「当前用户的集成配置 → 邮件发送（SMTP）」中的发件配置，本弹窗只设置收件邮箱。
             </div>
           )}
-          <NotificationEventSelector selectedEvents={form.event_types} onToggleEvent={handleToggleEvent} />
+          <NotificationEventSelector selectedEvents={form.event_types} onToggleEvent={handleToggleEvent} events={events} />
           <label className="flex items-center gap-3 cursor-pointer"><button type="button" onClick={handleToggleEnabled} className={`relative w-11 h-6 rounded-full transition-colors ${form.enabled ? 'bg-brand' : 'bg-gray-300'}`}><span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${form.enabled ? 'translate-x-5' : ''}`} /></button><span className="text-sm font-bold text-gray-800">启用此渠道</span></label>
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3"><button onClick={onClose} className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 font-bold text-gray-700 transition-colors">取消</button><button onClick={onSave} disabled={saving} className="ios-btn-primary px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{saving ? '保存中...' : '保存'}</button></div>

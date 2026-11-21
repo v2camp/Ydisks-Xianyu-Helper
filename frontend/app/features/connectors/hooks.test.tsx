@@ -12,6 +12,12 @@ vi.mock('./api', /* notificationsApiMockFactory 提供通知 Hook 的确定性 A
   getNotificationChannels: vi.fn(),
   testNotificationChannel: vi.fn(),
   updateNotificationChannel: vi.fn(),
+  createSystemAlertChannel: vi.fn(),
+  deleteSystemAlertChannel: vi.fn(),
+  getSystemAlertChannel: vi.fn(),
+  getSystemAlertChannels: vi.fn(),
+  testSystemAlertChannel: vi.fn(),
+  updateSystemAlertChannel: vi.fn(),
   QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' },
 }));
 
