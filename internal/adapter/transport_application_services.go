@@ -52,6 +52,10 @@ type TransportApplicationServices struct {
 	UncertainNotifications *notificationsapp.Service
 	// NotificationChannels 提供通知渠道 CRUD、绑定和测试发送。
 	NotificationChannels *notificationsapp.ChannelService
+	// NotificationEvents 提供租户与系统站内通知事件用例。
+	NotificationEvents *notificationsapp.EventInboxService
+	// SystemAlertChannels 提供管理员系统告警渠道 CRUD 与测试发送。
+	SystemAlertChannels *notificationsapp.SystemAlertChannelService
 	// Analytics 提供订单统计分析用例。
 	Analytics *analyticsapp.Service
 	// AutomationIssues 提供自动化异常查询和人工处理用例。
@@ -105,6 +109,8 @@ func NewTransportApplicationServices(options TransportApplicationServiceOptions)
 		AccountTasks:           automationapp.NewService(options.AutomationDependencies.NewAccountTaskRepository(), options.AccountTaskRunner),
 		UncertainNotifications: notificationsapp.New(options.MiscDependencies.NewNotificationUncertainRepository()),
 		NotificationChannels:   notificationsapp.NewChannelService(options.MiscDependencies.NewNotificationChannelRepository(), options.ChannelSender),
+		NotificationEvents:     notificationsapp.NewEventInboxService(options.MiscDependencies.NewNotificationEventRepository()),
+		SystemAlertChannels:    notificationsapp.NewSystemAlertChannelService(options.MiscDependencies.NewSystemAlertChannelRepository(), options.ChannelSender),
 		Analytics:              analyticsapp.NewService(options.MiscDependencies.NewAnalyticsRepository()),
 		AutomationIssues:       automationapp.NewIssueService(automationRepository),
 		AutomationRules:        automationapp.NewRuleService(automationRepository, automationRepository),
@@ -129,7 +135,7 @@ func (services *TransportApplicationServices) Validate() error {
 	if services == nil {
 		return fmt.Errorf("transport 应用服务集合不能为空")
 	}
-	if services.Settings == nil || services.Admin == nil || services.AccountTasks == nil || services.UncertainNotifications == nil || services.NotificationChannels == nil || services.Analytics == nil || services.AutomationIssues == nil || services.AutomationRules == nil || services.DeliveryTemplates == nil || services.Cards == nil || services.APICardTester == nil || services.PublishAutomationRules == nil || services.DefaultReplies == nil || services.Keywords == nil || services.MCPAdmin == nil || services.AgentSupport == nil {
+	if services.Settings == nil || services.Admin == nil || services.AccountTasks == nil || services.UncertainNotifications == nil || services.NotificationChannels == nil || services.NotificationEvents == nil || services.SystemAlertChannels == nil || services.Analytics == nil || services.AutomationIssues == nil || services.AutomationRules == nil || services.DeliveryTemplates == nil || services.Cards == nil || services.APICardTester == nil || services.PublishAutomationRules == nil || services.DefaultReplies == nil || services.Keywords == nil || services.MCPAdmin == nil || services.AgentSupport == nil {
 		return fmt.Errorf("transport 应用服务集合存在未装配服务")
 	}
 	return nil

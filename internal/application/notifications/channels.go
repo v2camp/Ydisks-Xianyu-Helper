@@ -206,29 +206,7 @@ func (s *ChannelService) GetChannelEditor(ctx context.Context, userID, channelID
 	if record == nil {
 		return ChannelEditor{}, ErrChannelForbidden
 	}
-	// editor 保存剔除敏感配置后的编辑器视图。
-	editor := ChannelEditor{ID: record.ID, Name: record.Name, Type: record.Type, EventTypes: record.EventTypes, Enabled: record.Enabled}
-	// config 保存仅为回显非敏感字段而解析的渠道配置；解析失败时按空对象处理，不向响应输出任何配置原文。
-	var config map[string]any
-	if json.Unmarshal([]byte(record.Config), &config) != nil {
-		config = nil
-	}
-	// spec 保存当前渠道类型的配置键分类；record.Type 本身保持存储原值，仅在查表时归一别名。
-	spec := channelConfigSpecFor(record.Type)
-	// 通用的可回显键值回读：只有 spec 声明的非敏感键才可能进入 Config，敏感键的值不会出现在这里。
-	editor.Config = editableChannelConfig(spec, config)
-	// 敏感键只回读键名，供前端区分「已保存凭据」与「改用连接器凭据」，永不回传值。
-	editor.SavedCredentialKeys = savedChannelCredentialKeys(spec, config)
-	if record.Type != "email" {
-		return editor, nil
-	}
-	// recipient 保存兼容 to_email/email 两种历史字段后的收件地址。
-	recipient := strings.TrimSpace(stringValue(config["to_email"]))
-	if recipient == "" {
-		recipient = strings.TrimSpace(stringValue(config["email"]))
-	}
-	editor.ToEmail = recipient
-	return editor, nil
+	return channelEditorFromRecord(record), nil
 }
 
 // CreateChannel 校验并创建通知渠道；敏感配置只向持久化端口传递。
@@ -256,33 +234,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 	if record == nil {
 		return ErrChannelForbidden
 	}
-	// existingType 保存更新前的渠道协议类型，用于判定本次配置提交是否需要按键合并。
-	existingType := record.Type
-	if patch.Name != nil {
-		record.Name = *patch.Name
-	}
-	if patch.Type != nil {
-		record.Type = *patch.Type
-	}
-	if patch.Config != nil {
-		// spec 按更新前的渠道类型取配置键分类，避免本次同时改类型时误用新类型的合并规则。
-		spec := channelConfigSpecFor(existingType)
-		if spec.Merge && !patch.ReplaceConfig {
-			// 编辑器不会回传敏感键，因此声明了 Merge 的类型必须按键合并，不能整体替换丢掉未提交的凭据。
-			record.Config = mergeChannelConfig(record.Config, *patch.Config)
-		} else {
-			record.Config = *patch.Config
-		}
-	}
-	if patch.EventTypes != nil {
-		record.EventTypes = *patch.EventTypes
-	}
-	if patch.Enabled != nil {
-		record.Enabled = *patch.Enabled
-	}
-	// validationErr 表示合并后的渠道名称和协议类型校验结果。
-	if validationErr := validateChannelFields(record.Name, record.Type); validationErr != nil {
-		return validationErr
+	// patchErr 表示合并后的渠道名称与协议类型校验结果。
+	if patchErr := applyChannelPatch(record, patch); patchErr != nil {
+		return patchErr
 	}
 	record.UserID = userID
 	return s.repository.UpdateChannel(ctx, userID, *record)
