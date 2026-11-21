@@ -11,6 +11,8 @@ export const pageEntryFiles: readonly string[] = [
   'app/features/delivery-templates/pages/DeliveryTemplates.tsx',
   'app/features/items/pages/ItemList.tsx',
   'app/features/connectors/pages/Connectors.tsx',
+  'app/features/connectors/pages/NotificationCenter.tsx',
+  'app/features/connectors/pages/SystemAlerts.tsx',
   'app/features/orders/pages/OrderList.tsx',
   'app/features/rules/pages/Rules.tsx',
   'app/features/session/pages/SessionGate.tsx',
@@ -34,5 +36,7 @@ export const lazyPageNames: readonly string[] = [
   'Rules',
   'DeliveryTemplates',
   'Connectors',
+  'NotificationCenter',
+  'SystemAlerts',
   'Chat',
 ];

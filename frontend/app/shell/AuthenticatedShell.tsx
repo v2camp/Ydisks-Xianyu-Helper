@@ -63,6 +63,10 @@ const Rules = lazy(/* Rules 页面按路由激活时加载。 */ () => import('.
 const DeliveryTemplates = lazy(/* DeliveryTemplates 页面按路由激活时加载。 */ () => import('../features/delivery-templates/pages/DeliveryTemplates'));
 // Connectors 是按需加载的连接器页面（平台凭据 + 通知渠道），避免首屏载入连接器配置代码。
 const Connectors = lazy(/* Connectors 页面按路由激活时加载。 */ () => import('../features/connectors/pages/Connectors'));
+// NotificationCenter 是按需加载的租户站内通知中心。
+const NotificationCenter = lazy(/* NotificationCenter 页面按路由激活时加载。 */ () => import('../features/connectors/pages/NotificationCenter'));
+// SystemAlerts 是按需加载的管理员系统告警页面。
+const SystemAlerts = lazy(/* SystemAlerts 页面按路由激活时加载。 */ () => import('../features/connectors/pages/SystemAlerts'));
 // Chat 是按需加载的聊天页面，避免未访问时载入聊天历史和 WebSocket 视图。
 const Chat = lazy(/* Chat 页面按路由激活时加载。 */ () => import('../features/chat/pages/Chat'));
 
@@ -122,6 +126,8 @@ export const AppContent: React.FC<AppContentProps> = ({
       />;
       case 'delivery-templates': return <DeliveryTemplates />;
       case 'connectors': return <Connectors />;
+      case 'notifications': return <NotificationCenter />;
+      case 'system-alerts': return isAdmin ? <SystemAlerts /> : <Dashboard />;
       case 'settings': return isAdmin ? <Settings /> : <Dashboard />;
       case 'customer-agent': return isAdmin ? <CustomerAgent onNavigate={onNavigate} /> : <Dashboard />;
       case 'ops-agent': return <OpsAgent onNavigate={onNavigate} />;

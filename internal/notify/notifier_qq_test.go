@@ -265,6 +265,21 @@ func (f *settingsRepositoryFake) AccountChannels(ctx context.Context, cookieID s
 	return nil, nil
 }
 
+// OwnerOfAccount 返回固定账号所有者，QQ 凭据测试不依赖站内事件归属。
+func (f *settingsRepositoryFake) OwnerOfAccount(ctx context.Context, cookieID string) (int64, error) {
+	return 1, nil
+}
+
+// RecordEvent 丢弃站内事件写入，QQ 凭据测试不依赖站内事件表。
+func (f *settingsRepositoryFake) RecordEvent(ctx context.Context, event db.NotificationEventInput) error {
+	return nil
+}
+
+// SystemAlertChannels 返回空系统告警渠道，QQ 凭据测试不驱动系统投递。
+func (f *settingsRepositoryFake) SystemAlertChannels(ctx context.Context) ([]db.NotificationChannel, error) {
+	return nil, nil
+}
+
 // EnqueueOutbox 丢弃入队请求，QQ 凭据测试不依赖 outbox 持久化。
 func (f *settingsRepositoryFake) EnqueueOutbox(ctx context.Context, messages []db.NotificationOutboxInput) error {
 	return nil

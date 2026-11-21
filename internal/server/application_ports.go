@@ -17,7 +17,6 @@ import (
 	itemapp "xianyu-go/internal/application/items"
 	keywordsapp "xianyu-go/internal/application/keywords"
 	mcpadminapp "xianyu-go/internal/application/mcpadmin"
-	notificationsapp "xianyu-go/internal/application/notifications"
 	opschatapp "xianyu-go/internal/application/opschat"
 	orderapp "xianyu-go/internal/application/orders"
 	settingsapp "xianyu-go/internal/application/settings"
@@ -249,22 +248,6 @@ type ChatPort interface {
 	SaveBuyerNote(context.Context, int64, string, string, string) (chatapp.BuyerNote, error)
 }
 
-// UncertainNotificationsPort 定义通知不确定状态的查询能力。
-type UncertainNotificationsPort interface {
-	ListForUser(context.Context, int64, int) ([]notificationsapp.UncertainSummary, int, error)
-	ListForAdmin(context.Context, int) ([]notificationsapp.UncertainSummary, int, error)
-}
-
-// NotificationChannelsPort 定义通知渠道的管理能力。
-type NotificationChannelsPort interface {
-	ListChannels(context.Context, int64) ([]notificationsapp.ChannelSummary, error)
-	GetChannelEditor(context.Context, int64, int64) (notificationsapp.ChannelEditor, error)
-	CreateChannel(context.Context, int64, notificationsapp.ChannelInput) (int64, error)
-	UpdateChannel(context.Context, int64, int64, notificationsapp.ChannelPatch) error
-	DeleteChannel(context.Context, int64, int64) error
-	TestChannel(context.Context, int64, int64, time.Time) error
-}
-
 // AnalyticsPort 定义仪表盘和订单分析能力。
 type AnalyticsPort interface {
 	DashboardStats(context.Context, int64) (analyticsapp.DashboardStats, error)
@@ -479,6 +462,10 @@ type ApplicationPorts struct {
 	uncertainNotifications UncertainNotificationsPort
 	// notificationChannels 是通知渠道用例。
 	notificationChannels NotificationChannelsPort
+	// notificationEvents 是租户与系统站内通知事件用例。
+	notificationEvents NotificationEventsPort
+	// systemAlertChannels 是管理员系统告警渠道用例。
+	systemAlertChannels SystemAlertChannelsPort
 	// analytics 是订单分析用例。
 	analytics AnalyticsPort
 	// automationIssues 是自动化异常用例。
@@ -542,6 +529,8 @@ type ApplicationPortsInput struct {
 	Chat                        ChatPort
 	UncertainNotifications      UncertainNotificationsPort
 	NotificationChannels        NotificationChannelsPort
+	NotificationEvents          NotificationEventsPort
+	SystemAlertChannels         SystemAlertChannelsPort
 	Analytics                   AnalyticsPort
 	AutomationIssues            AutomationIssuesPort
 	AutomationRules             AutomationRulesPort
@@ -573,6 +562,7 @@ func NewApplicationPorts(input ApplicationPortsInput) *ApplicationPorts {
 		accountLongLogin: input.AccountLongLogin, accountSettings: input.AccountSettings, accountRuntime: input.AccountRuntime,
 		accountSummaries: input.AccountSummaries, accountTasks: input.AccountTasks, chat: input.Chat,
 		uncertainNotifications: input.UncertainNotifications, notificationChannels: input.NotificationChannels,
+		notificationEvents: input.NotificationEvents, systemAlertChannels: input.SystemAlertChannels,
 		analytics: input.Analytics, automationIssues: input.AutomationIssues, automationRules: input.AutomationRules,
 		cards: input.Cards, deliveryTemplates: input.DeliveryTemplates, apiRequestTester: input.APIRequestTester, publishAutomationRules: input.PublishAutomationRules, defaultReplies: input.DefaultReplies,
 		keywords: input.Keywords, settings: input.Settings, admin: input.Admin,
@@ -603,7 +593,8 @@ func (ports *ApplicationPorts) validate() error {
 		{"account_delete", ports.accountDelete}, {"account_profile", ports.accountProfile}, {"account_long_login", ports.accountLongLogin},
 		{"account_settings", ports.accountSettings}, {"account_runtime", ports.accountRuntime}, {"account_summaries", ports.accountSummaries},
 		{"account_tasks", ports.accountTasks}, {"chat", ports.chat}, {"uncertain_notifications", ports.uncertainNotifications},
-		{"notification_channels", ports.notificationChannels}, {"analytics", ports.analytics}, {"automation_issues", ports.automationIssues},
+		{"notification_channels", ports.notificationChannels}, {"notification_events", ports.notificationEvents},
+		{"system_alert_channels", ports.systemAlertChannels}, {"analytics", ports.analytics}, {"automation_issues", ports.automationIssues},
 		{"automation_rules", ports.automationRules}, {"cards", ports.cards}, {"publish_automation_rules", ports.publishAutomationRules},
 		{"default_replies", ports.defaultReplies}, {"keywords", ports.keywords}, {"settings", ports.settings}, {"admin", ports.admin},
 		{"mcp_admin", ports.mcpAdmin}, {"agent_support", ports.agentSupport},

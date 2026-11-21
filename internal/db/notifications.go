@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +17,8 @@ type NotificationChannel struct {
 	EventTypes string // JSON array or comma-separated event codes
 	// UserID 是渠道所属用户，用于按所有者读取系统级敏感 SMTP 设置。
 	UserID int64
+	// Scope 是渠道作用域：tenant 为租户渠道，system 为管理员系统告警渠道。
+	Scope string
 }
 
 // Notifications 通知绑定操作。
@@ -33,8 +34,8 @@ func (n *Notifications) OwnsChannel(ctx context.Context, channelID, userID int64
 	var exists bool
 	// err 用于本次流程后续判断的err
 	err := n.DB.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM notification_channels WHERE id=? AND user_id=?)`,
-		channelID, userID).Scan(&exists)
+		`SELECT EXISTS(SELECT 1 FROM notification_channels WHERE id=? AND user_id=? AND scope=?)`,
+		channelID, userID, NotificationScopeTenant).Scan(&exists)
 	return exists, err
 }
 
@@ -190,12 +191,12 @@ func (n *Notifications) AccountChannels(ctx context.Context, cookieID string) ([
 	if muted {
 		return nil, nil
 	}
-	// rows 是该用户全部启用的通知渠道。
+	// rows 是该用户全部启用的租户通知渠道。
 	rows, err := n.DB.QueryContext(ctx,
-		`SELECT id, name, type, config, COALESCE(user_id,1), COALESCE(event_types, '')
+		`SELECT id, name, type, config, COALESCE(user_id,1), COALESCE(event_types, ''), COALESCE(scope,?)
 		 FROM notification_channels
-		 WHERE user_id=? AND enabled=1
-		 ORDER BY id`, userID)
+		 WHERE user_id=? AND enabled=1 AND scope=?
+		 ORDER BY id`, NotificationScopeTenant, userID, NotificationScopeTenant)
 	if err != nil {
 		return nil, err
 	}
@@ -208,11 +209,11 @@ func (n *Notifications) AccountChannels(ctx context.Context, cookieID string) ([
 		// ownerID 是渠道所属用户，仅用于解密作用域。
 		var ownerID int64
 		// err 表示扫描渠道记录失败。
-		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &ownerID, &c.EventTypes); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &ownerID, &c.EventTypes, &c.Scope); err != nil {
 			return nil, err
 		}
 		c.UserID = ownerID
-		c.Config, err = n.codec.decrypt("notification-config", strconv.FormatInt(ownerID, 10), c.Config)
+		c.Config, err = n.codec.decrypt("notification-config", notificationConfigOwner(c.Scope, ownerID), c.Config)
 		if err != nil {
 			return nil, err
 		}

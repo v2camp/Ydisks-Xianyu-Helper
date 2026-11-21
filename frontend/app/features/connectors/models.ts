@@ -64,6 +64,9 @@ export interface SystemSettings {
 
 /** 由当前 feature adapter 归一后的 NotificationChannelType UI 模型；不直接暴露 HTTP DTO。qq 表示 QQ 机器人（botgo api-v2）出站渠道。 */
 export type NotificationChannelType = 'dingtalk' | 'feishu' | 'bark' | 'webhook' | 'wechat' | 'telegram' | 'email' | 'qq';
+/** SystemAlertEventType 是管理员系统告警渠道可订阅的实例级事件。 */
+export type SystemAlertEventType = 'business_silence';
+
 /** 由当前 feature adapter 归一后的 NotificationEventType UI 模型；不直接暴露 HTTP DTO。 */
 export type NotificationEventType =
   | 'account_offline'
@@ -78,7 +81,38 @@ export type NotificationEventType =
   | 'automation_review_missing_timeout'
   | 'manual_delivery_result'
   | 'manual_intervention_required'
-  | 'system_error';
+  | 'system_error'
+  | SystemAlertEventType;
+
+/** NotificationEvent 是站内通知中心展示的事件 UI 模型。 */
+export interface NotificationEvent {
+  /** 事件稳定标识。 */
+  id: string;
+  /** 事件作用域：租户视图或系统视图。 */
+  scope: 'tenant' | 'system';
+  /** 租户事件关联的闲鱼账号；系统事件为空。 */
+  account_id?: string;
+  /** 事件编码。 */
+  event_type: string;
+  /** 事件级别。 */
+  level: string;
+  /** 事件标题。 */
+  title: string;
+  /** 事件正文。 */
+  body: string;
+  /** 事件是否已读。 */
+  read: boolean;
+  /** 事件发生时间的 Unix 秒时间戳。 */
+  created_at: number;
+}
+
+/** NotificationEventList 是站内通知事件列表与未读数。 */
+export interface NotificationEventList {
+  /** 当前视图可见的事件。 */
+  items: NotificationEvent[];
+  /** 当前视图的未读事件数。 */
+  unread_count: number;
+}
 
 /** automationNotificationEventTypes 是四类自动化任务使用的独立通知开关编码。 */
 export const automationNotificationEventTypes: NotificationEventType[] = [

@@ -6,7 +6,7 @@ import { useConnectors } from './hooks';
 import { createNotificationChannel, deleteNotificationChannel, getNotificationChannels, testNotificationChannel, updateNotificationChannel } from './api';
 
 // API 替身只控制通知请求，不发送任何消息。
-vi.mock('./api', () => ({ getNotificationChannels: vi.fn(), getNotificationChannel: vi.fn(), createNotificationChannel: vi.fn(), deleteNotificationChannel: vi.fn(), testNotificationChannel: vi.fn(), updateNotificationChannel: vi.fn(), QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' } }));
+vi.mock('./api', () => ({ getNotificationChannels: vi.fn(), getNotificationChannel: vi.fn(), createNotificationChannel: vi.fn(), deleteNotificationChannel: vi.fn(), testNotificationChannel: vi.fn(), updateNotificationChannel: vi.fn(), getSystemAlertChannels: vi.fn(), getSystemAlertChannel: vi.fn(), createSystemAlertChannel: vi.fn(), deleteSystemAlertChannel: vi.fn(), testSystemAlertChannel: vi.fn(), updateSystemAlertChannel: vi.fn(), QQ_CONNECTOR_READY_KEYS: { appId: 'qqbot.app_id', appSecretConfigured: 'qqbot.app_secret_configured' } }));
 // channel 是本地构造的渠道摘要。
 const channel: NotificationChannel = { id: 'one', name: '测试', type: 'bark', config: {}, enabled: true, event_types: [] };
 

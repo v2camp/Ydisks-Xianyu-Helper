@@ -32,6 +32,7 @@ func TestOpenAPISuccessContractCoverage(t *testing.T) {
 		{name: "query-chat-orders", run: TestOpenAPIQueryChatAndOrderResponses},
 		{name: "items-and-cards", run: TestOpenAPIItemAndCardResponses},
 		{name: "notifications", run: TestOpenAPINotificationResponses},
+		{name: "system-notifications", run: TestOpenAPINotificationEventResponses},
 		{name: "versioned-session", run: TestVersionedSessionRoutesPreserveLegacyContracts},
 		{name: "versioned-account", run: TestVersionedAccountRoutesPreserveLegacyContracts},
 		{name: "versioned-account-credentials", run: TestVersionedAccountCredentialRoutesPreserveLegacyContracts},

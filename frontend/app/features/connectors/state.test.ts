@@ -22,7 +22,7 @@ test('通知事件摘要为空时表示订阅全部事件',
   // 事件摘要测试验证空选择和多事件选择的展示语义。
   () => {
     expect(notificationEventSummary([])).toBe('全部事件');
-    expect(notificationEventSummary(['account_offline', 'system_error'])).toBe('掉线通知、系统错误');
+    expect(notificationEventSummary(['account_offline', 'system_error'])).toBe('掉线通知、账号异常（未分类）');
   });
 
 test('旧版统一交易开关归一为自动化与人工处理开关',

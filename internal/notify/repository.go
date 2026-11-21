@@ -10,8 +10,14 @@ import (
 
 // Repository 定义通知器读取渠道、系统 SMTP 配置并处理持久化 outbox 所需的最小能力。
 type Repository interface {
-	// AccountChannels 返回账号当前绑定的通知渠道。
+	// AccountChannels 返回租户账号当前绑定的通知渠道。
 	AccountChannels(ctx context.Context, cookieID string) ([]db.NotificationChannel, error)
+	// OwnerOfAccount 返回租户账号所属本地用户，用于站内事件归属与系统敏感配置读取。
+	OwnerOfAccount(ctx context.Context, cookieID string) (int64, error)
+	// RecordEvent 写入站内通知事件；重复业务键应静默忽略。
+	RecordEvent(ctx context.Context, event db.NotificationEventInput) error
+	// SystemAlertChannels 返回管理员配置的启用系统告警渠道。
+	SystemAlertChannels(ctx context.Context) ([]db.NotificationChannel, error)
 	// EnqueueOutbox 将待发送通知追加到持久化 outbox。
 	EnqueueOutbox(ctx context.Context, messages []db.NotificationOutboxInput) error
 	// ClaimOutbox 抢占一批可发送的 outbox 消息。
@@ -45,6 +51,21 @@ type storeRepository struct {
 // AccountChannels 委托账号通知渠道查询。
 func (r storeRepository) AccountChannels(ctx context.Context, cookieID string) ([]db.NotificationChannel, error) {
 	return r.store.Notifications.AccountChannels(ctx, cookieID)
+}
+
+// OwnerOfAccount 委托账号所有者查询。
+func (r storeRepository) OwnerOfAccount(ctx context.Context, cookieID string) (int64, error) {
+	return r.store.Notifications.OwnerOfAccount(ctx, cookieID)
+}
+
+// RecordEvent 委托站内通知事件写入。
+func (r storeRepository) RecordEvent(ctx context.Context, event db.NotificationEventInput) error {
+	return r.store.Notifications.RecordEvent(ctx, event)
+}
+
+// SystemAlertChannels 委托系统告警渠道查询，仅返回启用的系统渠道。
+func (r storeRepository) SystemAlertChannels(ctx context.Context) ([]db.NotificationChannel, error) {
+	return r.store.Notifications.ListSystemAlertChannels(ctx)
 }
 
 // EnqueueOutbox 委托通知 outbox 写入。

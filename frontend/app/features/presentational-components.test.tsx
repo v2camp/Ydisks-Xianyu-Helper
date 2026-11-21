@@ -69,7 +69,7 @@ describe('前端纯展示组件', /* 当前回调处理无浏览器依赖的展�
     const selected = render(<NotificationEventSelector selectedEvents={['account_offline']} onToggleEvent={noopEventToggle} />);
     expect(selected).toContain('掉线通知');
     expect(selected).toContain('border-brand bg-brand-50');
-    expect(selected).toContain('系统错误');
+    expect(selected).toContain('账号异常（未分类）');
     expect(selected).toContain('border-gray-100 hover:border-gray-300');
   });
 
@@ -83,7 +83,7 @@ describe('前端纯展示组件', /* 当前回调处理无浏览器依赖的展�
     const list = render(<NotificationChannelList channels={[channel]} testingId="channel-1" onEdit={noopChannelAction} onDelete={noopChannelAction} onToggleEnabled={noopChannelAction} onTest={noopChannelAction} />);
     expect(list).toContain('测试 Bark');
     expect(list).toContain('已停用');
-    expect(list).toContain('系统错误');
+    expect(list).toContain('账号异常（未分类）');
     expect(list).toContain('animate-spin');
   });
 

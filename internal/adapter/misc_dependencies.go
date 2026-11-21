@@ -40,6 +40,22 @@ func (d *MiscDependencies) NewNotificationChannelRepository() notificationsapp.C
 	return NewNotificationChannelRepository(d.store)
 }
 
+// NewNotificationEventRepository 创建站内通知事件适配器。
+func (d *MiscDependencies) NewNotificationEventRepository() notificationsapp.EventRepository {
+	if d == nil {
+		return nil
+	}
+	return NewNotificationEventRepository(d.store)
+}
+
+// NewSystemAlertChannelRepository 创建系统告警渠道适配器。
+func (d *MiscDependencies) NewSystemAlertChannelRepository() notificationsapp.SystemAlertChannelRepository {
+	if d == nil {
+		return nil
+	}
+	return NewSystemAlertChannelRepository(d.store)
+}
+
 // NewAnalyticsRepository 创建订单分析只读适配器。
 func (d *MiscDependencies) NewAnalyticsRepository() *AnalyticsRepository {
 	if d == nil {

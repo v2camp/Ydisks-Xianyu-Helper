@@ -24,8 +24,8 @@ func TestNotificationPureMappings(t *testing.T) {
 		EventSecurityVerification: "风控验证", EventTokenRenewal: "续期通知", EventDeliveryResult: "交易通知",
 		EventAutomationOrderCreated: "拍下改价", EventAutomationOrderPaid: "付款发货", EventAutomationBuyerReviewed: "评价赠品",
 		EventAutomationReviewMissingTimeout: "求评价", EventManualDeliveryResult: "手动发货结果",
-		EventManualInterventionRequired: "需要人工处理",
-		EventSystemError:                "系统错误", "": "通知", "custom": "custom",
+		EventManualInterventionRequired: "需要人工处理", EventBusinessSilence: "业务静默",
+		EventSystemError:                "账号异常（未分类）", "": "通知", "custom": "custom",
 	}
 	// event、want 表示当前事件及预期展示标签。
 	for event, want := range eventCases {
@@ -153,7 +153,7 @@ func TestFormatEventCoversFallbacksAndStableFieldOrder(t *testing.T) {
 	event := NotificationEvent{Type: EventSystemError, Level: "", AccountID: "account-1", Fields: map[string]string{"zeta": "", "alpha": "值"}, Body: "  正文  ", Time: time.Date(2026, 8, 26, 11, 45, 0, 0, time.UTC)}
 	// formatted 保存通知格式化后的文本。
 	formatted := formatEvent(event)
-	if !strings.Contains(formatted, "[提示] 系统错误") || !strings.Contains(formatted, "账号: account-1") || !strings.Contains(formatted, "alpha: 值") || strings.Contains(formatted, "zeta:") || !strings.Contains(formatted, "\n\n正文") {
+	if !strings.Contains(formatted, "[提示] 账号异常（未分类）") || !strings.Contains(formatted, "账号: account-1") || !strings.Contains(formatted, "alpha: 值") || strings.Contains(formatted, "zeta:") || !strings.Contains(formatted, "\n\n正文") {
 		t.Fatalf("通知格式化结果异常: %q", formatted)
 	}
 	// orderedIndex 保存字段稳定排序后的第一个字段位置。

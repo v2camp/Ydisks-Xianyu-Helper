@@ -20,6 +20,17 @@ func (s *Server) mountVersionedSettingsCardNotificationRoutes(r chi.Router) {
 		r.Put("/api/v1/settings/system", s.setSettings)
 		r.Put("/api/v1/settings/system/{key}", s.setSetting)
 		r.Get("/api/v1/admin/notifications/outbox/uncertain", s.listAdminUncertainNotifications)
+		r.Get("/api/v1/admin/notifications/system-events", s.listAdminSystemEvents)
+		r.Post("/api/v1/admin/notifications/system-events/{event_id}/read", s.markAdminSystemEventRead)
+		r.Post("/api/v1/admin/notifications/system-events/read-all", s.markAllAdminSystemEventsRead)
+
+		// 系统告警渠道与租户渠道完全隔离，仅管理员可维护。
+		r.Get("/api/v1/admin/system-alert-channels", s.listSystemAlertChannels)
+		r.Get("/api/v1/admin/system-alert-channels/{channel_id}", s.getSystemAlertChannelEditor)
+		r.Post("/api/v1/admin/system-alert-channels", s.createSystemAlertChannel)
+		r.Put("/api/v1/admin/system-alert-channels/{channel_id}", s.updateSystemAlertChannel)
+		r.Delete("/api/v1/admin/system-alert-channels/{channel_id}", s.deleteSystemAlertChannel)
+		r.Post("/api/v1/admin/system-alert-channels/{channel_id}/test", s.testSystemAlertChannel)
 	})
 
 	// 普通登录用户可访问账号 AI 设置、用户设置、卡券和通知资源。
@@ -55,5 +66,8 @@ func (s *Server) mountVersionedSettingsCardNotificationRoutes(r chi.Router) {
 		r.Delete("/api/v1/notifications/channels/{channel_id}", s.deleteChannel)
 		r.Post("/api/v1/notifications/channels/{channel_id}/test", s.testChannel)
 		r.Get("/api/v1/notifications/outbox/uncertain", s.listUncertainNotifications)
+		r.Get("/api/v1/notifications/events", s.listNotificationEvents)
+		r.Post("/api/v1/notifications/events/{event_id}/read", s.markNotificationEventRead)
+		r.Post("/api/v1/notifications/events/read-all", s.markAllNotificationEventsRead)
 	})
 }

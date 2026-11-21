@@ -30,8 +30,8 @@ func TestNewMiscDependenciesCreatesTypedFactories(t *testing.T) {
 	if dependencies == nil {
 		t.Fatal("有效 Store 应返回杂项领域依赖")
 	}
-	if dependencies.NewNotificationUncertainRepository() == nil || dependencies.NewNotificationChannelRepository() == nil {
-		t.Fatal("通知工厂应返回两个通知应用仓储")
+	if dependencies.NewNotificationUncertainRepository() == nil || dependencies.NewNotificationChannelRepository() == nil || dependencies.NewNotificationEventRepository() == nil || dependencies.NewSystemAlertChannelRepository() == nil {
+		t.Fatal("通知工厂应返回全部通知应用仓储")
 	}
 	if dependencies.NewAnalyticsRepository() == nil {
 		t.Fatal("分析工厂应返回分析仓储")
@@ -45,7 +45,7 @@ func TestNewMiscDependenciesCreatesTypedFactories(t *testing.T) {
 func TestMiscDependenciesNilReceiverReturnsNil(t *testing.T) {
 	// dependencies 表示未装配的杂项依赖接收者。
 	var dependencies *MiscDependencies
-	if dependencies.NewNotificationUncertainRepository() != nil || dependencies.NewNotificationChannelRepository() != nil || dependencies.NewAnalyticsRepository() != nil || dependencies.NewCardsRepository() != nil {
+	if dependencies.NewNotificationUncertainRepository() != nil || dependencies.NewNotificationChannelRepository() != nil || dependencies.NewNotificationEventRepository() != nil || dependencies.NewSystemAlertChannelRepository() != nil || dependencies.NewAnalyticsRepository() != nil || dependencies.NewCardsRepository() != nil {
 		t.Fatal("空杂项依赖不应创建任何适配器")
 	}
 }

@@ -98,6 +98,17 @@ cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cov
 > 未覆盖项为存储故障分支、加密器故障与 `rows.Err()` 中断，属既有「仅外部环境」例外类别。
 > 绑定表相关适配与测试随 `message_notifications` 删除而移除，adapter 仍保持基线 85.2%。
 
+> ⚠️ 2026-11-21 复核（系统通知隔离与站内通知中心）：基线 `main`（含租户级集成资产合并），
+> 分支 `feature/system-notifications`。执行环境：本机 macOS，口径 `-count=1 -covermode=set`，命令同上。
+>
+> 五个链路包：automation 90.2%→**90.2%**、engine 88.4%→**88.4%**、adapter 85.2%→**85.5%**、
+> db 85.4%→**85.5%**、xianyu/ws 88.2%→**88.2%**；合计 86.9%→**87.0%**，未低于基线。
+>
+> 新增 `internal/db/notification_events.go`、`internal/db/notification_channels_scope.go`，并把
+> notify 的订阅过滤拆到 `internal/notify/event_filter.go`。已补测试覆盖事件写入/去重、租户/系统视图隔离、
+> 未读与已读、系统渠道 scope 与 system 加密归属、静默告警改道、跨管理员渠道共享与接口契约。
+> 未覆盖项为存储故障分支与加密器故障，属既有「仅外部环境」例外类别。
+
 > 最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
 
 | 文件 | 链路职责 | 未覆盖/总语句 | 覆盖率 | 门槛 |

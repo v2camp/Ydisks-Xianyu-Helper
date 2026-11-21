@@ -111,6 +111,10 @@ type Services struct {
 	uncertainNotifications *notificationsapp.Service
 	// notificationChannels 是通知渠道 CRUD 与账号绑定应用服务。
 	notificationChannels *notificationsapp.ChannelService
+	// notificationEvents 是租户与系统站内通知事件应用服务。
+	notificationEvents *notificationsapp.EventInboxService
+	// systemAlertChannels 是管理员系统告警渠道应用服务。
+	systemAlertChannels *notificationsapp.SystemAlertChannelService
 	// analytics 是订单分析应用服务。
 	analytics *analyticsapp.Service
 	// automationIssues 是自动化异常查询与人工处理应用服务。
@@ -339,6 +343,8 @@ type TransportPorts struct {
 	Chat                        *chatapp.Service
 	UncertainNotifications      *notificationsapp.Service
 	NotificationChannels        *notificationsapp.ChannelService
+	NotificationEvents          *notificationsapp.EventInboxService
+	SystemAlertChannels         *notificationsapp.SystemAlertChannelService
 	Analytics                   *analyticsapp.Service
 	AutomationIssues            *automationapp.IssueService
 	AutomationRules             *automationapp.RuleService
@@ -375,6 +381,7 @@ func (services *Services) TransportPorts() TransportPorts {
 		AccountLongLogin: services.accountLongLogin, AccountSettings: services.accountSettings, AccountRuntime: services.accountRuntime,
 		AccountSummaries: services.accountSummaries, AccountTasks: services.accountTasks, Chat: services.chat,
 		UncertainNotifications: services.uncertainNotifications, NotificationChannels: services.notificationChannels,
+		NotificationEvents: services.notificationEvents, SystemAlertChannels: services.systemAlertChannels,
 		Analytics: services.analytics, AutomationIssues: services.automationIssues, AutomationRules: services.automationRules, DeliveryTemplates: services.deliveryTemplates,
 		Cards: services.cards, APICardTester: services.apiCardTester, PublishAutomationRules: services.publishAutomationRules, DefaultReplies: services.defaultReplies,
 		Keywords: services.keywords, Settings: services.settings, Admin: services.admin,
@@ -384,10 +391,27 @@ func (services *Services) TransportPorts() TransportPorts {
 	}
 }
 
+// optionalDeleteRuntime 返回账号删除运行时；nil Manager 保持 nil 接口，避免 typed nil panic。
+func optionalDeleteRuntime(manager *account.Manager) accountapp.DeleteRuntime {
+	if manager == nil {
+		return nil
+	}
+	return manager
+}
+
+// validateCompositionDependencies 校验组合根必需依赖，避免 New 内堆积分支。
+func validateCompositionDependencies(dependencies Dependencies) error {
+	if dependencies.OrderDependencies == nil || dependencies.AccountDependencies == nil || dependencies.ItemDependencies == nil || dependencies.ChatDependencies == nil || dependencies.AutomationDependencies == nil || dependencies.TransportApplications == nil || dependencies.OrderReconciliationRecovery == nil || dependencies.Manager == nil || dependencies.MTopClient == nil || dependencies.LongLoginClient == nil || dependencies.QRLogin == nil || dependencies.UpdateRunningCookie == nil || dependencies.LifecycleContext == nil {
+		return fmt.Errorf("应用服务组合依赖不完整")
+	}
+	return nil
+}
+
 // New 由进程组合根装配全部应用服务，并在启动前拒绝半初始化依赖。
 func New(dependencies Dependencies) (*Services, error) {
-	if dependencies.OrderDependencies == nil || dependencies.AccountDependencies == nil || dependencies.ItemDependencies == nil || dependencies.ChatDependencies == nil || dependencies.AutomationDependencies == nil || dependencies.TransportApplications == nil || dependencies.OrderReconciliationRecovery == nil || dependencies.Manager == nil || dependencies.MTopClient == nil || dependencies.LongLoginClient == nil || dependencies.QRLogin == nil || dependencies.UpdateRunningCookie == nil || dependencies.LifecycleContext == nil {
-		return nil, fmt.Errorf("应用服务组合依赖不完整")
+	// validationErr 保存组合依赖校验结果。
+	if validationErr := validateCompositionDependencies(dependencies); validationErr != nil {
+		return nil, validationErr
 	}
 	// transportValidationErr 表示组合根预构造的 transport-facing 服务集合是否存在半初始化字段。
 	if transportValidationErr := dependencies.TransportApplications.Validate(); transportValidationErr != nil {
@@ -398,7 +422,6 @@ func New(dependencies Dependencies) (*Services, error) {
 	if orderBuildErr != nil {
 		return nil, orderBuildErr
 	}
-	// accountProfile 保存账号资料刷新用例的构造结果。
 	// accountRepository 提供账号登录、资料摘要和删除共用的数据库适配器。
 	accountRepository := dependencies.AccountDependencies.NewAccountLoginRepository()
 	// platformCredentials 将账号凭证读取限制在消费者定义的只读应用端口。
@@ -466,13 +489,8 @@ func New(dependencies Dependencies) (*Services, error) {
 	loginAudit := accountapp.NewLoginAuditService(dependencies.AccountDependencies.NewAccountLoginAuditRepository())
 	// loginLifecycle 将手动登录与扫码登录的成功后续动作收口到 adapter，不再反向持有 Server。
 	loginLifecycle := adapter.NewAccountLoginLifecycle(loginAudit, loginSuccess, dependencies.Logger)
-	// deleteRuntime 是可选的账号运行时端口；显式保持 nil，避免把 nil *Manager 装入非空接口后触发 panic。
-	var deleteRuntime accountapp.DeleteRuntime
-	if dependencies.Manager != nil {
-		deleteRuntime = dependencies.Manager
-	}
 	// accountDelete 是账号删除用例的构造结果，运行时端口可为空以兼容无 Manager 的测试 Server。
-	accountDelete, deleteErr := accountapp.NewDeleteService(accountRepository, deleteRuntime)
+	accountDelete, deleteErr := accountapp.NewDeleteService(accountRepository, optionalDeleteRuntime(dependencies.Manager))
 	if deleteErr != nil {
 		return nil, fmt.Errorf("构造账号删除服务失败: %w", deleteErr)
 	}
@@ -542,6 +560,8 @@ func New(dependencies Dependencies) (*Services, error) {
 		chat:                   dependencies.ChatDependencies.NewChatSendingApplication(dependencies.Chat, dependencies.Manager, dependencies.MTopClient),
 		uncertainNotifications: dependencies.TransportApplications.UncertainNotifications,
 		notificationChannels:   dependencies.TransportApplications.NotificationChannels,
+		notificationEvents:     dependencies.TransportApplications.NotificationEvents,
+		systemAlertChannels:    dependencies.TransportApplications.SystemAlertChannels,
 		analytics:              dependencies.TransportApplications.Analytics,
 		automationRules:        dependencies.TransportApplications.AutomationRules,
 		deliveryTemplates:      dependencies.TransportApplications.DeliveryTemplates,
