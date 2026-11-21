@@ -55,6 +55,21 @@ func (r *scriptedOutboxRepository) AccountChannels(context.Context, string) ([]d
 	return nil, nil
 }
 
+// OwnerOfAccount 返回测试使用的固定账号所有者。
+func (r *scriptedOutboxRepository) OwnerOfAccount(context.Context, string) (int64, error) {
+	return 1, nil
+}
+
+// RecordEvent 丢弃站内事件写入，outbox worker 测试不依赖站内事件表。
+func (r *scriptedOutboxRepository) RecordEvent(context.Context, db.NotificationEventInput) error {
+	return nil
+}
+
+// SystemAlertChannels 返回空系统告警渠道，outbox worker 测试不驱动系统投递。
+func (r *scriptedOutboxRepository) SystemAlertChannels(context.Context) ([]db.NotificationChannel, error) {
+	return nil, nil
+}
+
 // EnqueueOutbox 返回测试不使用的入队结果。
 func (r *scriptedOutboxRepository) EnqueueOutbox(context.Context, []db.NotificationOutboxInput) error {
 	return nil

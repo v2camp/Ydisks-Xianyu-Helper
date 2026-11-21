@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -44,15 +43,25 @@ const (
 	EventManualInterventionRequired = "manual_intervention_required"
 	EventSystemError                = "system_error"
 	// EventBusinessSilence 表示业务静默看门狗告警：进程健康但业务表长时间零事件。
-	// 这是进程级事件，由看门狗选择投递宿主账号后走该账号绑定的通知渠道。
+	// 这是进程级事件，由系统告警渠道投递给管理员，不再借用租户账号。
 	EventBusinessSilence = "business_silence"
 	// legacyNotifierOperationTimeout 是兼容无 Context 通知与等待入口的最长数据库或网络预算。
 	legacyNotifierOperationTimeout = 10 * time.Second
 )
 
+// 通知事件作用域常量：tenant 表示租户级账号事件，system 表示实例级系统告警。
+const (
+	// ScopeTenant 是租户级事件作用域，接收人由账号所有者决定。
+	ScopeTenant = "tenant"
+	// ScopeSystem 是系统级事件作用域，接收人由管理员系统告警配置决定。
+	ScopeSystem = "system"
+)
+
 // NotificationEvent 是一条可被渠道订阅过滤的通知事件。
 type NotificationEvent struct {
 	AccountID string
+	// Scope 是事件作用域；空值按 tenant 处理，兼容既有调用方。
+	Scope     string
 	Type      string
 	Level     string
 	Title     string
@@ -298,6 +307,17 @@ func (n *Notifier) NotifyAccountEvent(accountID, eventType, level, title, body s
 	})
 }
 
+// NotifySystemEvent 发送实例级系统告警；事件不归属任何租户账号，只投递到系统告警渠道。
+func (n *Notifier) NotifySystemEvent(ctx context.Context, eventType, level, title, body string) {
+	n.NotifyEvent(ctx, NotificationEvent{
+		Scope: ScopeSystem,
+		Type:  eventType,
+		Level: level,
+		Title: title,
+		Body:  body,
+	})
+}
+
 // NotifyEvent 根据事件类型筛选渠道并发送通知。
 func (n *Notifier) NotifyEvent(ctx context.Context, ev NotificationEvent) {
 	n.notifyEvent(ctx, ev, "")
@@ -318,14 +338,64 @@ func (n *Notifier) notifyEvent(ctx context.Context, ev NotificationEvent, idempo
 	if ev.Time.IsZero() {
 		ev.Time = time.Now()
 	}
-	// channels、err 用于本次流程后续判断的channels、err
-	channels, err := n.repository.AccountChannels(ctx, ev.AccountID)
+	// scope 是归一化后的事件作用域；空值兼容为租户事件。
+	scope := strings.TrimSpace(ev.Scope)
+	if scope == "" {
+		scope = ScopeTenant
+	}
+	ev.Scope = scope
+	// eventTitle 是站内事件标题，缺省时使用事件类型标签。
+	eventTitle := strings.TrimSpace(ev.Title)
+	if eventTitle == "" {
+		eventTitle = eventLabel(ev.Type)
+	}
+	// channels、err 保存按作用域解析出的接收渠道与查询错误。
+	var channels []db.NotificationChannel
+	// err 是接收渠道查询错误。
+	var err error
+	switch scope {
+	case ScopeSystem:
+		// 系统事件不携带账号；先记录站内事件，再解析管理员系统告警渠道。
+		ev.AccountID = ""
+		// recordErr 是系统站内事件写入结果。
+		if recordErr := n.repository.RecordEvent(ctx, db.NotificationEventInput{
+			Scope: db.NotificationScopeSystem, EventType: ev.Type, Level: ev.Level,
+			Title: eventTitle, Body: ev.Body, DedupeKey: idempotencyKey, CreatedAt: ev.Time,
+		}); recordErr != nil {
+			n.logger.Warn("记录系统站内通知失败", "event_type", ev.Type, "err", logsafe.Error(recordErr))
+		}
+		channels, err = n.repository.SystemAlertChannels(ctx)
+	case ScopeTenant:
+		// 租户事件必须有账号；归属解析失败时不能猜测接收人。
+		if strings.TrimSpace(ev.AccountID) == "" {
+			n.logger.Warn("租户通知缺少账号，跳过", "event_type", ev.Type)
+			return
+		}
+		// ownerUserID、ownerErr 保存账号所有者与查询错误；站内事件按所有者隔离。
+		ownerUserID, ownerErr := n.repository.OwnerOfAccount(ctx, ev.AccountID)
+		if ownerErr != nil {
+			n.logger.Error("查询通知账号所有者失败", "event_type", ev.Type, "account_id", ev.AccountID, "err", logsafe.Error(ownerErr))
+			return
+		}
+		// recordErr 是租户站内事件写入结果。
+		if recordErr := n.repository.RecordEvent(ctx, db.NotificationEventInput{
+			Scope: db.NotificationScopeTenant, OwnerUserID: ownerUserID, AccountID: ev.AccountID,
+			EventType: ev.Type, Level: ev.Level, Title: eventTitle, Body: ev.Body,
+			DedupeKey: idempotencyKey, CreatedAt: ev.Time,
+		}); recordErr != nil {
+			n.logger.Warn("记录租户站内通知失败", "event_type", ev.Type, "account_id", ev.AccountID, "err", logsafe.Error(recordErr))
+		}
+		channels, err = n.repository.AccountChannels(ctx, ev.AccountID)
+	default:
+		n.logger.Warn("未知通知作用域，跳过", "scope", scope, "event_type", ev.Type)
+		return
+	}
 	if err != nil {
-		n.logger.Error("查询通知渠道失败", "event_type", ev.Type, "account_id", ev.AccountID, "err", logsafe.Error(err))
+		n.logger.Error("查询通知渠道失败", "event_type", ev.Type, "account_id", ev.AccountID, "scope", scope, "err", logsafe.Error(err))
 		return
 	}
 	if len(channels) == 0 {
-		n.logger.Info("通知事件未找到已启用渠道", "event_type", ev.Type, "account_id", ev.AccountID)
+		n.logger.Info("通知事件未找到已启用渠道", "event_type", ev.Type, "account_id", ev.AccountID, "scope", scope)
 		return
 	}
 	// full 用于本次流程后续判断的full
@@ -555,8 +625,10 @@ func eventLabel(eventType string) string {
 		return "手动发货结果"
 	case EventManualInterventionRequired:
 		return "需要人工处理"
+	case EventBusinessSilence:
+		return "业务静默"
 	case EventSystemError:
-		return "系统错误"
+		return "账号异常（未分类）"
 	default:
 		if eventType == "" {
 			return "通知"
@@ -609,7 +681,9 @@ func formatEvent(ev NotificationEvent) string {
 	b.WriteString(title)
 	b.WriteString("\n\n类型: ")
 	b.WriteString(label)
-	if ev.AccountID != "" {
+	if ev.Scope == ScopeSystem {
+		b.WriteString("\n范围: 系统实例")
+	} else if ev.AccountID != "" {
 		b.WriteString("\n账号: ")
 		b.WriteString(ev.AccountID)
 	}
@@ -643,101 +717,6 @@ func formatEvent(ev NotificationEvent) string {
 		b.WriteString(body)
 	}
 	return b.String()
-}
-
-// eventAllowed 封装eventAllowed业务协调。
-func eventAllowed(raw, eventType string) (bool, error) {
-	eventType = strings.TrimSpace(eventType)
-	if eventType == "" {
-		return true, nil
-	}
-	// events、err 用于本次流程后续判断的events、err
-	events, err := parseEventTypes(raw)
-	if err != nil {
-		return false, err
-	}
-	if len(events) == 0 {
-		return true, nil
-	}
-	if events[eventType] {
-		return true, nil
-	}
-	// delivery_result 是旧版统一交易开关；保留它对新四类自动化事件、人工发货结果和人工处理告警的兼容放行。
-	if events[EventDeliveryResult] && (isAutomationEventType(eventType) || eventType == EventManualDeliveryResult || eventType == EventManualInterventionRequired) {
-		return true, nil
-	}
-	return false, nil
-}
-
-// eventAllowedWithFallbacks 先匹配事件实际类别，再匹配来源类别，保证新增人工处理分类不会切断旧自动化订阅。
-func eventAllowedWithFallbacks(raw, eventType string, fallbackTypes []string) (bool, error) {
-	// allowed、err 保存实际事件类别的订阅判断结果。
-	allowed, err := eventAllowed(raw, eventType)
-	if err != nil || allowed {
-		return allowed, err
-	}
-	// fallbackType 表示当前兼容检查的来源事件类别。
-	for _, fallbackType := range fallbackTypes {
-		allowed, err = eventAllowed(raw, fallbackType)
-		if err != nil || allowed {
-			return allowed, err
-		}
-	}
-	return false, nil
-}
-
-// isAutomationEventType 判断事件是否属于四类可单独控制的自动化任务。
-func isAutomationEventType(eventType string) bool {
-	switch eventType {
-	case EventAutomationOrderCreated, EventAutomationOrderPaid, EventAutomationBuyerReviewed, EventAutomationReviewMissingTimeout:
-		return true
-	default:
-		return false
-	}
-}
-
-// parseEventTypes 封装parseEventTypes业务协调。
-func parseEventTypes(raw string) (map[string]bool, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-	// arr 用于本次流程后续判断的arr
-	var arr []string
-	if strings.HasPrefix(raw, "[") {
-		if // err 用于本次流程后续判断的err
-		err := json.Unmarshal([]byte(raw), &arr); err != nil {
-			return nil, err
-		}
-	} else {
-		arr = strings.FieldsFunc(raw, func(r rune) bool {
-			return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
-		})
-	}
-	if len(arr) == 0 {
-		return nil, nil
-	}
-	// out 用于本次流程后续判断的out
-	out := make(map[string]bool, len(arr))
-	// v 表示当前遍历过程中的v
-	for _, v := range arr {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			out[v] = true
-		}
-	}
-	return out, nil
-}
-
-// sortStrings 封装sortStrings业务协调。
-func sortStrings(values []string) {
-	for // i 用于本次流程后续判断的i
-	i := 1; i < len(values); i++ {
-		for // j 用于本次流程后续判断的j
-		j := i; j > 0 && values[j-1] > values[j]; j-- {
-			values[j-1], values[j] = values[j], values[j-1]
-		}
-	}
 }
 
 // send 封装send业务协调。
