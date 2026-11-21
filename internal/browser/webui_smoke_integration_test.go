@@ -474,6 +474,8 @@ func TestWebUISmokeAdminFlow(t *testing.T) {
 	// 客服 Agent 与连接器两页逐个校验渲染与关键分区，缺失任一入口都会让「能力在哪配置」的认知断链。
 	assertCustomerAgentPage(t, page, errors)
 	assertConnectorsPage(t, page, errors)
+	// 通知中心与系统告警是本次新增的两条通知动线，必须验证页面挂载与关键分区。
+	assertNotificationPages(t, page, errors)
 	// 管理员动线跑完后换独立上下文验证会员动线，确认权限门禁只对管理员放行配置类页面。
 	assertMemberFlow(t, chromium, errors)
 }
@@ -504,10 +506,13 @@ func assertMemberFlow(t *testing.T, chromium playwright.Browser, errors *e2eCons
 	// 仪表盘是普通用户的落地页，先证明会员会话本身可用。
 	assertE2EPageRendered(t, memberPage, errors, e2eDashboardPath)
 	// 三条仅管理员可见的配置路由逐个直达，都必须被改写回仪表盘而不是渲染配置表单。
-	for _, adminOnlyPath := range []string{"/app/settings", "/app/customer-agent"} {
+	for _, adminOnlyPath := range []string{"/app/settings", "/app/customer-agent", "/app/system-alerts"} {
 		assertE2ERedirectedToDashboard(t, memberPage, errors, adminOnlyPath)
 	}
 	assertMemberConnectorsPage(t, memberPage, errors)
+	// 通知中心对所有登录用户开放，会员必须能看到自己的租户事件视图。
+	assertE2EPageRendered(t, memberPage, errors, "/app/notifications")
+	waitE2EForText(t, memberPage, "通知中心", e2eNavigateTimeout)
 }
 
 // assertE2ERedirectedToDashboard 以地址栏直达方式访问仅管理员路由，断言非管理员被改写回仪表盘。
@@ -556,6 +561,19 @@ func assertCustomerAgentPage(t *testing.T, page playwright.Page, errors *e2eCons
 	waitE2EForText(t, page, "对话历史", e2eNavigateTimeout)
 	// 设置区默认收起；标题在场证明折叠设置入口仍在，用户可展开维护 AI 行为。
 	waitE2EForText(t, page, "模型与凭据", e2eNavigateTimeout)
+}
+
+// assertNotificationPages 校验租户通知中心与管理员系统告警页的页面挂载与关键分区。
+func assertNotificationPages(t *testing.T, page playwright.Page, errors *e2eConsoleErrors) {
+	t.Helper()
+	assertE2EPageRendered(t, page, errors, "/app/notifications")
+	// 页头与事件分区同时在场，证明租户通知视图完成挂载。
+	waitE2EForText(t, page, "通知中心", e2eNavigateTimeout)
+	waitE2EForText(t, page, "最近事件", e2eNavigateTimeout)
+	assertE2EPageRendered(t, page, errors, "/app/system-alerts")
+	// 系统告警页同时承载系统事件与管理员共享渠道两个分区。
+	waitE2EForText(t, page, "系统告警", e2eNavigateTimeout)
+	waitE2EForText(t, page, "系统告警渠道", e2eNavigateTimeout)
 }
 
 // assertConnectorsPage 校验连接器页的通知渠道与用户级集成配置分区同时可用。
