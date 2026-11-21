@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -239,7 +238,7 @@ func (n *Notifications) AllChannelsForUser(ctx context.Context, userID int64) ([
 	// rows、err 用于本次流程后续判断的rows、err
 	rows, err := n.DB.QueryContext(ctx,
 		`SELECT id, name, type, config, COALESCE(event_types,''), enabled, COALESCE(user_id,1) FROM notification_channels
-		 WHERE user_id=? ORDER BY id DESC`, userID)
+		 WHERE user_id=? AND scope=? ORDER BY id DESC`, userID, NotificationScopeTenant)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +254,7 @@ func (n *Notifications) AllChannelsForUser(ctx context.Context, userID int64) ([
 		err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.EventTypes, &enabled, &c.UserID); err != nil {
 			return nil, err
 		}
-		c.Config, err = n.codec.decrypt("notification-config", strconv.FormatInt(c.UserID, 10), c.Config)
+		c.Config, err = n.codec.decrypt("notification-config", notificationConfigOwner(NotificationScopeTenant, c.UserID), c.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +269,7 @@ func (n *Notifications) ListChannelSummariesForUser(ctx context.Context, userID 
 	// rows、err 保存仅包含非敏感字段的渠道查询结果及数据库错误。
 	rows, err := n.DB.QueryContext(ctx,
 		`SELECT id, name, type, COALESCE(event_types,''), enabled, COALESCE(user_id,1) FROM notification_channels
-		 WHERE user_id=? ORDER BY id DESC`, userID)
+		 WHERE user_id=? AND scope=? ORDER BY id DESC`, userID, NotificationScopeTenant)
 	if err != nil {
 		return nil, err
 	}
@@ -292,34 +291,34 @@ func (n *Notifications) ListChannelSummariesForUser(ctx context.Context, userID 
 	return summaries, rows.Err()
 }
 
-// CreateChannel 创建通知渠道。
+// CreateChannel 创建租户通知渠道。
 func (n *Notifications) CreateChannel(ctx context.Context, c *NotificationChannelRow) (int64, error) {
 	// config、err 用于本次流程后续判断的config、err
-	config, err := n.codec.encrypt("notification-config", strconv.FormatInt(c.UserID, 10), c.Config)
+	config, err := n.codec.encrypt("notification-config", notificationConfigOwner(NotificationScopeTenant, c.UserID), c.Config)
 	if err != nil {
 		return 0, err
 	}
 	return insertReturningID(ctx, n.DB, n.Dialect,
-		`INSERT INTO notification_channels (name, type, config, event_types, enabled, user_id) VALUES (?,?,?,?,?,?)`,
-		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.UserID)
+		`INSERT INTO notification_channels (name, type, config, event_types, enabled, user_id, scope) VALUES (?,?,?,?,?,?,?)`,
+		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.UserID, NotificationScopeTenant)
 }
 
-// UpdateChannel 更新通知渠道。
+// UpdateChannel 更新租户通知渠道。
 func (n *Notifications) UpdateChannel(ctx context.Context, c *NotificationChannelRow) error {
 	if c.UserID == 0 {
 		if // err 用于本次流程后续判断的err
-		err := n.DB.QueryRowContext(ctx, `SELECT COALESCE(user_id,1) FROM notification_channels WHERE id=?`, c.ID).Scan(&c.UserID); err != nil {
+		err := n.DB.QueryRowContext(ctx, `SELECT COALESCE(user_id,1) FROM notification_channels WHERE id=? AND scope=?`, c.ID, NotificationScopeTenant).Scan(&c.UserID); err != nil {
 			return err
 		}
 	}
 	// config、err 用于本次流程后续判断的config、err
-	config, err := n.codec.encrypt("notification-config", strconv.FormatInt(c.UserID, 10), c.Config)
+	config, err := n.codec.encrypt("notification-config", notificationConfigOwner(NotificationScopeTenant, c.UserID), c.Config)
 	if err != nil {
 		return err
 	}
 	_, err = n.DB.ExecContext(ctx,
-		`UPDATE notification_channels SET name=?, type=?, config=?, event_types=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.ID)
+		`UPDATE notification_channels SET name=?, type=?, config=?, event_types=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND scope=?`,
+		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.ID, NotificationScopeTenant)
 	return err
 }
 
@@ -328,7 +327,7 @@ func (n *Notifications) GetChannelRowForUser(ctx context.Context, id, userID int
 	// row 用于本次流程后续判断的row
 	row := n.DB.QueryRowContext(ctx,
 		`SELECT id, name, type, config, COALESCE(event_types,''), enabled, COALESCE(user_id,1)
-		   FROM notification_channels WHERE id=? AND user_id=?`, id, userID)
+		   FROM notification_channels WHERE id=? AND user_id=? AND scope=?`, id, userID, NotificationScopeTenant)
 	// c 用于本次流程后续判断的c
 	var c NotificationChannelRow
 	// enabled 用于本次流程后续判断的启用状态
@@ -342,7 +341,7 @@ func (n *Notifications) GetChannelRowForUser(ctx context.Context, id, userID int
 	}
 	c.Enabled = enabled != 0
 	// config、err 用于本次流程后续判断的config、err
-	config, err := n.codec.decrypt("notification-config", strconv.FormatInt(c.UserID, 10), c.Config)
+	config, err := n.codec.decrypt("notification-config", notificationConfigOwner(NotificationScopeTenant, c.UserID), c.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -350,10 +349,10 @@ func (n *Notifications) GetChannelRowForUser(ctx context.Context, id, userID int
 	return &c, nil
 }
 
-// UpdateChannelForUser 更新指定用户拥有的通知渠道。
+// UpdateChannelForUser 更新指定用户拥有的租户通知渠道。
 func (n *Notifications) UpdateChannelForUser(ctx context.Context, c *NotificationChannelRow, userID int64) error {
 	// config、err 用于本次流程后续判断的config、err
-	config, err := n.codec.encrypt("notification-config", strconv.FormatInt(userID, 10), c.Config)
+	config, err := n.codec.encrypt("notification-config", notificationConfigOwner(NotificationScopeTenant, userID), c.Config)
 	if err != nil {
 		return err
 	}
@@ -361,8 +360,8 @@ func (n *Notifications) UpdateChannelForUser(ctx context.Context, c *Notificatio
 	res, err := n.DB.ExecContext(ctx,
 		`UPDATE notification_channels
 		    SET name=?, type=?, config=?, event_types=?, enabled=?, updated_at=CURRENT_TIMESTAMP
-		  WHERE id=? AND user_id=?`,
-		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.ID, userID)
+		  WHERE id=? AND user_id=? AND scope=?`,
+		c.Name, c.Type, config, c.EventTypes, boolToInt(c.Enabled), c.ID, userID, NotificationScopeTenant)
 	if err != nil {
 		return err
 	}
@@ -374,17 +373,17 @@ func (n *Notifications) UpdateChannelForUser(ctx context.Context, c *Notificatio
 	return nil
 }
 
-// DeleteChannel 删除通知渠道。
+// DeleteChannel 删除租户通知渠道。
 func (n *Notifications) DeleteChannel(ctx context.Context, id int64) error {
 	// err 用于本次流程后续判断的err
-	_, err := n.DB.ExecContext(ctx, `DELETE FROM notification_channels WHERE id=?`, id)
+	_, err := n.DB.ExecContext(ctx, `DELETE FROM notification_channels WHERE id=? AND scope=?`, id, NotificationScopeTenant)
 	return err
 }
 
-// DeleteChannelForUser 删除指定用户拥有的通知渠道。
+// DeleteChannelForUser 删除指定用户拥有的租户通知渠道。
 func (n *Notifications) DeleteChannelForUser(ctx context.Context, id, userID int64) error {
 	// res、err 用于本次流程后续判断的res、err
-	res, err := n.DB.ExecContext(ctx, `DELETE FROM notification_channels WHERE id=? AND user_id=?`, id, userID)
+	res, err := n.DB.ExecContext(ctx, `DELETE FROM notification_channels WHERE id=? AND user_id=? AND scope=?`, id, userID, NotificationScopeTenant)
 	if err != nil {
 		return err
 	}
@@ -396,17 +395,18 @@ func (n *Notifications) DeleteChannelForUser(ctx context.Context, id, userID int
 	return nil
 }
 
-// GetChannel 按 ID 取单个通知渠道（含 config）。未找到返回 nil。
+// GetChannel 按 ID 取单个通知渠道（含 config），不按作用域过滤，供 outbox worker 按显式渠道 ID 投递。
 func (n *Notifications) GetChannel(ctx context.Context, id int64) (*NotificationChannel, error) {
 	// row 用于本次流程后续判断的row
 	row := n.DB.QueryRowContext(ctx,
-		`SELECT id, name, type, config, COALESCE(event_types,''), COALESCE(user_id,1) FROM notification_channels WHERE id=?`, id)
+		`SELECT id, name, type, config, COALESCE(event_types,''), COALESCE(user_id,1), COALESCE(scope,?)
+		   FROM notification_channels WHERE id=?`, NotificationScopeTenant, id)
 	// c 用于本次流程后续判断的c
 	var c NotificationChannel
 	// userID 用于本次流程后续判断的用户ID
 	var userID int64
 	if // err 用于本次流程后续判断的err
-	err := row.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.EventTypes, &userID); err != nil {
+	err := row.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &c.EventTypes, &userID, &c.Scope); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -415,7 +415,7 @@ func (n *Notifications) GetChannel(ctx context.Context, id int64) (*Notification
 	// c.UserID 保存渠道所属用户，供全局通知器按所有者读取系统敏感配置。
 	c.UserID = userID
 	// config、err 用于本次流程后续判断的config、err
-	config, err := n.codec.decrypt("notification-config", strconv.FormatInt(userID, 10), c.Config)
+	config, err := n.codec.decrypt("notification-config", notificationConfigOwner(c.Scope, userID), c.Config)
 	if err != nil {
 		return nil, err
 	}
