@@ -75,30 +75,6 @@ func TestLowCoverageHandlersCoverDatabaseAndResourceErrors(t *testing.T) {
 	if orderRecorder.Code != http.StatusInternalServerError {
 		t.Fatalf("订单列表数据库错误 status=%d body=%s", orderRecorder.Code, orderRecorder.Body.String())
 	}
-
-	// notificationServer、notificationStore、notificationCleanup 保存通知账号错误场景。
-	notificationServer, notificationStore, notificationCleanup := newTestServer(t)
-	defer notificationCleanup()
-	// missingRequest、missingRecorder 保存不存在账号通知绑定的请求和响应。
-	missingRequest := requestWithServerSession(http.MethodDelete, "/notifications/accounts/missing", map[string]string{"cid": "missing"})
-	// missingRecorder 保存不存在账号通知绑定的响应。
-	missingRecorder := httptest.NewRecorder()
-	notificationServer.deleteAccountNotifications(missingRecorder, missingRequest)
-	if missingRecorder.Code != http.StatusNotFound {
-		t.Fatalf("不存在账号通知绑定 status=%d body=%s", missingRecorder.Code, missingRecorder.Body.String())
-	}
-	// closedRequest、closedRecorder 保存通知数据库关闭后的请求和响应。
-	closedRequest := requestWithServerSession(http.MethodDelete, "/notifications/accounts/cid", map[string]string{"cid": "cid"})
-	// closedRecorder 保存通知数据库错误响应。
-	closedRecorder := httptest.NewRecorder()
-	// closeErr 保存关闭通知测试数据库连接的结果。
-	if closeErr := notificationStore.DB.Close(); closeErr != nil {
-		t.Fatal(closeErr)
-	}
-	notificationServer.deleteAccountNotifications(closedRecorder, closedRequest)
-	if closedRecorder.Code != http.StatusInternalServerError {
-		t.Fatalf("通知绑定数据库错误 status=%d body=%s", closedRecorder.Code, closedRecorder.Body.String())
-	}
 }
 
 // TestCardAPIHandlerCoversValidationAndApplicationErrors 覆盖卡券 API 测试 Handler 的依赖、解码和应用错误。

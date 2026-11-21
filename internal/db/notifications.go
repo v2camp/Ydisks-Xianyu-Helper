@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -166,111 +167,52 @@ func (n *Notifications) countUncertainOutbox(ctx context.Context, ownerUserID *i
 	return count, nil
 }
 
-// NotificationBindingRow 是用户账号与通知渠道的绑定摘要。
-type NotificationBindingRow struct {
-	// ID 是绑定记录标识。
-	ID int64
-	// CookieID 是账号标识。
-	CookieID string
-	// ChannelID 是通知渠道标识。
-	ChannelID int64
-	// ChannelName 是通知渠道名称。
-	ChannelName string
-	// Enabled 表示绑定是否启用。
-	Enabled bool
-}
-
-// ListBindingsForUser 查询用户所有账号的通知渠道绑定。
-func (n *Notifications) ListBindingsForUser(ctx context.Context, userID int64) ([]NotificationBindingRow, error) {
-	// rows、err 用于本次流程后续判断的rows、err
-	rows, err := n.DB.QueryContext(ctx, `
-		SELECT mn.id, mn.cookie_id, mn.channel_id, COALESCE(nc.name, ''), mn.enabled
-		  FROM message_notifications mn
-		  JOIN cookies c ON c.id=mn.cookie_id
-		  JOIN notification_channels nc ON nc.id=mn.channel_id AND nc.user_id=c.user_id
-		 WHERE c.user_id=? ORDER BY mn.id DESC`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	// out 用于本次流程后续判断的out
-	var out []NotificationBindingRow
-	for rows.Next() {
-		// item 用于本次流程后续判断的商品
-		var item NotificationBindingRow
-		// enabled 用于本次流程后续判断的启用状态
-		var enabled int
-		if // err 用于本次流程后续判断的err
-		err := rows.Scan(&item.ID, &item.CookieID, &item.ChannelID, &item.ChannelName, &enabled); err != nil {
-			return nil, err
-		}
-		item.Enabled = enabled != 0
-		out = append(out, item)
-	}
-	return out, rows.Err()
-}
-
-// SetSingleBinding 更新单个账号通知渠道的启用状态。
-func (n *Notifications) SetSingleBinding(ctx context.Context, cookieID string, channelID int64, enabled bool) error {
-	if !enabled {
-		// err 用于本次流程后续判断的err
-		_, err := n.DB.ExecContext(ctx, `DELETE FROM message_notifications WHERE cookie_id=? AND channel_id=?`, cookieID, channelID)
-		return err
-	}
-	// err 用于本次流程后续判断的err
-	_, err := n.DB.ExecContext(ctx,
-		`INSERT INTO message_notifications (cookie_id, channel_id, enabled) VALUES (?, ?, ?)`+
-			dialectUpsert(n.Dialect, []string{"cookie_id", "channel_id"}, map[string]string{"enabled": "EXCLUDED.enabled", "updated_at": "CURRENT_TIMESTAMP"}),
-		cookieID, channelID, 1)
-	return err
-}
-
-// DeleteBinding 删除用户账号下的一条通知绑定。
-func (n *Notifications) DeleteBinding(ctx context.Context, userID, bindingID int64) error {
-	// err 用于本次流程后续判断的err
-	_, err := n.DB.ExecContext(ctx, `
-		DELETE FROM message_notifications WHERE id=? AND cookie_id IN (SELECT id FROM cookies WHERE user_id=?)`, bindingID, userID)
-	return err
-}
-
-// DeleteAccountBindings 删除用户账号下的全部通知绑定。
-func (n *Notifications) DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error {
-	// err 用于本次流程后续判断的err
-	_, err := n.DB.ExecContext(ctx, `
-		DELETE FROM message_notifications WHERE cookie_id=? AND cookie_id IN (SELECT id FROM cookies WHERE user_id=?)`, cookieID, userID)
-	return err
-}
-
-// AccountChannels 取某账号已启用的通知渠道（message_notifications JOIN notification_channels）。
-// 移植自 get_account_notifications。
-// AccountChannels 封装账号渠道列表业务协调。
+// AccountChannels 取某账号应接收的全部通知渠道：先解析账号所有者与静音标记，
+// 静音账号返回空；否则返回该用户全部启用的渠道。渠道归属校验由 user_id 条件保证。
 func (n *Notifications) AccountChannels(ctx context.Context, cookieID string) ([]NotificationChannel, error) {
-	// rows、err 用于本次流程后续判断的rows、err
+	// disabledExpr 把方言不同的布尔列归一为“已静音”表达式。
+	disabledExpr := "COALESCE(notifications_disabled,0) <> 0"
+	if n.Dialect == DialectPostgres {
+		disabledExpr = "COALESCE(notifications_disabled,FALSE) = TRUE"
+	}
+	// userID 是账号所属本地用户；muted 表示账号是否静音。
+	var userID int64
+	// muted 表示账号是否已静音。
+	var muted bool
+	// err 表示读取账号所有者与静音状态失败。
+	if err := n.DB.QueryRowContext(ctx,
+		`SELECT user_id, `+disabledExpr+` FROM cookies WHERE id=?`, cookieID).Scan(&userID, &muted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if muted {
+		return nil, nil
+	}
+	// rows 是该用户全部启用的通知渠道。
 	rows, err := n.DB.QueryContext(ctx,
-		`SELECT nc.id, nc.name, nc.type, nc.config, COALESCE(nc.user_id,1),
-		        COALESCE(NULLIF(mn.event_types,''), nc.event_types, '')
-		 FROM message_notifications mn
-		 JOIN cookies c ON c.id=mn.cookie_id
-		 JOIN notification_channels nc ON mn.channel_id = nc.id AND nc.user_id=c.user_id
-		 WHERE mn.cookie_id=? AND mn.enabled=1 AND nc.enabled=1
-		 ORDER BY mn.id`, cookieID)
+		`SELECT id, name, type, config, COALESCE(user_id,1), COALESCE(event_types, '')
+		 FROM notification_channels
+		 WHERE user_id=? AND enabled=1
+		 ORDER BY id`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	// out 用于本次流程后续判断的out
+	// out 保存解密后的渠道配置，供通知器直接发送。
 	var out []NotificationChannel
 	for rows.Next() {
-		// c 用于本次流程后续判断的c
+		// c 是当前渠道记录。
 		var c NotificationChannel
-		// userID 用于本次流程后续判断的用户ID
-		var userID int64
-		if // err 用于本次流程后续判断的err
-		err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &userID, &c.EventTypes); err != nil {
+		// ownerID 是渠道所属用户，仅用于解密作用域。
+		var ownerID int64
+		// err 表示扫描渠道记录失败。
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Config, &ownerID, &c.EventTypes); err != nil {
 			return nil, err
 		}
-		c.UserID = userID
-		c.Config, err = n.codec.decrypt("notification-config", strconv.FormatInt(userID, 10), c.Config)
+		c.UserID = ownerID
+		c.Config, err = n.codec.decrypt("notification-config", strconv.FormatInt(ownerID, 10), c.Config)
 		if err != nil {
 			return nil, err
 		}
@@ -427,28 +369,33 @@ func (n *Notifications) RetryOutbox(ctx context.Context, id int64, workerToken, 
 	return err == nil && count == 1, err
 }
 
-// AccountIDsWithEnabledChannels 返回至少绑定了一条已启用通知渠道的账号 ID 列表，按 ID 稳定排序。
-// 业务静默这类进程级事件没有归属账号，而通知渠道按账号绑定：
-// 调用方（静默看门狗）从中选择投递宿主账号，保证进程级告警仍能进入既有渠道链路。
+// AccountIDsWithEnabledChannels 返回「所有者有启用通知渠道且账号未静音」的账号 ID 列表，按 ID 稳定排序。
+// 业务静默这类进程级事件没有归属账号，调用方（静默看门狗）从中选择投递宿主账号，
+// 保证进程级告警仍能进入该用户的既有渠道链路。
 func (n *Notifications) AccountIDsWithEnabledChannels(ctx context.Context) ([]string, error) {
-	// rows、err 用于本次流程后续判断的rows、err
+	// activeExpr 把方言不同的布尔列归一为“未静音”表达式。
+	activeExpr := "COALESCE(c.notifications_disabled,0) = 0"
+	if n.Dialect == DialectPostgres {
+		activeExpr = "COALESCE(c.notifications_disabled,FALSE) = FALSE"
+	}
+	// rows 是所有者有启用渠道且账号未静音的账号 ID。
 	rows, err := n.DB.QueryContext(ctx, `
-		SELECT DISTINCT mn.cookie_id
-		  FROM message_notifications mn
-		  JOIN notification_channels nc ON nc.id=mn.channel_id
-		 WHERE mn.enabled=1 AND nc.enabled=1
-		 ORDER BY mn.cookie_id`)
+		SELECT DISTINCT c.id
+		  FROM cookies c
+		  JOIN notification_channels nc ON nc.user_id=c.user_id AND nc.enabled=1
+		 WHERE `+activeExpr+`
+		 ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	// out 保存满足条件的账号 ID；无绑定时返回空切片。
+	// out 保存满足条件的账号 ID；无匹配时返回空切片。
 	out := []string{}
 	for rows.Next() {
 		// cookieID 是当前遍历到的账号标识。
 		var cookieID string
-		if // err 用于本次流程后续判断的err
-		err := rows.Scan(&cookieID); err != nil {
+		// err 表示扫描宿主账号标识失败。
+		if err := rows.Scan(&cookieID); err != nil {
 			return nil, err
 		}
 		out = append(out, cookieID)

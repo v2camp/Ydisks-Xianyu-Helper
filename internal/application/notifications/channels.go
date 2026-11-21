@@ -53,8 +53,6 @@ type ChannelEditor struct {
 	Enabled bool
 	// ToEmail 是邮件渠道的收件地址；其他渠道为空。
 	ToEmail string
-	// UseCustomSMTP 表示邮件渠道是否使用独立 SMTP；不代表任何 SMTP 凭据内容。
-	UseCustomSMTP bool
 	// Config 是该渠道类型可回显的非敏感配置键值，只包含已存在且非空的键；敏感键的值永不进入该字段。
 	Config map[string]string
 	// SavedCredentialKeys 是该渠道类型敏感的配置键名中已存在且非空的部分，按字典序排序；只回传键名，不回传值。
@@ -76,7 +74,7 @@ type channelConfigSpec struct {
 // bark 配置里的 url 是点击通知后的跳转地址而非发送凭据，不纳入任何一类。
 // email 走 EmailRecipient 字段与整体替换语义，不参与通用配置回显。
 var channelConfigSpecs = map[string]channelConfigSpec{
-	"qq":       {Editable: []string{"user_openid", "group_openid"}, Sensitive: []string{"app_id", "app_secret"}, Merge: true},
+	"qq":       {Editable: []string{"user_openid", "group_openid"}, Merge: true},
 	"bark":     {Editable: []string{"server_url", "title", "sound", "group"}, Sensitive: []string{"device_key"}, Merge: true},
 	"dingtalk": {Sensitive: []string{"webhook_url", "secret"}, Merge: true},
 	"feishu":   {Sensitive: []string{"webhook_url", "secret"}, Merge: true},
@@ -146,29 +144,13 @@ type ChannelPatch struct {
 	// ReplaceConfig 表示把 Config 视为完整配置整体替换；为 false 时，声明了 Merge 的渠道类型按提交的键合并。
 	// 该字段只供应用层内部调用方（例如 MCP 的 config_json 语义）使用，HTTP 请求不暴露它。
 	ReplaceConfig bool
-	// EmailRecipient 仅更新已有邮件渠道的收件地址，保留全部 SMTP 字段；与 Config 互斥。
-	EmailRecipient *string
 	// EventTypes 是可选的新订阅事件类型编码。
 	EventTypes *string
 	// Enabled 是可选的新启用状态。
 	Enabled *bool
 }
 
-// BindingSummary 是账号与通知渠道绑定的非敏感展示模型。
-type BindingSummary struct {
-	// ID 是绑定记录稳定标识。
-	ID int64
-	// CookieID 是绑定账号标识。
-	CookieID string
-	// ChannelID 是绑定渠道标识。
-	ChannelID int64
-	// ChannelName 是绑定渠道名称。
-	ChannelName string
-	// Enabled 表示绑定是否启用。
-	Enabled bool
-}
-
-// ChannelRepository 定义通知渠道和账号绑定用例所需的最小持久化端口。
+// ChannelRepository 定义通知渠道用例所需的最小持久化端口。
 type ChannelRepository interface {
 	// ListChannels 查询指定用户的非敏感渠道摘要。
 	ListChannels(ctx context.Context, userID int64) ([]ChannelSummary, error)
@@ -182,20 +164,6 @@ type ChannelRepository interface {
 	DeleteChannel(ctx context.Context, channelID, userID int64) error
 	// OwnsChannel 判断渠道是否属于指定用户。
 	OwnsChannel(ctx context.Context, channelID, userID int64) (bool, error)
-	// OwnsAccount 判断账号是否属于指定用户，不读取账号凭证。
-	OwnsAccount(ctx context.Context, userID int64, cookieID string) (bool, error)
-	// ListBindings 查询指定用户的非敏感绑定摘要。
-	ListBindings(ctx context.Context, userID int64) ([]BindingSummary, error)
-	// GetBindingIDs 查询账号当前启用的渠道标识。
-	GetBindingIDs(ctx context.Context, cookieID string) ([]int64, error)
-	// SetBindings 覆盖保存账号的渠道绑定。
-	SetBindings(ctx context.Context, cookieID string, channelIDs []int64) error
-	// SetSingleBinding 更新单个账号渠道绑定状态。
-	SetSingleBinding(ctx context.Context, cookieID string, channelID int64, enabled bool) error
-	// DeleteBinding 删除指定用户的一条绑定。
-	DeleteBinding(ctx context.Context, userID, bindingID int64) error
-	// DeleteAccountBindings 删除指定用户账号的全部绑定。
-	DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error
 }
 
 // ChannelSender 定义测试通知发送能力，避免应用层依赖具体通知器。
@@ -260,19 +228,6 @@ func (s *ChannelService) GetChannelEditor(ctx context.Context, userID, channelID
 		recipient = strings.TrimSpace(stringValue(config["email"]))
 	}
 	editor.ToEmail = recipient
-	// modeValue 保存邮件渠道是否显式开启独立 SMTP 的布尔值。
-	modeValue, modePresent := config["use_custom_smtp"]
-	if modePresent {
-		editor.UseCustomSMTP = parseConfigBool(modeValue)
-	} else {
-		// key 枚举旧版逐字段 SMTP 覆盖，缺少显式模式时仍应展示其自定义来源。
-		for _, key := range []string{"smtp_server", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name", "smtp_from_address", "smtp_use_tls", "smtp_use_ssl"} {
-			if config[key] != nil && strings.TrimSpace(fmt.Sprint(config[key])) != "" {
-				editor.UseCustomSMTP = true
-				break
-			}
-		}
-	}
 	return editor, nil
 }
 
@@ -303,17 +258,6 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 	}
 	// existingType 保存更新前的渠道协议类型，用于判定本次配置提交是否需要按键合并。
 	existingType := record.Type
-	if patch.EmailRecipient != nil {
-		if record.Type != "email" || patch.Config != nil || (patch.Type != nil && *patch.Type != "email") {
-			return ErrChannelInvalidInput
-		}
-		// config、patchErr 只修改收件地址；配置无效时拒绝写入，不能重建空对象丢弃服务端秘密。
-		config, patchErr := patchEmailRecipient(record.Config, *patch.EmailRecipient)
-		if patchErr != nil {
-			return patchErr
-		}
-		record.Config = config
-	}
 	if patch.Name != nil {
 		record.Name = *patch.Name
 	}
@@ -342,25 +286,6 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, userID, channelID in
 	}
 	record.UserID = userID
 	return s.repository.UpdateChannel(ctx, userID, *record)
-}
-
-// patchEmailRecipient 将 recipient 写入原 config JSON，保留旧版逐字段覆盖、未知配置和秘密；返回值只能进入存储。
-// 空收件地址或无法解析为对象的旧配置返回输入错误，不输出配置内容。
-func patchEmailRecipient(config, recipient string) (string, error) {
-	if strings.TrimSpace(recipient) == "" {
-		return "", ErrChannelInvalidInput
-	}
-	// fields 保留所有旧字段的 JSON 表达；其值可能包含明文凭据，禁止日志和 HTTP 响应使用。
-	var fields map[string]json.RawMessage
-	if json.Unmarshal([]byte(config), &fields) != nil || fields == nil {
-		return "", ErrChannelInvalidInput
-	}
-	// value 是只替换 to_email 的 JSON 字符串，字符串序列化不会失败。
-	value, _ := json.Marshal(strings.TrimSpace(recipient))
-	fields["to_email"] = value
-	// encoded、err 保存合并后的完整配置及序列化错误，内容仅用于持久化。
-	encoded, err := json.Marshal(fields)
-	return string(encoded), err
 }
 
 // mergeChannelConfig 把提交的渠道配置按键合并进现有配置，用空串值表示删除该键，未提交的键保留原值。
@@ -438,93 +363,6 @@ func (s *ChannelService) TestChannel(ctx context.Context, userID, channelID int6
 	return s.sender.SendToChannel(channelID, body)
 }
 
-// ListBindings 查询用户所有账号的非敏感通知绑定。
-func (s *ChannelService) ListBindings(ctx context.Context, userID int64) ([]BindingSummary, error) {
-	if s == nil || s.repository == nil || userID <= 0 {
-		return nil, ErrChannelInvalidInput
-	}
-	return s.repository.ListBindings(ctx, userID)
-}
-
-// GetBindingIDs 校验账号归属后查询其启用渠道 ID。
-func (s *ChannelService) GetBindingIDs(ctx context.Context, userID int64, cookieID string) ([]int64, error) {
-	// validationErr 表示账号归属校验结果。
-	if validationErr := s.validateAccount(ctx, userID, cookieID); validationErr != nil {
-		return nil, validationErr
-	}
-	return s.repository.GetBindingIDs(ctx, cookieID)
-}
-
-// SetBindings 校验账号和全部渠道归属后覆盖保存绑定。
-func (s *ChannelService) SetBindings(ctx context.Context, userID int64, cookieID string, channelIDs []int64) error {
-	// validationErr 表示账号归属校验结果。
-	if validationErr := s.validateAccount(ctx, userID, cookieID); validationErr != nil {
-		return validationErr
-	}
-	// channelID 表示当前待校验归属的渠道。
-	for _, channelID := range channelIDs {
-		// owned 表示渠道归属结果；ownershipErr 保存归属查询失败原因。
-		owned, ownershipErr := s.repository.OwnsChannel(ctx, channelID, userID)
-		if ownershipErr != nil {
-			return ownershipErr
-		}
-		if !owned {
-			return ErrChannelForbidden
-		}
-	}
-	return s.repository.SetBindings(ctx, cookieID, channelIDs)
-}
-
-// SetSingleBinding 校验账号和渠道归属后更新单条绑定状态。
-func (s *ChannelService) SetSingleBinding(ctx context.Context, userID int64, cookieID string, channelID int64, enabled bool) error {
-	// validationErr 表示账号归属校验结果。
-	if validationErr := s.validateAccount(ctx, userID, cookieID); validationErr != nil {
-		return validationErr
-	}
-	// owned 表示渠道归属结果；ownershipErr 保存归属查询失败原因。
-	owned, ownershipErr := s.repository.OwnsChannel(ctx, channelID, userID)
-	if ownershipErr != nil {
-		return ownershipErr
-	}
-	if !owned {
-		return ErrChannelForbidden
-	}
-	return s.repository.SetSingleBinding(ctx, cookieID, channelID, enabled)
-}
-
-// DeleteBinding 删除用户的一条绑定，归属由持久化端口再次约束。
-func (s *ChannelService) DeleteBinding(ctx context.Context, userID, bindingID int64) error {
-	if s == nil || s.repository == nil || userID <= 0 || bindingID <= 0 {
-		return ErrChannelInvalidInput
-	}
-	return s.repository.DeleteBinding(ctx, userID, bindingID)
-}
-
-// DeleteAccountBindings 校验账号归属后删除其全部绑定。
-func (s *ChannelService) DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error {
-	// validationErr 表示账号归属校验结果。
-	if validationErr := s.validateAccount(ctx, userID, cookieID); validationErr != nil {
-		return validationErr
-	}
-	return s.repository.DeleteAccountBindings(ctx, userID, cookieID)
-}
-
-// validateAccount 校验用户和账号标识，并确保端口返回的结果属于当前用户。
-func (s *ChannelService) validateAccount(ctx context.Context, userID int64, cookieID string) error {
-	if s == nil || s.repository == nil || userID <= 0 || strings.TrimSpace(cookieID) == "" {
-		return ErrChannelInvalidInput
-	}
-	// owned 表示账号归属结果；ownershipErr 保存归属查询失败原因。
-	owned, ownershipErr := s.repository.OwnsAccount(ctx, userID, cookieID)
-	if ownershipErr != nil {
-		return ownershipErr
-	}
-	if !owned {
-		return ErrAccountForbidden
-	}
-	return nil
-}
-
 // validateChannelFields 校验业务必填字段，避免将无名或无类型渠道写入存储。
 func validateChannelFields(name, channelType string) error {
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(channelType) == "" {
@@ -541,21 +379,6 @@ func stringValue(value any) string {
 		return ""
 	}
 	return textValue
-}
-
-// parseConfigBool 将邮件配置中的布尔兼容值归一化为布尔结果。
-func parseConfigBool(value any) bool {
-	// typedValue 是当前配置布尔值按其 JSON 实际类型解包后的内容。
-	switch typedValue := value.(type) {
-	case bool:
-		return typedValue
-	case string:
-		return strings.EqualFold(strings.TrimSpace(typedValue), "true") || strings.TrimSpace(typedValue) == "1"
-	case float64:
-		return typedValue == 1
-	default:
-		return false
-	}
 }
 
 // editableChannelConfig 按配置键分类提取可回显的非敏感键值；未声明、非字符串或去空白后为空的键不进入结果。

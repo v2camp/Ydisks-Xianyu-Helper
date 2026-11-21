@@ -281,7 +281,7 @@ type ChatPorts interface {
 	ListChatItems(ctx context.Context, input chatapp.ChatItemQuery) (chatapp.ChatItemPage, error)
 }
 
-// NotificationChannelPorts 聚合通知渠道与账号绑定用例。
+// NotificationChannelPorts 聚合通知渠道用例。
 // 渠道配置 JSON（SMTP 密码、机器人 secret 等）只经写入参数进入应用层，MCP 永不回传。
 type NotificationChannelPorts interface {
 	// ListChannels 返回用户全部通知渠道的非敏感摘要。
@@ -296,18 +296,6 @@ type NotificationChannelPorts interface {
 	DeleteChannel(ctx context.Context, userID, channelID int64) error
 	// TestChannel 向渠道发送一条测试通知；发送时刻由适配器取墙钟。
 	TestChannel(ctx context.Context, userID, channelID int64) error
-	// ListBindings 返回用户全部账号与渠道的绑定摘要。
-	ListBindings(ctx context.Context, userID int64) ([]notificationsapp.BindingSummary, error)
-	// GetBindingIDs 返回账号当前启用的渠道标识。
-	GetBindingIDs(ctx context.Context, userID int64, cookieID string) ([]int64, error)
-	// SetBindings 覆盖保存账号的渠道绑定。
-	SetBindings(ctx context.Context, userID int64, cookieID string, channelIDs []int64) error
-	// SetSingleBinding 切换账号中单个渠道绑定的启用状态。
-	SetSingleBinding(ctx context.Context, userID int64, cookieID string, channelID int64, enabled bool) error
-	// DeleteBinding 删除一条绑定。
-	DeleteBinding(ctx context.Context, userID, bindingID int64) error
-	// DeleteAccountBindings 清空账号的全部绑定。
-	DeleteAccountBindings(ctx context.Context, userID int64, cookieID string) error
 }
 
 // UncertainNotificationPorts 聚合通知不确定状态的用户视图与管理员全局视图。

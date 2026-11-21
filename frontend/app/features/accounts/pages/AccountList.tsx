@@ -53,6 +53,7 @@ const AccountList: React.FC = () => {
     username: '',
     login_password: '',
     show_browser: false,
+    notifications_disabled: false,
     showLoginPassword: false,
     clear_password: false,
   });
@@ -69,24 +70,16 @@ const AccountList: React.FC = () => {
   // submoduleHandlers 保存编辑弹窗子模块的状态和事件处理函数。
   const {
     longLogin,
-    notifChannels,
-    selectedChannelIds,
-    bindingsLoaded,
-    bindingsLoading,
-    bindingsLoadError,
     aiSettings,
     agentSupport,
     saving,
     passwordLoginView,
     setAiSettings,
     updateAgentSupport,
-    setBindingsDirty,
     openEditModal,
     closeEditModal,
     openAIModal,
     closeAIModal,
-    loadNotificationBindings,
-    toggleNotificationChannel,
     handleLongLoginToggle,
     handleSaveAISettings,
     handleSaveEdit,
@@ -303,14 +296,6 @@ const AccountList: React.FC = () => {
           passwordLoginView={passwordLoginView}
           onPasswordLogin={handlePasswordLogin}
           onCancelPasswordLogin={handleCancelPasswordLogin}
-          notifChannels={notifChannels}
-          selectedChannelIds={selectedChannelIds}
-          bindingsLoaded={bindingsLoaded}
-          bindingsLoading={bindingsLoading}
-          bindingsLoadError={bindingsLoadError}
-          onRetryBindings={/* 当前回调处理用户交互或异步状态变化。 */ () => loadNotificationBindings(editingAccount.id)}
-          onToggleChannel={toggleNotificationChannel}
-          onSettingsDirty={/* 当前回调处理用户交互或异步状态变化。 */ () => setBindingsDirty(true)}
         />
       )}
 

@@ -77,6 +77,8 @@ type CookieSummary struct {
 	Username string
 	// ShowBrowser 表示密码登录流程是否允许显示浏览器。
 	ShowBrowser bool
+	// NotificationsDisabled 表示账号是否静音全部通知；渠道归属仍按本地用户。
+	NotificationsDisabled bool
 	// Nickname 是平台账号昵称缓存。
 	Nickname string
 	// AvatarURL 是平台账号头像缓存地址。
@@ -103,7 +105,7 @@ func (c *Cookies) ListSummaries(ctx context.Context, userID int64) ([]CookieSumm
 		       COALESCE(paused_until,0), COALESCE(username,''), show_browser,
 		       COALESCE(nickname,''), COALESCE(avatar_url,''), COALESCE(last_refresh_at,0),
 		       COALESCE(login_method,''), COALESCE(last_login_at,0), COALESCE(auto_consign,0), COALESCE(auto_bargain,0),
-		       COALESCE(bargain_soothe_template,''), created_at
+		       COALESCE(bargain_soothe_template,''), COALESCE(notifications_disabled,0), created_at
 		FROM cookies WHERE user_id=? ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -116,6 +118,8 @@ func (c *Cookies) ListSummaries(ctx context.Context, userID int64) ([]CookieSumm
 		var summary CookieSummary
 		// autoConfirm、autoConsign、autoBargain 和 showBrowser 将数据库整数布尔值转换为 Go bool。
 		var autoConfirm, autoConsign, autoBargain, showBrowser int
+		// notificationsDisabled 将数据库整数布尔值转换为账号静音状态。
+		var notificationsDisabled int
 		// pauseDuration 允许兼容历史 NULL 值，同时保留默认暂停时长 10 分钟。
 		var pauseDuration sql.NullInt64
 		// scanErr 表示当前摘要行无法映射到非敏感模型的原因。
@@ -123,7 +127,8 @@ func (c *Cookies) ListSummaries(ctx context.Context, userID int64) ([]CookieSumm
 			&summary.ID, &summary.UserID, &autoConfirm, &summary.Remark, &pauseDuration,
 			&summary.PausedUntil, &summary.Username, &showBrowser, &summary.Nickname,
 			&summary.AvatarURL, &summary.LastRefreshAt, &summary.LoginMethod,
-			&summary.LastLoginAt, &autoConsign, &autoBargain, &summary.BargainSootheTemplate, &summary.CreatedAt,
+			&summary.LastLoginAt, &autoConsign, &autoBargain, &summary.BargainSootheTemplate,
+			&notificationsDisabled, &summary.CreatedAt,
 		); scanErr != nil {
 			return nil, scanErr
 		}
@@ -131,6 +136,7 @@ func (c *Cookies) ListSummaries(ctx context.Context, userID int64) ([]CookieSumm
 		summary.AutoConsign = autoConsign != 0
 		summary.AutoBargain = autoBargain != 0
 		summary.ShowBrowser = showBrowser != 0
+		summary.NotificationsDisabled = notificationsDisabled != 0
 		summary.PauseDuration = 10
 		if pauseDuration.Valid {
 			summary.PauseDuration = int(pauseDuration.Int64)
@@ -150,6 +156,8 @@ func (c *Cookies) GetSummaryOwned(ctx context.Context, userID int64, cookieID st
 	var summary CookieSummary
 	// autoConfirm、autoConsign、autoBargain 和 showBrowser 将数据库整数布尔值转换为 Go bool。
 	var autoConfirm, autoConsign, autoBargain, showBrowser int
+	// notificationsDisabled 将数据库整数布尔值转换为账号静音状态。
+	var notificationsDisabled int
 	// pauseDuration 允许兼容历史 NULL 值，同时保留默认暂停时长 10 分钟。
 	var pauseDuration sql.NullInt64
 	// queryErr 表示按账号和用户联合条件读取摘要失败的原因。
@@ -158,12 +166,13 @@ func (c *Cookies) GetSummaryOwned(ctx context.Context, userID int64, cookieID st
 		       COALESCE(paused_until,0), COALESCE(username,''), show_browser,
 		       COALESCE(nickname,''), COALESCE(avatar_url,''), COALESCE(last_refresh_at,0),
 		       COALESCE(login_method,''), COALESCE(last_login_at,0), COALESCE(auto_consign,0), COALESCE(auto_bargain,0),
-		       COALESCE(bargain_soothe_template,''), created_at
+		       COALESCE(bargain_soothe_template,''), COALESCE(notifications_disabled,0), created_at
 		FROM cookies WHERE id=? AND user_id=?`, cookieID, userID).Scan(
 		&summary.ID, &summary.UserID, &autoConfirm, &summary.Remark, &pauseDuration,
 		&summary.PausedUntil, &summary.Username, &showBrowser, &summary.Nickname,
 		&summary.AvatarURL, &summary.LastRefreshAt, &summary.LoginMethod,
-		&summary.LastLoginAt, &autoConsign, &autoBargain, &summary.BargainSootheTemplate, &summary.CreatedAt)
+		&summary.LastLoginAt, &autoConsign, &autoBargain, &summary.BargainSootheTemplate,
+		&notificationsDisabled, &summary.CreatedAt)
 	if queryErr != nil {
 		if errors.Is(queryErr, sql.ErrNoRows) {
 			return CookieSummary{}, ErrNotFound
@@ -174,6 +183,7 @@ func (c *Cookies) GetSummaryOwned(ctx context.Context, userID int64, cookieID st
 	summary.AutoConsign = autoConsign != 0
 	summary.AutoBargain = autoBargain != 0
 	summary.ShowBrowser = showBrowser != 0
+	summary.NotificationsDisabled = notificationsDisabled != 0
 	summary.PauseDuration = 10
 	if pauseDuration.Valid {
 		summary.PauseDuration = int(pauseDuration.Int64)

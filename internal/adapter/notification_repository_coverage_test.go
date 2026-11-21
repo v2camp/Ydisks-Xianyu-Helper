@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 	"xianyu-go/internal/db"
 )
 
-// TestNotificationChannelRepositoryCRUDAndBindings 覆盖通知渠道适配器的完整 CRUD 与账号绑定转换路径。
+// TestNotificationChannelRepositoryCRUD 覆盖通知渠道适配器的完整 CRUD 转换路径。
 func TestNotificationChannelRepositoryCRUDAndBindings(t *testing.T) {
 	// store、cleanup 保存临时数据库及关闭责任。
 	store, cleanup := newAdapterTestStore(t)
@@ -33,11 +34,6 @@ func TestNotificationChannelRepositoryCRUDAndBindings(t *testing.T) {
 	if ownedErr != nil || !owned {
 		t.Fatalf("owned=%v err=%v", owned, ownedErr)
 	}
-	// accountOwned、accountOwnedErr 保存账号归属检查结果和数据库错误。
-	accountOwned, accountOwnedErr := repository.OwnsAccount(ctx, owner.ID, "cid")
-	if accountOwnedErr != nil || !accountOwned {
-		t.Fatalf("account owned=%v err=%v", accountOwned, accountOwnedErr)
-	}
 	// summaries、listErr 保存渠道摘要列表和数据库错误。
 	summaries, listErr := repository.ListChannels(ctx, owner.ID)
 	if listErr != nil || len(summaries) != 1 || summaries[0].ID != channelID {
@@ -52,43 +48,51 @@ func TestNotificationChannelRepositoryCRUDAndBindings(t *testing.T) {
 	if updateErr := repository.UpdateChannel(ctx, owner.ID, notificationsapp.ChannelRecord{ID: channelID, Name: "更新渠道", Type: "webhook", Config: `{"updated":true}`, EventTypes: "message", Enabled: false}); updateErr != nil {
 		t.Fatal(updateErr)
 	}
-	// setErr 保存账号覆盖式绑定结果。
-	if setErr := repository.SetBindings(ctx, "cid", []int64{channelID}); setErr != nil {
-		t.Fatal(setErr)
-	}
-	// bindingIDs、bindingIDsErr 保存账号启用渠道列表和数据库错误。
-	bindingIDs, bindingIDsErr := repository.GetBindingIDs(ctx, "cid")
-	if bindingIDsErr != nil || len(bindingIDs) != 1 || bindingIDs[0] != channelID {
-		t.Fatalf("binding IDs=%v err=%v", bindingIDs, bindingIDsErr)
-	}
-	// bindings、bindingsErr 保存用户绑定摘要列表和数据库错误。
-	bindings, bindingsErr := repository.ListBindings(ctx, owner.ID)
-	if bindingsErr != nil || len(bindings) != 1 || bindings[0].ChannelID != channelID {
-		t.Fatalf("bindings=%#v err=%v", bindings, bindingsErr)
-	}
-	// singleErr 保存关闭后重新开启单个绑定的数据库错误。
-	if singleErr := repository.SetSingleBinding(ctx, "cid", channelID, false); singleErr != nil {
-		t.Fatal(singleErr)
-	}
-	// reenableErr 保存重新开启单个绑定的数据库错误。
-	if reenableErr := repository.SetSingleBinding(ctx, "cid", channelID, true); reenableErr != nil {
-		t.Fatal(reenableErr)
-	}
-	// deleteBindingErr 保存删除单个绑定的结果。
-	if deleteBindingErr := repository.DeleteBinding(ctx, owner.ID, bindings[0].ID); deleteBindingErr != nil {
-		t.Fatal(deleteBindingErr)
-	}
-	// restoreErr 保存恢复绑定的结果。
-	if restoreErr := repository.SetSingleBinding(ctx, "cid", channelID, true); restoreErr != nil {
-		t.Fatal(restoreErr)
-	}
-	// deleteAccountErr 保存删除账号全部绑定的结果。
-	if deleteAccountErr := repository.DeleteAccountBindings(ctx, owner.ID, "cid"); deleteAccountErr != nil {
-		t.Fatal(deleteAccountErr)
-	}
 	// deleteErr 保存渠道删除结果。
 	if deleteErr := repository.DeleteChannel(ctx, channelID, owner.ID); deleteErr != nil {
 		t.Fatal(deleteErr)
+	}
+}
+
+// TestNotificationChannelRepositoryErrorMapping 验证渠道适配器对资源错误与缺失记录的归一化。
+func TestNotificationChannelRepositoryErrorMapping(t *testing.T) {
+	// store、cleanup 是隔离的渠道适配器测试仓储。
+	store, cleanup := newAdapterTestStore(t)
+	defer cleanup()
+	// ctx 限制本测试数据库操作的生命周期。
+	ctx := context.Background()
+	// owner 是测试用户；ownerErr 是查询错误。
+	owner, ownerErr := store.Users.GetByUsername(ctx, "admin")
+	if ownerErr != nil || owner == nil {
+		t.Fatalf("读取测试用户失败: err=%v", ownerErr)
+	}
+	// repository 是通知渠道数据库适配器。
+	repository := NewNotificationChannelRepository(store)
+	// missingRecord、missingErr 验证不存在的渠道返回空指针而非错误。
+	missingRecord, missingErr := repository.GetChannelForUpdate(ctx, 999999, owner.ID)
+	if missingErr != nil || missingRecord != nil {
+		t.Fatalf("缺失渠道异常: record=%v err=%v", missingRecord, missingErr)
+	}
+	// nilRecord、nilRecordErr 验证无记录时返回空指针而非错误。
+	nilRecord, nilRecordErr := repository.GetChannelForUpdate(ctx, 999999, 0)
+	if nilRecordErr != nil || nilRecord != nil {
+		t.Fatalf("无归属记录异常: record=%v err=%v", nilRecord, nilRecordErr)
+	}
+	// deleteErr 验证删除不存在的渠道返回未找到。
+	if deleteErr := repository.DeleteChannel(ctx, 999999, owner.ID); !errors.Is(deleteErr, notificationsapp.ErrChannelNotFound) {
+		t.Fatalf("删除缺失渠道错误异常: %v", deleteErr)
+	}
+	// nilStore 验证依赖不完整时构造函数返回 nil。
+	if nilRepo := NewNotificationChannelRepository(nil); nilRepo != nil {
+		t.Fatal("空存储应返回 nil 适配器")
+	}
+	// closeErr 表示关闭测试数据库失败。
+	if closeErr := store.DB.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	// listErr 验证关闭数据库后的列表读取错误。
+	if _, listErr := repository.ListChannels(ctx, owner.ID); listErr == nil {
+		t.Fatal("关闭数据库后列表读取应失败")
 	}
 }
 

@@ -86,6 +86,18 @@ cd /tmp/cover-baseline && go test -count=1 -covermode=set -coverprofile=/tmp/cov
 > 全为存储故障返回、`rows.Err()` 中断、Postgres `RETURNING` 分支，属既有「仅外部环境」例外类别，
 > 已补测试覆盖成功路径、参数默认值、去重、游标、会话摘要与数据库关闭后的错误返回。
 >
+> ⚠️ 2026-11-21 复核（租户级集成资产：通知渠道/QQ/SMTP/AI 按本地用户归属）：基线 `main`，
+> 分支 `feature/tenant-integration-assets`。执行环境：本机 macOS，口径 `-count=1 -covermode=set`，命令同上。
+>
+> 五个链路包：automation 90.2%→**90.2%**、engine 88.4%→**88.4%**、adapter 85.2%→**85.2%**、
+> db 85.3%→**85.4%**、xianyu/ws 88.2%→**88.2%**；合计 **86.9%**，不低于基线。
+>
+> 新增 `internal/db/integration_scope_migration.go`（74%）、`internal/db/integration_settings.go`（93%）、
+> `internal/db/user_settings.go` 用户级加密读写（85%+）。已补测试覆盖全局键与渠道级凭据折叠、冲突保留、
+> 全新库默认键清理、三态命令、脱敏视图、账号所有者分流与数据库关闭后的错误返回。
+> 未覆盖项为存储故障分支、加密器故障与 `rows.Err()` 中断，属既有「仅外部环境」例外类别。
+> 绑定表相关适配与测试随 `message_notifications` 删除而移除，adapter 仍保持基线 85.2%。
+
 > 最近一次统计（2026-09-13，`go1.26.8` 容器，未启用 `RUN_BROWSER_INTEGRATION`）：
 
 | 文件 | 链路职责 | 未覆盖/总语句 | 覆盖率 | 门槛 |

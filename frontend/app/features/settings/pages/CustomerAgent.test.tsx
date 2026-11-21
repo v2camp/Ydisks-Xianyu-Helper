@@ -4,18 +4,16 @@ import { afterEach,beforeEach,describe,expect,test,vi } from 'vitest';
 import CustomerAgent from './CustomerAgent';
 import { formatLocalDateTime } from '../../../../dateTime';
 import {
-  fetchAIModels,getAgentSupportSettings,getAgentTakeoverConversations,getAgentTakeoverMessages,
+  getAgentSupportSettings,getAgentTakeoverConversations,getAgentTakeoverMessages,
   getSystemSettings,updateAgentSupportSettings,updateSystemSettings,verifySession,
 } from '../api';
 import type { AgentConversationMessage,AgentTakeoverConversationPage,SystemSettings } from '../models';
 
 vi.mock('../api', /* mockSettingsApi 用可断言的替身替换客服 Agent 页依赖的适配层，避免测试触网。 */ () => ({
-  fetchAIModels: vi.fn(),
   getAgentSupportSettings: vi.fn(),
   getAgentTakeoverConversations: vi.fn(),
   getAgentTakeoverMessages: vi.fn(),
   getSystemSettings: vi.fn(),
-  testAIConnection: vi.fn(),
   updateAgentSupportSettings: vi.fn(),
   updateLoginCredentials: vi.fn(),
   updateSystemSettings: vi.fn(),
@@ -26,8 +24,6 @@ vi.mock('../api', /* mockSettingsApi 用可断言的替身替换客服 Agent 页
 const getSettingsMock = vi.mocked(getSystemSettings);
 // verifySessionMock 是会话校验的替身，页面只消费其中的用户名。
 const verifySessionMock = vi.mocked(verifySession);
-// fetchModelsMock 是模型发现的替身，返回固定候选列表。
-const fetchModelsMock = vi.mocked(fetchAIModels);
 // updateSettingsMock 是页级 AI 配置保存的替身。
 const updateSettingsMock = vi.mocked(updateSystemSettings);
 // agentSettingsMock 是能力档位读取的替身。
@@ -39,11 +35,9 @@ const takeoverConversationsMock = vi.mocked(getAgentTakeoverConversations);
 // takeoverMessagesMock 是接管会话消息读取的替身。
 const takeoverMessagesMock = vi.mocked(getAgentTakeoverMessages);
 
-// AI_SETTINGS_FIXTURE 是页级 AI 表单渲染所需的最小系统设置快照。
+// AI_SETTINGS_FIXTURE 是页级 AI 行为表单渲染所需的最小系统设置快照。
 const AI_SETTINGS_FIXTURE: SystemSettings = {
-  ai_api_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  ai_api_key: 'sk-test',
-  ai_model: 'qwen-plus',
+  ai_master_enabled: true,
 };
 
 // TAKEOVER_PAGE_FIXTURE 是分页响应：一条 AI 接管过的会话，字段覆盖列表展示所需信息。
@@ -92,7 +86,6 @@ beforeEach(/* 当前回调为每个用例重置适配器替身的默认成功响
   vi.clearAllMocks();
   getSettingsMock.mockResolvedValue(AI_SETTINGS_FIXTURE);
   verifySessionMock.mockResolvedValue({ authenticated: true, username: 'admin' });
-  fetchModelsMock.mockResolvedValue(['qwen-plus']);
   updateSettingsMock.mockResolvedValue({ success: true });
   agentSettingsMock.mockResolvedValue({
     preset: 'readonly',

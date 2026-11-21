@@ -32,7 +32,7 @@ func newOpsChatRepository(store *db.OpsChatStore) opschatapp.Repository {
 func (r opsChatRepository) RecordInbound(ctx context.Context, record opschatapp.InboundRecord) (opschatapp.Message, bool, error) {
 	// message、inserted、recordErr 是数据库返回的消息、是否新增及写入错误。
 	message, inserted, recordErr := r.store.RecordInbound(ctx, db.OpsInboundRecord{
-		Channel: record.Channel, TargetOpenID: record.TargetOpenID, PlatformMsgID: record.PlatformMsgID,
+		UserID: record.UserID, Channel: record.Channel, TargetOpenID: record.TargetOpenID, PlatformMsgID: record.PlatformMsgID,
 		Direction: "inbound", Source: "inbound", Content: record.Content, IsGroup: record.IsGroup, At: record.At,
 	})
 	if recordErr != nil {
@@ -42,9 +42,9 @@ func (r opsChatRepository) RecordInbound(ctx context.Context, record opschatapp.
 }
 
 // AppendOutbound 写入出站消息并返回消息与会话快照。
-func (r opsChatRepository) AppendOutbound(ctx context.Context, conversationID int64, content, preview string, at int64) (opschatapp.Message, opschatapp.Conversation, error) {
+func (r opsChatRepository) AppendOutbound(ctx context.Context, userID, conversationID int64, content, preview string, at int64) (opschatapp.Message, opschatapp.Conversation, error) {
 	// message、conversation、appendErr 是数据库写入结果及失败原因。
-	message, conversation, appendErr := r.store.AppendOutbound(ctx, conversationID, content, preview, at)
+	message, conversation, appendErr := r.store.AppendOutbound(ctx, userID, conversationID, content, preview, at)
 	if errors.Is(appendErr, db.ErrNotFound) {
 		return opschatapp.Message{}, opschatapp.Conversation{}, opschatapp.ErrConversationNotFound
 	}
@@ -55,9 +55,9 @@ func (r opsChatRepository) AppendOutbound(ctx context.Context, conversationID in
 }
 
 // AppendOutboundByTarget 按渠道与目标 openid 写入出站消息；会话不存在时转换为应用错误。
-func (r opsChatRepository) AppendOutboundByTarget(ctx context.Context, channel, targetOpenID, content, preview string, at int64) (opschatapp.Message, opschatapp.Conversation, error) {
+func (r opsChatRepository) AppendOutboundByTarget(ctx context.Context, userID int64, channel, targetOpenID, content, preview string, at int64) (opschatapp.Message, opschatapp.Conversation, error) {
 	// message、conversation、appendErr 是数据库写入结果及失败原因。
-	message, conversation, appendErr := r.store.AppendOutboundByTarget(ctx, channel, targetOpenID, content, preview, at)
+	message, conversation, appendErr := r.store.AppendOutboundByTarget(ctx, userID, channel, targetOpenID, content, preview, at)
 	if errors.Is(appendErr, db.ErrNotFound) {
 		return opschatapp.Message{}, opschatapp.Conversation{}, opschatapp.ErrConversationNotFound
 	}
@@ -68,9 +68,9 @@ func (r opsChatRepository) AppendOutboundByTarget(ctx context.Context, channel, 
 }
 
 // ListConversations 分页读取会话并转换模型。
-func (r opsChatRepository) ListConversations(ctx context.Context, page, pageSize int) (opschatapp.ConversationPage, error) {
+func (r opsChatRepository) ListConversations(ctx context.Context, userID int64, page, pageSize int) (opschatapp.ConversationPage, error) {
 	// databasePage、listErr 是数据库分页结果及查询错误。
-	databasePage, listErr := r.store.ListConversations(ctx, page, pageSize)
+	databasePage, listErr := r.store.ListConversations(ctx, userID, page, pageSize)
 	if listErr != nil {
 		return opschatapp.ConversationPage{}, listErr
 	}
@@ -86,9 +86,9 @@ func (r opsChatRepository) ListConversations(ctx context.Context, page, pageSize
 }
 
 // GetConversation 按主键读取会话；不存在时转换为应用错误。
-func (r opsChatRepository) GetConversation(ctx context.Context, id int64) (opschatapp.Conversation, error) {
+func (r opsChatRepository) GetConversation(ctx context.Context, userID, id int64) (opschatapp.Conversation, error) {
 	// conversation、readErr 是数据库读取结果及错误。
-	conversation, readErr := r.store.GetConversation(ctx, id)
+	conversation, readErr := r.store.GetConversation(ctx, userID, id)
 	if errors.Is(readErr, db.ErrNotFound) {
 		return opschatapp.Conversation{}, opschatapp.ErrConversationNotFound
 	}
@@ -99,9 +99,9 @@ func (r opsChatRepository) GetConversation(ctx context.Context, id int64) (opsch
 }
 
 // ListMessages 按会话与游标读取消息页并转换模型。
-func (r opsChatRepository) ListMessages(ctx context.Context, conversationID, beforeID int64, limit int) (opschatapp.MessagePage, error) {
+func (r opsChatRepository) ListMessages(ctx context.Context, userID, conversationID, beforeID int64, limit int) (opschatapp.MessagePage, error) {
 	// databasePage、listErr 是数据库消息分页结果及查询错误。
-	databasePage, listErr := r.store.ListOpsMessages(ctx, conversationID, beforeID, limit)
+	databasePage, listErr := r.store.ListOpsMessages(ctx, userID, conversationID, beforeID, limit)
 	if listErr != nil {
 		return opschatapp.MessagePage{}, listErr
 	}
@@ -117,7 +117,7 @@ func (r opsChatRepository) ListMessages(ctx context.Context, conversationID, bef
 // opsChatConversationFromDatabase 把数据库会话转换为应用模型。
 func opsChatConversationFromDatabase(row db.OpsConversation) opschatapp.Conversation {
 	return opschatapp.Conversation{
-		ID: row.ID, Channel: row.Channel, TargetOpenID: row.TargetOpenID, IsGroup: row.IsGroup,
+		ID: row.ID, UserID: row.UserID, Channel: row.Channel, TargetOpenID: row.TargetOpenID, IsGroup: row.IsGroup,
 		LastMessageAt: row.LastMessageAt, LastMessagePreview: row.LastMessagePreview,
 	}
 }

@@ -1314,22 +1314,22 @@ func TestMultiDB_Notifications(t *testing.T) {
 			if summaryErr != nil || len(summaries) != 1 || summaries[0].Name != "wh" || summaries[0].UserID != user.ID {
 				t.Fatalf("channel summaries = %+v err=%v", summaries, summaryErr)
 			}
-			if // err 用于本次流程后续判断的err
-			err := s.Notifications.SetBindings(ctx, cid, []int64{chID}); err != nil {
-				t.Fatalf("SetBindings: %v", err)
+			// channelsForAccount 保存按账号所有者解析出的启用渠道。
+			channelsForAccount, accountChannelsErr := s.Notifications.AccountChannels(ctx, cid)
+			if accountChannelsErr != nil || len(channelsForAccount) != 1 || channelsForAccount[0].ID != chID {
+				t.Fatalf("AccountChannels: channels=%#v err=%v", channelsForAccount, accountChannelsErr)
 			}
-			// bindings 用于本次流程后续判断的bindings
-			bindings, _ := s.Notifications.AccountBindings(ctx, cid)
-			if len(bindings) != 1 || bindings[0] != chID {
-				t.Fatalf("bindings = %#v", bindings)
+			// 账号静音后不应再解析出任何渠道。
+			if _, err := s.Cookies.UpdateSettings(ctx, cid, AccountSettingsUpdate{UserID: user.ID, NotificationsDisabled: boolPtr(true)}); err != nil {
+				t.Fatalf("mute account: %v", err)
 			}
-			// 覆盖式重置绑定。
-			if err := s.Notifications.SetBindings(ctx, cid, nil); err != nil {
-				t.Fatalf("SetBindings clear: %v", err)
+			channelsForAccount, accountChannelsErr = s.Notifications.AccountChannels(ctx, cid)
+			if accountChannelsErr != nil || len(channelsForAccount) != 0 {
+				t.Fatalf("静音后 channels=%#v err=%v", channelsForAccount, accountChannelsErr)
 			}
-			bindings, _ = s.Notifications.AccountBindings(ctx, cid)
-			if len(bindings) != 0 {
-				t.Fatalf("清空后 bindings = %#v", bindings)
+			// err 表示更新账号静音开关失败。
+			if _, err := s.Cookies.UpdateSettings(ctx, cid, AccountSettingsUpdate{UserID: user.ID, NotificationsDisabled: boolPtr(false)}); err != nil {
+				t.Fatalf("unmute account: %v", err)
 			}
 			if // err 用于本次流程后续判断的err
 			err := s.Notifications.EnqueueOutbox(ctx, []NotificationOutboxInput{{ChannelID: chID, EventType: "test", Body: "body"}}); err != nil {
@@ -1431,7 +1431,7 @@ func TestMultiDB_LatestMigrationsDownUp(t *testing.T) {
 				col   string
 			}{
 				{"notification_channels", "event_types"},
-				{"message_notifications", "event_types"},
+				{"cookies", "notifications_disabled"},
 				{"scheduled_cookies_refresh_log", "step_details"},
 				{"scheduled_login_renew_log", "updated_cookie_count"},
 				{"scheduled_api_cookie_renew_log", "request_count"},

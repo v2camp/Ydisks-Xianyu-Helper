@@ -518,19 +518,19 @@ func (a *AIReplierImpl) globalAIConfig(ctx context.Context) (*globalAIConfig, er
 	if err != nil {
 		return nil, err
 	}
-	// baseURL、err 用于本次流程后续判断的baseURL、err
-	baseURL, err := a.store.Settings.Get(ctx, "ai_api_url")
+	// baseURL、err 用于本次流程后续判断的baseURL、err；按账号所有者读取用户级 AI 配置。
+	baseURL, err := a.store.GetUserSettingForAccount(ctx, a.cookieID, "ai_api_url")
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(baseURL) == "" {
-		baseURL, err = a.store.Settings.Get(ctx, "ai_base_url")
+		baseURL, err = a.store.GetUserSettingForAccount(ctx, a.cookieID, "ai_base_url")
 		if err != nil {
 			return nil, err
 		}
 	}
 	// model、err 用于本次流程后续判断的model、err
-	model, err := a.store.Settings.Get(ctx, "ai_model")
+	model, err := a.store.GetUserSettingForAccount(ctx, a.cookieID, "ai_model")
 	if err != nil {
 		return nil, err
 	}

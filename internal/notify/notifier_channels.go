@@ -247,11 +247,8 @@ func (n *Notifier) sendTelegram(cfg map[string]any, message string) error {
 }
 
 // ---- 邮件 ----
-func (n *Notifier) sendEmail(cfg map[string]any, message string) error {
-	return n.sendEmailWithUser(cfg, message, 0)
-}
 
-// sendEmailWithUser 使用邮件渠道配置发送测试或业务通知，并按渠道所有者读取系统 SMTP 秘密。
+// sendEmailWithUser 使用邮件渠道配置发送测试或业务通知，并按渠道所有者读取用户级 SMTP 秘密。
 func (n *Notifier) sendEmailWithUser(cfg map[string]any, message string, channelUserID int64) error {
 	// ctx、cancel 用于本次流程后续判断的ctx、cancel
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -277,7 +274,7 @@ func (n *Notifier) sendEmailWithUser(cfg map[string]any, message string, channel
 	// to 用于本次流程后续判断的to
 	to := strOr(cfg, "to_email", strOr(cfg, "email", ""))
 	if server == "" || user == "" || to == "" {
-		return fmt.Errorf("邮件配置不完整：请配置系统 SMTP 或在邮件渠道中覆盖 SMTP，并填写收件邮箱")
+		return fmt.Errorf("邮件配置不完整：请先在连接器页配置当前用户的 SMTP，并填写收件邮箱")
 	}
 	if legacyFrom != "" {
 		if // parsed、err 用于本次流程后续判断的parsed、err
@@ -441,6 +438,7 @@ func (n *Notifier) configOrSetting(ctx context.Context, cfg map[string]any, key,
 		return v
 	}
 	// value 表示渠道配置缺失时从系统设置解析出的最终候选值。
+	// value 是用户级设置读取结果。
 	if value := n.settingValue(ctx, key, userIDs...); value != "" {
 		return value
 	}
@@ -468,23 +466,10 @@ func (n *Notifier) settingValue(ctx context.Context, key string, userIDs ...int6
 	return ""
 }
 
-// smtpConfigValue keeps legacy per-field fallback behavior for existing rows,
-// while new rows use an explicit all-system or all-channel SMTP mode.
-// smtpConfigValue 封装smtp配置值业务协调。
+// smtpConfigValue 读取渠道所有者用户的 SMTP 配置；渠道级独立 SMTP 已迁移到用户级。
+// cfg 保留在签名中以兼容既有调用方，不再读取其中的凭据字段。
 func (n *Notifier) smtpConfigValue(ctx context.Context, cfg map[string]any, key, fallbackValue string, userIDs ...int64) string {
-	// modeValue、hasExplicitMode 用于本次流程后续判断的模式Value、hasExplicit模式
-	modeValue, hasExplicitMode := cfg["use_custom_smtp"]
-	if !hasExplicitMode {
-		return n.configOrSetting(ctx, cfg, key, fallbackValue, userIDs...)
-	}
-	if parseConfigBool(fmt.Sprintf("%v", modeValue), false) {
-		if // value 用于本次流程后续判断的值
-		value := strings.TrimSpace(strOr(cfg, key, "")); value != "" {
-			return value
-		}
-		return fallbackValue
-	}
-	// value 表示系统 SMTP 模式下解析出的设置值。
+	// value 是用户级设置读取结果。
 	if value := n.settingValue(ctx, key, userIDs...); value != "" {
 		return value
 	}

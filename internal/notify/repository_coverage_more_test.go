@@ -25,12 +25,12 @@ func TestStoreRepositoryGetSettingCoversSensitiveAndPublicPaths(t *testing.T) {
 	if publicReadErr != nil || publicValue != "public-value" {
 		t.Fatalf("普通设置读取异常 value=%q err=%v", publicValue, publicReadErr)
 	}
-	// secretErr 表示写入敏感设置的数据库错误。
-	if secretErr := store.Settings.Set(ctx, "ai_api_key", "secret-value"); secretErr != nil {
+	// secretErr 表示写入实例级敏感设置的数据库错误。
+	if secretErr := store.Settings.Set(ctx, "qq_reply_secret_key", "secret-value"); secretErr != nil {
 		t.Fatal(secretErr)
 	}
-	// secretValue、secretReadErr 保存敏感系统设置读取结果。
-	secretValue, secretReadErr := repository.GetSetting(ctx, "ai_api_key")
+	// secretValue、secretReadErr 保存实例级敏感系统设置读取结果。
+	secretValue, secretReadErr := repository.GetSetting(ctx, "qq_reply_secret_key")
 	if secretReadErr != nil || secretValue != "secret-value" {
 		t.Fatalf("敏感设置读取异常 value=%q err=%v", secretValue, secretReadErr)
 	}

@@ -1,7 +1,6 @@
 import { useCallback,useEffect,useRef,useState,type Dispatch,type SetStateAction } from 'react';
-import type { AccountAgentOverride,AccountAgentSupport,AccountDetail,AIReplySettings,NotificationChannel } from './api';
-import { shouldSaveNotificationBindings } from './accountBindings';
-import { cancelPasswordLogin,checkPasswordLoginStatus,getAccountAISettings,getAccountAgentSupport,getAccountBindings,getLongLoginSettings,getNotificationChannels,passwordLogin,setLongLoginSettings,updateAccountAISettings,updateAccountAgentSupport,updateAccountPauseDuration,updateAccountSettings } from './api';
+import type { AccountAgentOverride,AccountAgentSupport,AccountDetail,AIReplySettings } from './api';
+import { cancelPasswordLogin,checkPasswordLoginStatus,getAccountAISettings,getAccountAgentSupport,getLongLoginSettings,passwordLogin,setLongLoginSettings,updateAccountAISettings,updateAccountAgentSupport,updateAccountPauseDuration,updateAccountSettings } from './api';
 import { buildAccountLoginInfoUpdate,isCurrentAccountRequest,passwordLoginViewFromStatus,resolveAccountAIEnabled,shouldUpdateAccountPause } from './state';
 import type { AccountEditForm,LongLoginState,PasswordLoginView } from './types';
 
@@ -24,22 +23,10 @@ export type AccountSubmoduleOptions = {
   loadAccounts: () => Promise<void>;
 };
 
-/** 账号编辑、AI、通知绑定和密码登录子模块共享状态。 */
+/** 账号编辑、AI 和密码登录子模块共享状态。 */
 export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setActiveModal, editForm, setEditForm, loadAccounts }: AccountSubmoduleOptions) => {
   // longLogin 保存官方长登录设置状态。
   const [longLogin, setLongLogin] = useState<LongLoginState>({ loading: false, saving: false, canOpen: false, enabled: false, error: '' });
-  // notifChannels 保存可供账号绑定的通知渠道。
-  const [notifChannels, setNotifChannels] = useState<NotificationChannel[]>([]);
-  // selectedChannelIds 保存当前选中的通知渠道。
-  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([]);
-  // bindingsLoaded 表示绑定关系是否成功加载。
-  const [bindingsLoaded, setBindingsLoaded] = useState(false);
-  // bindingsLoading 表示通知绑定请求是否进行中。
-  const [bindingsLoading, setBindingsLoading] = useState(false);
-  // bindingsDirty 表示用户是否修改过通知绑定。
-  const [bindingsDirty, setBindingsDirty] = useState(false);
-  // bindingsLoadError 保存通知绑定加载错误。
-  const [bindingsLoadError, setBindingsLoadError] = useState('');
   // aiSettings 保存账号 AI 编辑草稿；ai_enabled 是生效值，ai_enabled_touched 表示用户本次是否亲手切换过开关。
   const [aiSettings, setAiSettings] = useState<AIReplySettings>({ ai_enabled: true, ai_enabled_touched: false, auto_adjust_price_enabled: false, max_discount_percent: 10, max_discount_amount: 100, max_bargain_rounds: 3, custom_prompts: '' });
   // agentSupport 保存账号级客服 Agent 授权草稿；读取失败时为 null。
@@ -50,10 +37,6 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   const [saving, setSaving] = useState(false);
   // passwordLoginView 保存密码登录刷新授权状态。
   const [passwordLoginView, setPasswordLoginView] = useState<PasswordLoginView>({ sessionId: '', status: 'idle', message: '', qrCodeUrl: '' });
-  // bindingsSequence 隔离账号切换后的绑定响应。
-  const bindingsSequence = useRef(0);
-  // bindingsAbort 保存通知绑定请求控制器。
-  const bindingsAbort = useRef<AbortController | null>(null);
   // longLoginSequence 隔离账号切换后的长登录响应。
   const longLoginSequence = useRef(0);
   // longLoginAbort 保存长登录状态读取控制器。
@@ -80,40 +63,7 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
     }
   }, []);
 
-  /** 加载当前账号通知渠道和绑定关系，并隔离过期响应。 */
-  // loadNotificationBindingsCallback 是通知绑定加载回调。
-  const loadNotificationBindings = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (accountId: string): Promise<void> => {
-    // sequence 是通知绑定请求的递增代次。
-    const sequence = ++bindingsSequence.current;
-    bindingsAbort.current?.abort();
-    // controller 控制当前通知绑定请求的取消。
-    const controller = new AbortController();
-    bindingsAbort.current = controller;
-    setBindingsLoading(true);
-    setBindingsLoaded(false);
-    setBindingsDirty(false);
-    setBindingsLoadError('');
-    // bindingResults 保存通知渠道和账号绑定的并行结果。
-    const [channelsResult, bindingsResult] = await Promise.allSettled([
-      getNotificationChannels({ signal: controller.signal }),
-      getAccountBindings(accountId, { signal: controller.signal }),
-    ]);
-    if (!isCurrentAccountRequest(sequence, bindingsSequence.current, accountId, accountId)) return;
-    if (channelsResult.status === 'fulfilled') setNotifChannels(channelsResult.value.data || []);
-    else { setNotifChannels([]); setBindingsLoadError('通知渠道列表加载失败，请重试'); }
-    if (bindingsResult.status === 'fulfilled') { setSelectedChannelIds(bindingsResult.value || []); setBindingsLoaded(true); }
-    else { setSelectedChannelIds([]); setBindingsLoadError('通知绑定加载失败；本次保存不会修改现有绑定'); }
-    setBindingsLoading(false);
-  }, []);
-
-  /** 切换一个通知渠道绑定。 */
-  // toggleNotificationChannelCallback 是通知渠道切换回调。
-  const toggleNotificationChannel = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ (channelId: number) => {
-    setSelectedChannelIds(/* 当前回调处理集合中的单个元素。 */ current => current.includes(channelId) ? current.filter(/* 当前回调处理集合中的单个元素。 */ id => id !== channelId) : [...current, channelId]);
-    setBindingsDirty(true);
-  }, []);
-
-  /** 打开账号编辑弹窗并并行读取绑定和长登录状态。 */
+  /** 打开账号编辑弹窗并读取长登录状态。 */
   // openEditModalCallback 是账号编辑弹窗打开回调。
   const openEditModal = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (account: AccountDetail): Promise<void> => {
     // longLoginRequest 是当前长登录读取请求代次。
@@ -129,15 +79,15 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
     setPasswordLoginView({ sessionId: '', status: 'idle', message: '', qrCodeUrl: '' });
     setEditingAccount(account);
     // 摘要接口不会返回 Cookie 或密码明文；编辑表单只接收本次用户主动输入的秘密。
-    setEditForm({ remark: account.remark || '', cookie: '', auto_confirm: account.auto_confirm || false, auto_consign: account.auto_consign || false, auto_bargain: account.auto_bargain || false, bargain_soothe_template: account.bargain_soothe_template || '', pause_duration: account.pause_duration || 0, username: account.username || '', login_password: '', show_browser: account.show_browser || false, showLoginPassword: false, clear_password: false });
+    setEditForm({ remark: account.remark || '', cookie: '', auto_confirm: account.auto_confirm || false, auto_consign: account.auto_consign || false, auto_bargain: account.auto_bargain || false, bargain_soothe_template: account.bargain_soothe_template || '', pause_duration: account.pause_duration || 0, username: account.username || '', login_password: '', show_browser: account.show_browser || false, notifications_disabled: account.notifications_disabled || false, showLoginPassword: false, clear_password: false });
     setActiveModal('edit');
     setLongLogin({ loading: true, saving: false, canOpen: false, enabled: false, error: '' });
     // longLoginResult 保存长登录设置读取结果。
-    const [, longLoginResult] = await Promise.allSettled([loadNotificationBindings(account.id), getLongLoginSettings(account.id, { signal: longLoginController.signal })]);
+    const [longLoginResult] = await Promise.allSettled([getLongLoginSettings(account.id, { signal: longLoginController.signal })]);
     if (longLoginRequest !== longLoginSequence.current) return;
     if (longLoginResult.status === 'fulfilled') setLongLogin({ loading: false, saving: false, canOpen: longLoginResult.value.can_open_long_login, enabled: longLoginResult.value.enabled, error: '' });
     else setLongLogin({ loading: false, saving: false, canOpen: false, enabled: false, error: '无法读取闲鱼保存登录信息状态' });
-  }, [clearPasswordTimer, loadNotificationBindings, setActiveModal, setEditForm, setEditingAccount]);
+  }, [clearPasswordTimer, setActiveModal, setEditForm, setEditingAccount]);
 
   /** 切换官方长登录设置。 */
   // handleLongLoginToggleCallback 是长登录设置切换回调。
@@ -245,7 +195,7 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
       // loginInfo 保存登录字段变更补丁。
       const loginInfo = buildAccountLoginInfoUpdate(editingAccount, editForm);
       if (loginInfo) Object.assign(payload, loginInfo);
-      if (shouldSaveNotificationBindings(bindingsLoaded, bindingsDirty)) payload.channel_ids = selectedChannelIds;
+      if (editForm.notifications_disabled !== (editingAccount.notifications_disabled || false)) payload.notifications_disabled = editForm.notifications_disabled;
       if (Object.keys(payload).length > 0) await updateAccountSettings(editingAccount.id, payload);
       setActiveModal(null);
       await loadAccounts();
@@ -253,7 +203,7 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
       // error 保存账号编辑保存失败原因。
       console.error('更新账号失败:', error);
     } finally { setSaving(false); }
-  }, [bindingsDirty, bindingsLoaded, editForm, editingAccount, loadAccounts, selectedChannelIds, saving, setActiveModal]);
+  }, [editForm, editingAccount, loadAccounts, saving, setActiveModal]);
 
   /** 按当前暂停时长重新暂停账号。 */
   // handleRestartPauseCallback 是重新暂停账号回调。
@@ -351,7 +301,6 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   /** 关闭编辑弹窗并取消未完成的子模块请求。 */
   // closeEditModalCallback 是编辑弹窗关闭回调。
   const closeEditModal = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (): Promise<void> => {
-    bindingsAbort.current?.abort();
     longLoginSequence.current += 1;
     longLoginAbort.current?.abort();
     aiAbort.current?.abort();
@@ -371,7 +320,6 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
 
   // cleanupSubmodulesEffect 在 Hook 卸载时取消所有子模块请求。
   useEffect(/* 当前回调同步 React 副作用和资源生命周期。 */ () => /* 当前回调同步 React 副作用和资源生命周期。 */ () => {
-    bindingsAbort.current?.abort();
     longLoginAbort.current?.abort();
     aiAbort.current?.abort();
     passwordAbort.current?.abort();
@@ -379,9 +327,9 @@ export const useAccountSubmodules = ({ editingAccount, setEditingAccount, setAct
   }, [clearPasswordTimer]);
 
   return {
-    longLogin, notifChannels, selectedChannelIds, bindingsLoaded, bindingsLoading, bindingsDirty, bindingsLoadError,
-    aiSettings, agentSupport, agentDirty, saving, passwordLoginView, setAiSettings, updateAgentSupport, setBindingsDirty, setEditForm, openEditModal,
-    closeEditModal, openAIModal, closeAIModal, loadNotificationBindings, toggleNotificationChannel,
+    longLogin,
+    aiSettings, agentSupport, agentDirty, saving, passwordLoginView, setAiSettings, updateAgentSupport, setEditForm, openEditModal,
+    closeEditModal, openAIModal, closeAIModal,
     handleLongLoginToggle, handleSaveAISettings, handleSaveEdit, handleRestartPause, handlePasswordLogin,
     handleCancelPasswordLogin,
   };

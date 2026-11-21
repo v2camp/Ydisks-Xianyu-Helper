@@ -38,8 +38,8 @@ func TestReadSensitiveSettingForAccountAuditsWithoutSecret(t *testing.T) {
 	if saveErr := store.Cookies.Save(ctx, "audit-account", "unb=audit", owner.ID); saveErr != nil {
 		t.Fatal(saveErr)
 	}
-	// setErr 表示写入待审计敏感设置时返回的错误。
-	if setErr := store.Settings.Set(ctx, "ai_api_key", "audit-secret-value"); setErr != nil {
+	// setErr 表示写入待审计用户级敏感设置时返回的错误。
+	if setErr := store.UserSettings.SetForUser(ctx, owner.ID, "ai_api_key", "audit-secret-value"); setErr != nil {
 		t.Fatal(setErr)
 	}
 	// value、readErr 保存敏感设置明文及受控读取错误。

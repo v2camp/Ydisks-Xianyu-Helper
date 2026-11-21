@@ -49,12 +49,12 @@ func newAIGateFixture(t *testing.T, explicitEnabled *int, master *bool) aiGateFi
 		t.Fatal(itemErr)
 	}
 	// keyErr 表示写入测试密钥时不应出现的数据库错误。
-	if keyErr := store.Settings.Set(ctx, "ai_api_key", "sk-gate"); keyErr != nil {
+	if keyErr := setUserAISettingForTest(store, "ai_api_key", "sk-gate"); keyErr != nil {
 		cleanup()
 		t.Fatal(keyErr)
 	}
 	// urlErr 表示写入不可达模型地址时不应出现的数据库错误；接缝生效时该地址永不被访问。
-	if urlErr := store.Settings.Set(ctx, "ai_api_url", "http://127.0.0.1:1"); urlErr != nil {
+	if urlErr := setUserAISettingForTest(store, "ai_api_url", "http://127.0.0.1:1"); urlErr != nil {
 		cleanup()
 		t.Fatal(urlErr)
 	}

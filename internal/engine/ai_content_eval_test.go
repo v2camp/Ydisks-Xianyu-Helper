@@ -310,11 +310,11 @@ func contentStore(t *testing.T, g aiContentEvalGroup, apiURL string) *db.Store {
 	}
 	// 写入模型调用配置：测试密钥与 mock 服务地址。
 	// err 是写入测试 API Key 时的数据库错误。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入 AI API Key 失败: %v", err)
 	}
 	// err 是写入测试 API 地址时的数据库错误。
-	if err := s.Settings.Set(ctx, "ai_api_url", apiURL); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_url", apiURL); err != nil {
 		t.Fatalf("写入 AI API 地址失败: %v", err)
 	}
 	return s

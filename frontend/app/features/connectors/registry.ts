@@ -1,7 +1,6 @@
 import { Bot } from 'lucide-react';
 import type { ElementType } from 'react';
 import { QQ_CONNECTOR_READY_KEYS } from './api';
-import type { NotificationChannelType } from './models';
 
 /** QQ_OPEN_PLATFORM_URL 是管理员创建机器人并获取 AppID 与 AppSecret 的 QQ 开放平台入口。 */
 export const QQ_OPEN_PLATFORM_URL = 'https://q.qq.com/';
@@ -89,16 +88,14 @@ export interface ConnectorMeta {
   notices?: string[];
   /** effectNote 是凭据与开关的生效时机说明。 */
   effectNote: string;
-  /** powersChannelTypes 是该连接器支撑的通知渠道类型，用于渠道与连接器的对应关系。 */
-  powersChannelTypes: NotificationChannelType[];
 }
 
-/** qqBotConnector 是 QQ 官方机器人连接器：系统级凭据供通知渠道复用；入站命令开关与白名单已迁至运营 Agent 页。 */
+/** qqBotConnector 是 QQ 官方机器人连接器：凭据属于当前本地用户，供该用户的全部闲鱼账号与通知渠道复用。 */
 export const qqBotConnector: ConnectorMeta = {
   id: 'qqbot',
   label: 'QQ 机器人',
   icon: Bot,
-  summary: '在系统级配置一次 AppID / AppSecret，通知渠道里新建「QQ 机器人」即可直接复用，无需逐条重复填写。',
+  summary: '当前用户配置一次 AppID / AppSecret，通知渠道与运营 Agent 都复用这份凭据，无需逐条重复填写。',
   fields: [
     // AppID 与 AppSecret 的键名统一引用跨 feature 共享的就绪判定契约，避免同一设置键在多处写字面量而漂移。
     { key: QQ_CONNECTOR_READY_KEYS.appId, label: '机器人 AppID', placeholder: '例如：1020xxxxx', required: true },
@@ -118,35 +115,8 @@ export const qqBotConnector: ConnectorMeta = {
   notices: [
     '官方机器人通道的主动推送有额度限制：同一用户或同一群每月仅 4 条主动消息，被动回复窗口为单聊 60 分钟、群聊 5 分钟。机器人的 openid 与 AppID 绑定，换机器人后通知渠道里的 openid 需重新获取。',
   ],
-  effectNote: '凭据与开关在下次服务重启后生效；网关断开后服务会按指数退避自动重连，无需手动干预。',
-  powersChannelTypes: ['qq'],
+  effectNote: '保存后系统会自动对齐该用户的 QQ 网关连接，通常无需重启服务；网关断开后会按指数退避自动重连。',
 };
 
 /** connectorTypes 是连接器页按顺序渲染的全部连接器定义；新增连接器只需在此追加条目。 */
 export const connectorTypes: ConnectorMeta[] = [qqBotConnector];
-
-/** connectorField 描述连接器写入系统设置时的一个键及其敏感语义。 */
-export interface ConnectorSettingsKey {
-  /** key 是系统设置键名。 */
-  key: string;
-  /** sensitive 表示该键是否走敏感三态写入。 */
-  sensitive: boolean;
-  /** configuredKey 是敏感键的「已配置」派生标记键。 */
-  configuredKey?: string;
-}
-
-/** connectorSettingsKeys 汇总连接器注册表占用的全部系统设置键，供保存草稿与契约测试共用。 */
-export const connectorSettingsKeys = (connectors: ConnectorMeta[]): ConnectorSettingsKey[] => {
-  // keys 保存按注册表顺序展开的字段键与能力键。
-  const keys: ConnectorSettingsKey[] = [];
-  for (const /* connector 是当前遍历的连接器定义。 */ connector of connectors) {
-    for (const /* field 是当前连接器的凭据字段。 */ field of connector.fields) {
-      keys.push({ key: field.key, sensitive: field.sensitive === true, configuredKey: field.configuredKey });
-    }
-    for (const /* capability 是当前连接器的能力定义。 */ capability of connector.capabilities) {
-      keys.push({ key: capability.toggleKey, sensitive: false });
-      if (capability.allowlistKey) keys.push({ key: capability.allowlistKey, sensitive: false });
-    }
-  }
-  return keys;
-};

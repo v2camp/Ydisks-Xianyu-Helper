@@ -72,14 +72,9 @@ func newBotgoQQClient(ctx context.Context, appID, appSecret string) (qqBotClient
 	return &botgoQQClient{api: botgo.NewOpenAPI(credential.AppID, tokenSource)}, nil
 }
 
-// qqCredential 解析 QQ 连接器凭据：优先使用渠道配置，缺失时按渠道所有者回退读取系统连接器设置。
-// ctx 约束设置读取预算；cfgKey 是渠道配置字段名，settingKey 是系统连接器设置键名。
+// qqCredential 读取渠道所有者用户的 QQ 机器人凭据；渠道级凭据已迁移到用户级，不再支持覆盖。
 func (n *Notifier) qqCredential(ctx context.Context, cfg map[string]any, cfgKey, settingKey string, channelUserID int64) string {
-	if // value 是渠道配置内显式填写的凭据；非空时优先使用。
-	value := strings.TrimSpace(strOr(cfg, cfgKey, "")); value != "" {
-		return value
-	}
-	return strings.TrimSpace(n.settingValue(ctx, settingKey, channelUserID))
+	return n.settingValue(ctx, settingKey, channelUserID)
 }
 
 // sendQQ 依据渠道配置把通知发送到 QQ 机器人单聊或群聊。
@@ -91,7 +86,7 @@ func (n *Notifier) sendQQ(ctx context.Context, cfg map[string]any, message strin
 	// appSecret 是机器人接入密钥，来自渠道配置或系统连接器设置，禁止写入日志。
 	appSecret := n.qqCredential(ctx, cfg, "app_secret", "qqbot.app_secret", channelUserID)
 	if appID == "" || appSecret == "" {
-		return fmt.Errorf("qq app_id/app_secret 不完整，请在 QQ 通知渠道或「连接器」页的 QQ 机器人连接器中配置")
+		return fmt.Errorf("qq app_id/app_secret 不完整，请在连接器页的 QQ 机器人配置中填写")
 	}
 	// userOpenID 是平台分配的单聊目标标识；不同 AppID 拿到的 openid 不同。
 	userOpenID := strOr(cfg, "user_openid", "")

@@ -1,5 +1,5 @@
 import type { Dispatch,SetStateAction } from 'react';
-import type { AccountDetail,AIReplySettingsResponse,NotificationChannel } from './api';
+import type { AccountDetail,AIReplySettingsResponse } from './api';
 
 // AccountEditForm 描述账号编辑弹窗中的可编辑字段。
 export interface AccountEditForm {
@@ -23,6 +23,8 @@ export interface AccountEditForm {
   login_password: string;
   // show_browser 表示密码登录时是否展示浏览器窗口。
   show_browser: boolean;
+  // notifications_disabled 表示是否静音该账号的全部通知。
+  notifications_disabled: boolean;
   // showLoginPassword 控制密码输入框是否显示明文。
   showLoginPassword: boolean;
   // clear_password 表示保存时清空服务端密码。
@@ -91,22 +93,6 @@ export interface AccountEditModalProps {
   onPasswordLogin: () => void | Promise<void>;
   // onCancelPasswordLogin 取消当前密码登录会话。
   onCancelPasswordLogin: () => void | Promise<void>;
-  // notifChannels 是可供账号绑定的通知渠道。
-  notifChannels: NotificationChannel[];
-  // selectedChannelIds 是当前已选中的通知渠道 ID。
-  selectedChannelIds: number[];
-  // bindingsLoaded 表示通知绑定是否成功加载。
-  bindingsLoaded: boolean;
-  // bindingsLoading 表示通知渠道和绑定关系正在加载。
-  bindingsLoading: boolean;
-  // bindingsLoadError 是通知绑定加载失败的说明。
-  bindingsLoadError: string;
-  // onRetryBindings 重新加载当前账号的通知绑定。
-  onRetryBindings: () => void | Promise<void>;
-  // onToggleChannel 切换一个通知渠道的选中状态。
-  onToggleChannel: (channelId: number) => void;
-  // onSettingsDirty 标记通知绑定已被用户修改。
-  onSettingsDirty: () => void;
 }
 
 // AccountAISettingsState 是账号列表合并 AI 配置时使用的索引结构；值保留服务端下发的生效值与来源供界面判断。

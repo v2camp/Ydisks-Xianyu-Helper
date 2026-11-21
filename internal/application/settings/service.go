@@ -106,6 +106,8 @@ type AuditRecord struct {
 type Repository interface {
 	// IsSensitiveSettingKey 判断设置键是否属于敏感白名单。
 	IsSensitiveSettingKey(key string) bool
+	// IsUserIntegrationSettingKey 判断设置键是否属于用户级集成配置。
+	IsUserIntegrationSettingKey(key string) bool
 	// SensitiveSettingKeys 返回敏感设置键名，不返回任何秘密值。
 	SensitiveSettingKeys() []string
 	// PublicSystem 返回无需认证展示的系统设置。
@@ -128,6 +130,12 @@ type Repository interface {
 	GetUser(ctx context.Context, userID int64, key string) (string, error)
 	// SetUser 保存指定用户的一项设置。
 	SetUser(ctx context.Context, userID int64, key, value string) error
+	// RedactedUser 返回用户集成配置的脱敏视图，敏感键只回 configured 标记。
+	RedactedUser(ctx context.Context, userID int64) (map[string]string, error)
+	// ApplyUserChanges 原子保存用户级普通设置与敏感变更命令。
+	ApplyUserChanges(ctx context.Context, userID int64, values map[string]string, secrets map[string]SecretChange) error
+	// ReadSensitiveUser 审计后读取用户级敏感设置。
+	ReadSensitiveUser(ctx context.Context, userID int64, key, action, resource string) (string, error)
 	// CheckOwnership 返回账号的非敏感所有者标识。
 	CheckOwnership(ctx context.Context, userID int64, cookieID string) (int64, error)
 	// ListAIReply 返回用户范围内的账号 AI 设置摘要。
@@ -173,6 +181,13 @@ type CredentialCacheInvalidator interface {
 	InvalidateAll()
 }
 
+// UserIntegrationChangeListener 是用户级集成配置写入后的运行时重载端口。
+// 运营 Agent 网关等运行时组件可在写入成功后按用户重建，无需轮询设置表。
+type UserIntegrationChangeListener interface {
+	// OnUserIntegrationChanged 在用户集成配置落库成功后回调；keys 只含本次变更的键名。
+	OnUserIntegrationChanged(ctx context.Context, userID int64, keys []string)
+}
+
 // Service 编排设置读取、校验、审计和持久化，不依赖 HTTP 或数据库类型。
 type Service struct {
 	// repository 提供设置持久化与敏感访问审计能力。
@@ -183,6 +198,8 @@ type Service struct {
 	outboundPolicy OutboundPolicy
 	// credentialCache 是敏感凭据读取缓存的失效端口；nil 表示未接入缓存，写入口不做失效。
 	credentialCache CredentialCacheInvalidator
+	// userIntegrationListener 是用户集成配置写入后的运行时重载端口；nil 表示无运行时组件。
+	userIntegrationListener UserIntegrationChangeListener
 }
 
 // SetCredentialCacheInvalidator 注入敏感凭据缓存失效端口，供组合根装配时调用。
@@ -194,9 +211,23 @@ func (s *Service) SetCredentialCacheInvalidator(invalidator CredentialCacheInval
 	s.credentialCache = invalidator
 }
 
+// SetUserIntegrationChangeListener 注入用户集成配置写入后的运行时重载端口。
+// 传 nil 表示没有运行时组件；本方法只在启动期调用。
+func (s *Service) SetUserIntegrationChangeListener(listener UserIntegrationChangeListener) {
+	if s == nil {
+		return
+	}
+	s.userIntegrationListener = listener
+}
+
 // IsSensitiveSettingKey 判断 HTTP 兼容层中的设置键是否属于敏感白名单。
 func (s *Service) IsSensitiveSettingKey(key string) bool {
 	return s != nil && s.repository != nil && s.repository.IsSensitiveSettingKey(key)
+}
+
+// IsUserIntegrationSettingKey 判断设置键是否属于用户级集成配置。
+func (s *Service) IsUserIntegrationSettingKey(key string) bool {
+	return s != nil && s.repository != nil && s.repository.IsUserIntegrationSettingKey(key)
 }
 
 // NewService 构造设置应用服务。
@@ -244,6 +275,18 @@ func (s *Service) ApplySystemChanges(ctx context.Context, userID int64, values m
 	if len(values) == 0 && len(secrets) == 0 {
 		return validationError("设置不能为空")
 	}
+	// key 是当前待校验的系统设置键；用户集成键不得写入系统级。
+	for key := range values {
+		if s.repository.IsUserIntegrationSettingKey(key) {
+			return validationErrorf("%s 已按本地用户归属，请在连接器页保存", key)
+		}
+	}
+	// key 是当前待拒绝的用户集成敏感键。
+	for key := range secrets {
+		if s.repository.IsUserIntegrationSettingKey(key) {
+			return validationErrorf("%s 已按本地用户归属，请在连接器页保存", key)
+		}
+	}
 	// err 表示普通设置值违反敏感键或键名约束。
 	if err := s.validateValues(values); err != nil {
 		return err
@@ -288,6 +331,9 @@ func (s *Service) SetSystem(ctx context.Context, userID int64, key, value, actio
 	key = strings.TrimSpace(key)
 	if key == "" || len(key) > 100 {
 		return validationError("设置键无效")
+	}
+	if s.repository.IsUserIntegrationSettingKey(key) {
+		return validationErrorf("%s 已按本地用户归属，请在连接器页保存", key)
 	}
 	if s.repository.IsSensitiveSettingKey(key) {
 		// change 是敏感设置的显式三态命令。
@@ -346,6 +392,9 @@ func (s *Service) SetUser(ctx context.Context, userID int64, key, value string) 
 	key = strings.TrimSpace(key)
 	if key == "" || len(key) > 100 {
 		return validationError("设置键无效")
+	}
+	if s.repository.IsUserIntegrationSettingKey(key) {
+		return validationError("集成配置请使用用户集成接口保存")
 	}
 	return s.repository.SetUser(ctx, userID, key, value)
 }
@@ -411,88 +460,6 @@ func (s *Service) UpsertAIReply(ctx context.Context, userID int64, cookieID stri
 	}
 	settings.CookieID = strings.TrimSpace(cookieID)
 	return s.repository.UpsertAIReply(ctx, settings.CookieID, settings)
-}
-
-// ListAIModels 读取远端模型目录，API 密钥使用前必须经过受控读取或审计。
-func (s *Service) ListAIModels(ctx context.Context, userID int64, baseURL, apiKey string) ([]string, error) {
-	// err 表示设置 Port 未装配或用户身份无效。
-	if err := s.validateUser(userID); err != nil {
-		return nil, err
-	}
-	if s.modelClient == nil {
-		return nil, errors.New("AI 模型客户端未初始化")
-	}
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		// err 表示系统 AI 地址读取失败。
-		var err error
-		baseURL, err = s.repository.GetSystem(ctx, "ai_api_url")
-		if err != nil {
-			return nil, err
-		}
-	}
-	if baseURL == "" {
-		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	}
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
-		// err 表示敏感 API 密钥读取或审计失败。
-		var err error
-		apiKey, err = s.repository.ReadSensitiveSystem(ctx, userID, "ai_api_key", "settings.use", "ai_models")
-		if err != nil {
-			return nil, err
-		}
-	} else if // err 表示外部传入 API 密钥的使用审计失败。
-	err := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.use", Resource: "ai_models", Keys: []string{"ai_api_key"}}); err != nil {
-		return nil, err
-	}
-	return s.modelClient.Fetch(ctx, baseURL, apiKey)
-}
-
-// TestAIConnection 发送一次最小对话请求验证 API 地址、密钥和模型的组合。
-// baseURL 和 apiKey 为空时回退到系统设置，与 ListAIModels 的解析逻辑一致。
-func (s *Service) TestAIConnection(ctx context.Context, userID int64, baseURL, apiKey, model string) (AIConnectionTestResult, error) {
-	// err 表示服务依赖或当前用户身份校验失败。
-	if err := s.validateUser(userID); err != nil {
-		return AIConnectionTestResult{}, err
-	}
-	if s.modelClient == nil {
-		return AIConnectionTestResult{}, errors.New("AI 模型客户端未初始化")
-	}
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		// lookupErr 表示读取已保存 AI 服务地址时产生的存储错误。
-		var lookupErr error
-		baseURL, lookupErr = s.repository.GetSystem(ctx, "ai_api_url")
-		if lookupErr != nil {
-			return AIConnectionTestResult{}, lookupErr
-		}
-	}
-	if baseURL == "" {
-		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	}
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
-		// secretErr 表示受控读取已保存 API Key 或写入相应审计时产生的错误。
-		var secretErr error
-		apiKey, secretErr = s.repository.ReadSensitiveSystem(ctx, userID, "ai_api_key", "settings.use", "ai_connection_test")
-		if secretErr != nil {
-			return AIConnectionTestResult{}, secretErr
-		}
-	} else if // auditErr 表示临时 API Key 使用审计未持久化，必须阻止出站请求。
-	auditErr := s.audit(ctx, AuditRecord{UserID: userID, Action: "settings.use", Resource: "ai_connection_test", Keys: []string{"ai_api_key"}}); auditErr != nil {
-		return AIConnectionTestResult{}, auditErr
-	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		// lookupErr 表示读取默认模型名称时产生的存储错误。
-		var lookupErr error
-		model, lookupErr = s.repository.GetSystem(ctx, "ai_model")
-		if lookupErr != nil {
-			return AIConnectionTestResult{}, lookupErr
-		}
-	}
-	return s.modelClient.TestConnection(ctx, baseURL, apiKey, model)
 }
 
 // validateRepository 检查应用服务的基础设施 Port 是否已装配。

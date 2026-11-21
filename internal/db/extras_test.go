@@ -192,8 +192,7 @@ func TestNotifications_GetChannelAndAccountChannels(t *testing.T) {
 		t.Fatalf("GetChannel: %#v err=%v", got, err)
 	}
 
-	// AccountChannels：绑定渠道后查询。
-	s.Notifications.SetBindings(ctx, cid, []int64{chID})
+	// AccountChannels：用户启用渠道即生效，无需账号绑定。
 	// channels、err 用于本次流程后续判断的channels、err
 	channels, err := s.Notifications.AccountChannels(ctx, cid)
 	if err != nil {
@@ -212,8 +211,8 @@ func TestNotifications_GetChannelAndAccountChannels(t *testing.T) {
 	}
 }
 
-// TestNotificationsRejectCrossUserBindings 封装Test通知列表RejectCross用户Bindings业务协调。
-func TestNotificationsRejectCrossUserBindings(t *testing.T) {
+// TestNotificationsAccountChannelsUserScoped 验证账号渠道只取账号所有者已启用的渠道，不跨用户。
+func TestNotificationsAccountChannelsUserScoped(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newTestDB(t)
 	defer cleanup()
@@ -232,35 +231,16 @@ func TestNotificationsRejectCrossUserBindings(t *testing.T) {
 		Name: "own", Type: "webhook", Config: `{}`, Enabled: true, UserID: uid,
 	})
 	// otherCh 用于本次流程后续判断的otherCh
-	otherCh, _ := s.Notifications.CreateChannel(ctx, &NotificationChannelRow{
+	_, _ = s.Notifications.CreateChannel(ctx, &NotificationChannelRow{
 		Name: "other", Type: "webhook", Config: `{}`, Enabled: true, UserID: u2.ID,
 	})
-
-	if // err 用于本次流程后续判断的err
-	err := s.Notifications.SetBindings(ctx, cid, []int64{otherCh}); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("cross-user SetBindings should be forbidden, got %v", err)
-	}
-	if // err 用于本次流程后续判断的err
-	err := s.Notifications.SetBindings(ctx, cid, []int64{ownCh}); err != nil {
-		t.Fatalf("own SetBindings: %v", err)
-	}
-	// 模拟历史脏数据：当前账号绑定到了其他用户渠道，读取侧也必须过滤掉。
-	_, _ = s.DB.ExecContext(ctx, `INSERT INTO message_notifications (cookie_id, channel_id, enabled) VALUES (?, ?, 1)`, cid, otherCh)
-	// bindings、err 用于本次流程后续判断的bindings、err
-	bindings, err := s.Notifications.AccountBindings(ctx, cid)
-	if err != nil {
-		t.Fatalf("AccountBindings: %v", err)
-	}
-	if len(bindings) != 1 || bindings[0] != ownCh {
-		t.Fatalf("bindings should only include own channel: %#v", bindings)
-	}
 	// channels、err 用于本次流程后续判断的channels、err
 	channels, err := s.Notifications.AccountChannels(ctx, cid)
 	if err != nil {
 		t.Fatalf("AccountChannels: %v", err)
 	}
 	if len(channels) != 1 || channels[0].ID != ownCh {
-		t.Fatalf("channels should only include own channel: %#v", channels)
+		t.Fatalf("channels should only include own user channel: %#v", channels)
 	}
 }
 

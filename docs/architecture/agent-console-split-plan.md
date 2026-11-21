@@ -1,5 +1,7 @@
 # Agent 控制台拆分与运营 Agent 对话模块设计
 
+> **归属更新（2026-11-21）**：运营 Agent 改为按本地用户隔离网关与会话；AI/QQ/SMTP 凭据改为用户级。见 `tenant-integration-assets-plan.md`。
+
 > 状态：**已发布（v1.0.42-local-20261120）**。
 > 本文定义「AI 设置 / Agent 中心」两页重拆为「系统设置 + 客服 Agent + 运营 Agent」的信息架构、接口与数据设计；不定义重构阶段，不替代 `docs/architecture/refactoring-master-plan.md`。
 

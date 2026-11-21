@@ -82,12 +82,11 @@ type opsSendMessageResponse struct {
 	Conversation opsConversationDTO `json:"conversation"`
 }
 
-// mountVersionedOpsAgentRoutes 挂载运营 Agent 对话的 `/api/v1` 管理员入口。
+// mountVersionedOpsAgentRoutes 挂载运营 Agent 对话的 `/api/v1` 登录用户入口。
 func (s *Server) mountVersionedOpsAgentRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(s.Auth.Middleware)
 		r.Use(auth.RequireAuth)
-		r.Use(auth.RequireAdmin)
 		r.Get("/api/v1/agent/ops/conversations", s.opsConversations)
 		r.Get("/api/v1/agent/ops/conversations/{id}/messages", s.opsConversationMessages)
 		r.Post("/api/v1/agent/ops/conversations/{id}/messages", s.sendOpsConversationMessage)
@@ -100,8 +99,10 @@ func (s *Server) opsConversations(w http.ResponseWriter, r *http.Request) {
 	page := parsePositiveInt(r.URL.Query().Get("page"), 1)
 	// pageSize 是收敛前的页大小，非法或缺失时使用默认值。
 	pageSize := parsePositiveInt(r.URL.Query().Get("page_size"), 20)
+	// sess 是当前请求的认证会话，用于按用户隔离运营会话。
+	sess := auth.SessionFromContext(r.Context())
 	// result、err 是应用层分页结果及查询错误。
-	result, err := s.opsAgentApplication().List(r.Context(), page, pageSize)
+	result, err := s.opsAgentApplication().List(r.Context(), sess.UserID, page, pageSize)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "读取运营会话失败")
 		return
@@ -129,8 +130,10 @@ func (s *Server) opsConversationMessages(w http.ResponseWriter, r *http.Request)
 	beforeID, _ := strconv.ParseInt(r.URL.Query().Get("before_id"), 10, 64)
 	// limit 是本次请求的条数上限。
 	limit := parsePositiveInt(r.URL.Query().Get("limit"), 50)
+	// sess 是当前请求的认证会话，用于按用户隔离运营消息。
+	sess := auth.SessionFromContext(r.Context())
 	// page、err 是应用层消息页及查询错误。
-	page, err := s.opsAgentApplication().Messages(r.Context(), conversationID, beforeID, limit)
+	page, err := s.opsAgentApplication().Messages(r.Context(), sess.UserID, conversationID, beforeID, limit)
 	if err != nil {
 		writeOpsAgentError(w, err, "读取运营消息失败")
 		return

@@ -2,16 +2,12 @@ import {
 AIReplySettings,
 AIReplySettingsResponse,
 AccountAgentOverride,AccountAgentPresetOption,AccountAgentSupport,
-AccountBindingsResponse,
 AccountDetail,AccountItemOption,AccountSummaryResponse,
 AccountTaskRunResponseEnvelope,
 AccountTaskSettings,
 AccountTaskSettingsResponse,
 CookieProfileResponse,
 CookieSettingsResponse,
-NotificationChannel,
-NotificationChannelResponse,
-NotificationEventType,
 OperationResponse,
 QRLoginGenerateResponse,QRLoginStatusResponse,QRLoginVerificationResponse
 } from './models';
@@ -239,7 +235,7 @@ export interface AccountSettingsUpdate {
   /** login_password 表示登录密码。 */ login_password?: string;
   /** clear_password 表示是否清理登录密码。 */ clear_password?: boolean;
   /** show_browser 表示是否显示浏览器。 */ show_browser?: boolean;
-  /** channel_ids 表示通知渠道标识列表。 */ channel_ids?: number[];
+  /** notifications_disabled 表示是否静音该账号的全部通知。 */ notifications_disabled?: boolean;
 }
 
 // updateAccountSettings 更新账号设置。
@@ -383,52 +379,6 @@ export const updateAccountAISettings = async (cookieId: string, settings: Partia
   return runContractRequest(/* signal 控制账号 AI 设置更新的取消和超时。 */ signal => contractClient.PUT('/api/v1/settings/ai-reply/{cookie_id}', { params: { path: { cookie_id: cookieId } }, body: payload, signal }), options);
 }
 
-
-// parseNotificationEventTypes 解析通知事件类型。
-const parseNotificationEventTypes = (raw: unknown): NotificationEventType[] => {
-  if (Array.isArray(raw)) return raw.filter(Boolean) as NotificationEventType[];
-  if (typeof raw !== 'string' || !raw.trim()) return [];
-  try {
-    // parsed 转换后的数值，用于当前 API 处理流程。
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.filter(Boolean) as NotificationEventType[];
-  } catch {
-    // fall back to legacy comma/semicolon separated values
-  }
-  return raw.split(/[,\s;]+/).map(/* 当前回调用于处理集合元素或接口响应。 */ v => v.trim()).filter(Boolean) as NotificationEventType[];
-};
-
-// getNotificationChannels 读取通知渠道。
-export const getNotificationChannels = async (options?: RequestControlOptions): Promise<{ /** success 表示是否成功。 */ success: boolean; /** data 表示数据。 */ data?: NotificationChannel[] }> => {
-  // result 接口响应结果，用于当前 API 处理流程。
-  const result = await runContractRequest(/* signal 控制账号页通知渠道读取的取消和超时。 */ signal => contractClient.GET('/api/v1/notifications/channels', { signal }), options) as unknown;
-  // channels 通知渠道列表，用于当前 API 处理流程。
-  const channels = collectionFrom<NotificationChannelResponse>(result, ['data', 'channels', 'items']).map(/* 当前回调用于处理集合元素或接口响应。 */ (item: NotificationChannelResponse) => {
-		// parsedConfig 是列表摘要刻意不返回渠道秘密时使用的空编辑初始值。
-		const parsedConfig: Record<string, unknown> = {};
-    // normalizedType 是兼容旧渠道别名后的前端渠道类型。
-    const normalizedType = (item.type === 'ding_talk' ? 'dingtalk' : (item.type === 'lark' ? 'feishu' : item.type)) as NotificationChannel['type'];
-    return {
-      id: String(item.id),
-      name: item.name,
-		type: normalizedType,
-      config: parsedConfig,
-      event_types: parseNotificationEventTypes(item.event_types),
-      enabled: item.enabled,
-    };
-  });
-  return { success: true, data: channels };
-}
-
-
-// 账号 ↔ 渠道 绑定（覆盖式）
-export const getAccountBindings = async (cookieId: string, options?: RequestControlOptions): Promise<number[]> => {
-  // response 是兼容直接绑定对象、data 包裹和 null 的通知绑定响应。
-  const response = await runContractRequest(/* signal 控制账号页通知绑定读取的取消和超时。 */ signal => contractClient.GET('/api/v1/notifications/accounts/{cid}/bindings', { params: { path: { cid: cookieId } }, signal }), options) as unknown;
-  // result 是去除历史包裹后的账号通知绑定对象。
-  const result = objectFrom<Partial<AccountBindingsResponse>>(response, ['data', 'result']) || {};
-  return Array.isArray(result.channel_ids) ? result.channel_ids : [];
-}
 
 // parseAgentPresetOptions 把服务端下发的档位名单归一为 UI 模型；缺少稳定标识的条目无法回传，直接丢弃。
 const parseAgentPresetOptions = (payload: unknown): AccountAgentPresetOption[] => collectionFrom<Record<string, unknown>>(payload, ['presets'])

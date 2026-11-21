@@ -29,6 +29,7 @@ func TestOpenAPIRemainingVersionedSuccessResponses(t *testing.T) {
 	// t.Run 将相互独立的真实 Router 场景隔离，避免各自的数据库状态互相影响。
 	t.Run("initialize", testOpenAPISessionInitializeSuccess)
 	t.Run("long-login", testOpenAPILongLoginSuccess)
+	t.Run("user-integrations", testOpenAPIUserIntegrationsSuccess)
 	t.Run("ai-models", testOpenAPIAIModelsSuccess)
 	t.Run("ai-test", testOpenAPIAITestSuccess)
 	t.Run("cards-batch", testOpenAPICardsBatchSuccess)
@@ -111,6 +112,32 @@ func testOpenAPILongLoginSuccess(t *testing.T) {
 	}
 }
 
+// testOpenAPIUserIntegrationsSuccess 覆盖当前用户集成配置的读取与保存成功响应。
+func testOpenAPIUserIntegrationsSuccess(t *testing.T) {
+	// srv、_、cleanup 分别是服务、无需直接读取的存储和资源释放函数。
+	srv, _, cleanup := newTestServer(t)
+	defer cleanup()
+	// handler 是当前场景的真实 Router。
+	handler := srv.Router()
+	// sessionCookie 是访问用户集成配置所需的认证会话。
+	sessionCookie := loginHelper(t, handler)
+	// getRequest 是读取当前用户集成配置的成功请求。
+	getRequest := httptest.NewRequest(http.MethodGet, "/api/v1/settings/user/integrations", nil)
+	getRequest.AddCookie(sessionCookie)
+	// getRecorder 保存真实读取响应。
+	getRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(getRecorder, getRequest)
+	assertOpenAPIRecordedSuccessResponse(t, getRequest, getRecorder)
+	// putRequest 是保存用户级普通值与敏感命令的成功请求。
+	putRequest := httptest.NewRequest(http.MethodPut, "/api/v1/settings/user/integrations", strings.NewReader(`{"values":{"qqbot.app_id":"contract-app","smtp_server":"smtp.example.com"},"secrets":{"qqbot.app_secret":{"action":"replace","value":"contract-secret"}}}`))
+	putRequest.Header.Set("Content-Type", "application/json")
+	putRequest.AddCookie(sessionCookie)
+	// putRecorder 保存真实保存响应。
+	putRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(putRecorder, putRequest)
+	assertOpenAPIRecordedSuccessResponse(t, putRequest, putRecorder)
+}
+
 // testOpenAPIAIModelsSuccess 覆盖 AI 模型代理的本地成功响应。
 func testOpenAPIAIModelsSuccess(t *testing.T) {
 	// modelServer 模拟兼容 OpenAI 的模型列表端点。
@@ -127,8 +154,8 @@ func testOpenAPIAIModelsSuccess(t *testing.T) {
 	handler := srv.Router()
 	// sessionCookie 是访问管理员模型代理所需的认证会话。
 	sessionCookie := loginHelper(t, handler)
-	// request 是指向本地模型替身的版本化 AI 模型请求。
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/settings/ai-models", strings.NewReader(`{"base_url":"`+modelServer.URL+`","api_key":"test-key"}`))
+	// request 是指向本地模型替身的用户级 AI 模型请求。
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/settings/user/ai-models", strings.NewReader(`{"base_url":"`+modelServer.URL+`","api_key":"test-key"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(sessionCookie)
 	// recorder 保存真实代理成功响应。
@@ -152,8 +179,8 @@ func testOpenAPIAITestSuccess(t *testing.T) {
 	handler := srv.Router()
 	// sessionCookie 是访问管理员连接测试所需的认证会话。
 	sessionCookie := loginHelper(t, handler)
-	// request 是指向本地 chat 替身的版本化 AI 连接测试请求。
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/settings/ai-test", strings.NewReader(`{"base_url":"`+chatServer.URL+`","api_key":"test-key","model":"contract-model"}`))
+	// request 是指向本地 chat 替身的用户级 AI 连接测试请求。
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/settings/user/ai-test", strings.NewReader(`{"base_url":"`+chatServer.URL+`","api_key":"test-key","model":"contract-model"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(sessionCookie)
 	// recorder 保存真实代理成功响应。
@@ -247,33 +274,6 @@ func testOpenAPIChatHistoryAndReadSuccess(t *testing.T) {
 	if messageCount != 0 {
 		t.Fatalf("删除后仍有聊天消息: %d", messageCount)
 	}
-	// channelResult、channelErr 保存删除场景所需通知渠道的插入结果。
-	channelResult, channelErr := store.DB.ExecContext(context.Background(), `INSERT INTO notification_channels (name,type,config,enabled,user_id) VALUES ('contract-delete','webhook','{}',1,1)`)
-	if channelErr != nil {
-		t.Fatalf("创建删除通知渠道失败: %v", channelErr)
-	}
-	// channelID、channelIDErr 保存删除场景通知渠道主键及读取错误。
-	channelID, channelIDErr := channelResult.LastInsertId()
-	if channelIDErr != nil {
-		t.Fatalf("读取删除通知渠道主键失败: %v", channelIDErr)
-	}
-	// notificationResult、notificationErr 保存待删除消息通知夹具的主键及插入结果。
-	notificationResult, notificationErr := store.DB.ExecContext(context.Background(), `INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES ('acc1',?,1)`, channelID)
-	if notificationErr != nil {
-		t.Fatalf("创建消息通知夹具失败: %v", notificationErr)
-	}
-	// notificationID、notificationIDErr 保存消息通知主键及读取错误。
-	notificationID, notificationIDErr := notificationResult.LastInsertId()
-	if notificationIDErr != nil {
-		t.Fatalf("读取消息通知主键失败: %v", notificationIDErr)
-	}
-	// deleteRequest 是删除单条消息通知的版本化请求。
-	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/notifications/messages/"+strconv.FormatInt(notificationID, 10), nil)
-	deleteRequest.AddCookie(sessionCookie)
-	// deleteRecorder 保存删除响应。
-	deleteRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(deleteRecorder, deleteRequest)
-	assertOpenAPIRecordedSuccessResponse(t, deleteRequest, deleteRecorder)
 }
 
 // testOpenAPIChatMetadataSuccess 覆盖快捷回复和按买家 ID 隔离备注的所有版本化成功响应。

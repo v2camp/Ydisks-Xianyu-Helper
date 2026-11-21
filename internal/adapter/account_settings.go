@@ -52,7 +52,7 @@ func (r *AccountSettingsRepository) UpdateSettings(ctx context.Context, input ac
 		AutoConfirm: input.AutoConfirm, AutoConsign: input.AutoConsign, AutoBargain: input.AutoBargain,
 		BargainSootheTemplate: input.BargainSootheTemplate, PauseDuration: input.PauseDuration,
 		Username: input.Username, Password: input.Password,
-		ShowBrowser: input.ShowBrowser, ChannelIDs: input.ChannelIDs,
+		ShowBrowser: input.ShowBrowser, NotificationsDisabled: input.NotificationsDisabled,
 	}
 	// pausedUntil、updateErr 保存数据库返回的暂停截止时间和事务错误。
 	pausedUntil, updateErr := r.store.Cookies.UpdateSettings(ctx, input.AccountID, databaseInput)

@@ -1,11 +1,10 @@
 import { Bell,Check,Clock,Eye,EyeOff,Key,Loader2,MessageSquare,X } from 'lucide-react';
 import React from 'react';
 import { createPortal } from 'react-dom';
-import type { NotificationChannel } from '../api';
 import type { AccountEditForm,AccountEditModalProps } from '../types';
 import { SquareQRCode } from './SquareQRCode';
 
-// AccountEditModal 负责账号备注、暂停、登录信息和通知绑定的编辑界面。
+// AccountEditModal 负责账号备注、暂停、登录信息和通知静音的编辑界面。
 export const AccountEditModal: React.FC<AccountEditModalProps> = ({
   account,
   editForm,
@@ -19,14 +18,6 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
   passwordLoginView,
   onPasswordLogin,
   onCancelPasswordLogin,
-  notifChannels,
-  selectedChannelIds,
-  bindingsLoaded,
-  bindingsLoading,
-  bindingsLoadError,
-  onRetryBindings,
-  onToggleChannel,
-  onSettingsDirty,
 }) => {
   // updateField 用函数式更新避免连续输入事件读取旧表单快照。
   const updateField = <K extends keyof AccountEditForm>(field: K, value: AccountEditForm[K]) => {
@@ -78,36 +69,9 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
   const handleCancelPasswordLogin = () => void onCancelPasswordLogin();
   // handlePasswordLogin 启动密码登录刷新授权。
   const handlePasswordLogin = () => void onPasswordLogin();
-  // handleRetryBindings 重新加载当前账号的通知绑定。
-  const handleRetryBindings = () => void onRetryBindings();
-  // handleChannelClick 切换通知渠道并标记绑定表单已修改。
-  const handleChannelClick = (channelId: number) => {
-    if (!bindingsLoaded) return;
-    onToggleChannel(channelId);
-    onSettingsDirty();
-  };
-  // renderNotificationChannel 渲染单个通知渠道选项。
-  const renderNotificationChannel = (channel: NotificationChannel) => {
-    // checked 表示当前通知渠道是否已被选中。
-    const checked = selectedChannelIds.includes(Number(channel.id));
-    // handleChannelButtonClick 把渠道 ID 绑定到当前选项的点击事件。
-    const handleChannelButtonClick = () => handleChannelClick(Number(channel.id));
-    return (
-      <label key={channel.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors">
-        <button
-          type="button"
-          onClick={handleChannelButtonClick}
-          disabled={!bindingsLoaded}
-          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors flex-shrink-0 ${checked ? 'bg-brand border-brand' : 'bg-white border-gray-300'}`}
-        >
-          {checked && <Check className="w-3.5 h-3.5 text-white" />}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="font-bold text-gray-900 text-sm">{channel.name}</div>
-          <div className="text-xs text-gray-500">{channel.type}{channel.enabled ? '' : ' · 已停用'}</div>
-        </div>
-      </label>
-    );
+  // handleNotificationsDisabledToggle 切换账号级通知静音开关。
+  const handleNotificationsDisabledToggle = () => {
+    updateField('notifications_disabled', !editForm.notifications_disabled);
   };
 
   return createPortal(
@@ -312,22 +276,23 @@ export const AccountEditModal: React.FC<AccountEditModalProps> = ({
             </div>
           </div>
 
-          {(notifChannels.length > 0 || bindingsLoading || bindingsLoadError) && (
-            <div className="border-t border-gray-200 pt-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2"><Bell className="w-5 h-5 text-brand-500" />通知渠道绑定</h3>
-              <p className="text-xs text-gray-500 mb-4">勾选后，该账号的 token 失效、自动恢复失败、风控验证等事件会推送到这些渠道</p>
-              {bindingsLoading && <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" />正在加载通知绑定</div>}
-              {bindingsLoadError && !bindingsLoading && (
-                <div className="mb-3 rounded-xl bg-warning-50 p-3 text-sm text-warning-800 flex items-center justify-between gap-3">
-                  <span>{bindingsLoadError}</span>
-                  <button type="button" className="font-bold whitespace-nowrap" onClick={handleRetryBindings}>重试</button>
-                </div>
-              )}
-              <div className="space-y-2">
-                {notifChannels.map(renderNotificationChannel)}
-              </div>
-            </div>
-          )}
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2"><Bell className="w-5 h-5 text-brand-500" />通知</h3>
+            <p className="text-xs text-gray-500 mb-4">该账号自动接收本地用户的全部启用通知渠道；开启静音后不推送任何事件。</p>
+            <label className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+              <input
+                type="checkbox"
+                className="mt-1"
+                aria-label="静音该账号通知"
+                checked={editForm.notifications_disabled}
+                onChange={handleNotificationsDisabledToggle}
+              />
+              <span>
+                <span className="block text-sm font-bold text-gray-900">静音该账号通知</span>
+                <span className="mt-1 block text-xs text-gray-500">只影响本账号；渠道本身仍在连接器页统一管理。</span>
+              </span>
+            </label>
+          </div>
         </div>
 
         <div className="modal-footer">

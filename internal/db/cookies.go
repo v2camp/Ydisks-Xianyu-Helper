@@ -24,7 +24,7 @@ type Cookies struct {
 }
 
 // AccountSettingsUpdate 表示账号编辑弹窗的一次原子保存。nil 字段保持原值；
-// ChannelIDs 非 nil 时覆盖通知绑定（空切片表示明确解绑全部）。
+// NotificationsDisabled 非 nil 时覆盖账号级通知静音开关，不改变渠道归属。
 // AccountSettingsUpdate 用于本次流程后续判断的账号设置Update
 type AccountSettingsUpdate struct {
 	UserID      int64
@@ -40,7 +40,8 @@ type AccountSettingsUpdate struct {
 	Username              *string
 	Password              *string
 	ShowBrowser           *bool
-	ChannelIDs            *[]int64
+	// NotificationsDisabled 表示是否静音该账号的全部通知；nil 表示保持原值。
+	NotificationsDisabled *bool
 }
 
 // UpdateSettings 在一个事务中更新账号字段及通知绑定，避免前端并行请求只成功一部分。
@@ -140,6 +141,10 @@ func (c *Cookies) UpdateSettings(ctx context.Context, cookieID string, input Acc
 		assignments = append(assignments, "show_browser=?")
 		args = append(args, boolToInt(*input.ShowBrowser))
 	}
+	if input.NotificationsDisabled != nil {
+		assignments = append(assignments, "notifications_disabled=?")
+		args = append(args, boolToInt(*input.NotificationsDisabled))
+	}
 	if len(assignments) > 0 {
 		args = append(args, cookieID, input.UserID)
 		if // err 用于本次流程后续判断的err
@@ -151,41 +156,6 @@ func (c *Cookies) UpdateSettings(ctx context.Context, cookieID string, input Acc
 		if // err 用于本次流程后续判断的err
 		_, err := tx.ExecContext(ctx, `UPDATE automation_pending_tasks SET due_at=0,updated_at=CURRENT_TIMESTAMP WHERE cookie_id=? AND status='pending'`, cookieID); err != nil {
 			return 0, err
-		}
-	}
-	if input.ChannelIDs != nil {
-		if len(*input.ChannelIDs) > 100 {
-			return 0, fmt.Errorf("单个账号最多绑定 100 个通知渠道")
-		}
-		// seen 用于本次流程后续判断的seen
-		seen := make(map[int64]struct{}, len(*input.ChannelIDs))
-		// channelID 表示当前遍历过程中的渠道ID
-		for _, channelID := range *input.ChannelIDs {
-			if // duplicate 用于本次流程后续判断的duplicate
-			_, duplicate := seen[channelID]; duplicate {
-				continue
-			}
-			seen[channelID] = struct{}{}
-			// exists 用于本次流程后续判断的exists
-			var exists bool
-			if // err 用于本次流程后续判断的err
-			err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM notification_channels WHERE id=? AND user_id=?)`, channelID, input.UserID).Scan(&exists); err != nil {
-				return 0, err
-			}
-			if !exists {
-				return 0, ErrForbidden
-			}
-		}
-		if // err 用于本次流程后续判断的err
-		_, err := tx.ExecContext(ctx, `DELETE FROM message_notifications WHERE cookie_id=?`, cookieID); err != nil {
-			return 0, err
-		}
-		// channelID 表示当前遍历过程中的渠道ID
-		for channelID := range seen {
-			if // err 用于本次流程后续判断的err
-			_, err := tx.ExecContext(ctx, `INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES (?,?,1)`, cookieID, channelID); err != nil {
-				return 0, err
-			}
 		}
 	}
 	if // err 用于本次流程后续判断的err

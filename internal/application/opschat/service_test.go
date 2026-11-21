@@ -53,14 +53,14 @@ func (r *repositoryFake) RecordInbound(_ context.Context, record InboundRecord) 
 }
 
 // AppendOutbound 记录出站写入参数并返回预设结果。
-func (r *repositoryFake) AppendOutbound(_ context.Context, conversationID int64, content, preview string, at int64) (Message, Conversation, error) {
+func (r *repositoryFake) AppendOutbound(_ context.Context, _ int64, conversationID int64, content, preview string, at int64) (Message, Conversation, error) {
 	r.appendCalls++
 	r.appendConversationID, r.appendContent, r.appendPreview, r.appendAt = conversationID, content, preview, at
 	return r.appendMessage, r.appendConversation, r.appendErr
 }
 
 // AppendOutboundByTarget 记录按目标写入参数并复用预设结果。
-func (r *repositoryFake) AppendOutboundByTarget(_ context.Context, channel, targetOpenID, content, preview string, at int64) (Message, Conversation, error) {
+func (r *repositoryFake) AppendOutboundByTarget(_ context.Context, _ int64, channel, targetOpenID, content, preview string, at int64) (Message, Conversation, error) {
 	r.appendCalls++
 	r.appendContent, r.appendPreview, r.appendAt = content, preview, at
 	r.inboundRecord.Channel, r.inboundRecord.TargetOpenID = channel, targetOpenID
@@ -68,18 +68,18 @@ func (r *repositoryFake) AppendOutboundByTarget(_ context.Context, channel, targ
 }
 
 // ListConversations 记录分页参数并返回预设结果。
-func (r *repositoryFake) ListConversations(_ context.Context, page, pageSize int) (ConversationPage, error) {
+func (r *repositoryFake) ListConversations(_ context.Context, _ int64, page, pageSize int) (ConversationPage, error) {
 	r.lastListPage, r.lastListPageSize = page, pageSize
 	return r.listPage, r.listErr
 }
 
 // GetConversation 返回预设会话或错误。
-func (r *repositoryFake) GetConversation(_ context.Context, _ int64) (Conversation, error) {
+func (r *repositoryFake) GetConversation(_ context.Context, _ int64, _ int64) (Conversation, error) {
 	return r.conversation, r.getErr
 }
 
 // ListMessages 记录消息分页参数并返回预设结果。
-func (r *repositoryFake) ListMessages(_ context.Context, _ int64, beforeID int64, limit int) (MessagePage, error) {
+func (r *repositoryFake) ListMessages(_ context.Context, _ int64, _ int64, beforeID int64, limit int) (MessagePage, error) {
 	r.lastBeforeID, r.lastLimit = beforeID, int64(limit)
 	return r.listMessagesPage, r.listMessagesErr
 }
@@ -205,7 +205,7 @@ func TestRecordInboundDefaultsChannelAndTime(t *testing.T) {
 	fixed := time.UnixMilli(1_650_000_000_000)
 	service.SetClock(func() time.Time { return fixed })
 	if // inserted、err 是入站记录结果。
-	_, inserted, err := service.RecordInbound(context.Background(), InboundRecord{TargetOpenID: " group-9 ", PlatformMsgID: " m1 ", Content: "hi"}); err != nil || !inserted {
+	_, inserted, err := service.RecordInbound(context.Background(), InboundRecord{UserID: 1, TargetOpenID: " group-9 ", PlatformMsgID: " m1 ", Content: "hi"}); err != nil || !inserted {
 		t.Fatalf("入站记录应成功，实际 inserted=%v err=%v", inserted, err)
 	}
 	if repository.inboundRecord.Channel != "qq" || repository.inboundRecord.TargetOpenID != "group-9" ||
@@ -223,7 +223,7 @@ func TestRecordOutboundTruncatesPreview(t *testing.T) {
 	// content 是超过预览上限的正文。
 	content := strings.Repeat("长", 80)
 	if // _, _, err 是出站记录结果。
-	_, _, err := service.RecordOutbound(context.Background(), OutboundRecord{TargetOpenID: "u", Content: content}); err != nil {
+	_, _, err := service.RecordOutbound(context.Background(), OutboundRecord{UserID: 1, TargetOpenID: "u", Content: content}); err != nil {
 		t.Fatalf("出站记录应成功，实际 %v", err)
 	}
 	// count 是预览实际保留的字符数。
@@ -240,7 +240,7 @@ func TestListNormalizesPagination(t *testing.T) {
 	// service 是待测应用服务。
 	service := NewService(repository, nil)
 	if // _, err 是会话分页结果。
-	_, err := service.List(context.Background(), 0, 1000); err != nil {
+	_, err := service.List(context.Background(), 1, 0, 1000); err != nil {
 		t.Fatalf("会话分页应成功，实际 %v", err)
 	}
 	if repository.lastListPage != 1 || repository.lastListPageSize != maxConversationPageSize {
@@ -249,7 +249,7 @@ func TestListNormalizesPagination(t *testing.T) {
 	// repository.conversation 是消息分页前必须存在的会话。
 	repository.conversation = Conversation{ID: 5}
 	if // _, err 是消息分页结果。
-	_, err := service.Messages(context.Background(), 5, 0, 1000); err != nil {
+	_, err := service.Messages(context.Background(), 1, 5, 0, 1000); err != nil {
 		t.Fatalf("消息分页应成功，实际 %v", err)
 	}
 	if repository.lastLimit != maxMessageLimit {

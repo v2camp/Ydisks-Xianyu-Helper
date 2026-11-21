@@ -24,7 +24,6 @@ func TestClosedDatabaseHandlersCoverReadErrorMappings(t *testing.T) {
 		{name: "default replies", hand: server.listDefaultReplies, req: requestWithServerSession(http.MethodGet, "/default-replies", nil)},
 		{name: "default reply map", hand: server.listDefaultRepliesMap, req: requestWithServerSession(http.MethodGet, "/api/default-replies", nil)},
 		{name: "channels", hand: server.listChannels, req: requestWithServerSession(http.MethodGet, "/notification-channels", nil)},
-		{name: "message notifications", hand: server.listMessageNotifications, req: requestWithServerSession(http.MethodGet, "/message-notifications", nil)},
 		{name: "keywords", hand: server.listKeywords, req: requestWithServerSession(http.MethodGet, "/keywords/cid", map[string]string{"cid": "cid"})},
 		{name: "user settings", hand: server.listUserSettings, req: requestWithServerSession(http.MethodGet, "/user-settings", nil)},
 	}

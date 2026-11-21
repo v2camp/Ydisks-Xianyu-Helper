@@ -110,8 +110,6 @@ func (s *Server) mountSettingsReal(r chi.Router) {
 		r.Get("/system-settings", s.allSettings)
 		r.Put("/system-settings", s.setSettings)
 		r.Put("/system-settings/{key}", s.setSetting)
-		r.Post("/ai-models", s.listAIModels)
-		r.Post("/ai-test", s.testAIConnection)
 	})
 }
 
@@ -120,6 +118,7 @@ func (s *Server) setSettings(w http.ResponseWriter, r *http.Request) {
 	// raw 保存兼容旧客户端和显式 DTO 的原始请求字段。
 	var raw map[string]json.RawMessage
 	// err 是设置请求 JSON 解析错误。
+	// err 表示请求体解析失败或为空。
 	if err := decodeJSON(r, &raw); err != nil || len(raw) == 0 {
 		writeErr(w, http.StatusBadRequest, "请求格式错误")
 		return
@@ -129,15 +128,18 @@ func (s *Server) setSettings(w http.ResponseWriter, r *http.Request) {
 	// secrets 保存敏感设置的显式变更命令。
 	secrets := make(map[string]settingsapp.SecretChange)
 	// valuesRaw 是普通设置对象的原始 JSON；ok 表示请求是否包含该对象。
+	// valuesRaw、ok 是普通设置对象原文与是否存在。
 	if valuesRaw, ok := raw["values"]; ok {
 		// explicitValues 是显式请求中的普通设置字段。
 		var explicitValues map[string]json.RawMessage
 		// err 是普通设置对象解析错误。
+		// err 表示普通设置对象解析失败。
 		if err := json.Unmarshal(valuesRaw, &explicitValues); err != nil {
 			writeErr(w, http.StatusBadRequest, "普通设置格式错误")
 			return
 		}
 		// key 是显式普通设置中的字段名。
+		// key 是当前待校验的普通设置键。
 		for key := range explicitValues {
 			if s.settingsApplication().IsSensitiveSettingKey(key) {
 				writeErr(w, http.StatusBadRequest, "敏感设置必须放入 secrets 命令")
@@ -145,21 +147,25 @@ func (s *Server) setSettings(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// err 是普通设置字段校验错误。
+		// err 表示普通设置值归类失败。
 		if err := collectSystemSettingValues(explicitValues, values, s.settingsApplication().IsSensitiveSettingKey); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
 	// secretsRaw 是敏感设置命令对象的原始 JSON；ok 表示请求是否包含该对象。
+	// secretsRaw、ok 是敏感命令对象原文与是否存在。
 	if secretsRaw, ok := raw["secrets"]; ok {
 		// explicitSecrets 是显式请求中的敏感设置命令。
 		var explicitSecrets map[string]systemSettingSecretChangeRequest
 		// err 是敏感设置命令对象解析错误。
+		// err 表示敏感命令对象解析失败。
 		if err := json.Unmarshal(secretsRaw, &explicitSecrets); err != nil {
 			writeErr(w, http.StatusBadRequest, "敏感设置命令格式错误")
 			return
 		}
 		// key 是敏感设置键；change 是对应的三态命令。
+		// key、change 是当前待解析的敏感键与命令原文。
 		for key, change := range explicitSecrets {
 			key = strings.TrimSpace(key)
 			if !s.settingsApplication().IsSensitiveSettingKey(key) || !validSecretSettingAction(change.Action) || change.Action == "replace" && strings.TrimSpace(change.Value) == "" {
@@ -209,6 +215,111 @@ func (s *Server) setSettings(w http.ResponseWriter, r *http.Request) {
 	// level 是待应用的日志级别；ok 表示请求是否更新日志级别。
 	if level, ok := values["log_level"]; ok {
 		_ = logging.SetLevel(level)
+	}
+	writeJSON(w, http.StatusOK, operationResponse{Success: true})
+}
+
+// getUserIntegrations 返回当前用户的 AI、QQ 与 SMTP 集成配置，敏感键只回 configured 标记。
+func (s *Server) getUserIntegrations(w http.ResponseWriter, r *http.Request) {
+	// sess 保存当前登录用户，用于按用户读取集成配置。
+	sess := authSess(r)
+	if sess == nil {
+		writeErr(w, http.StatusInternalServerError, "审计失败")
+		return
+	}
+	// settings、err 是脱敏后的用户集成配置及读取错误。
+	settings, err := s.settingsApplication().GetUserIntegrations(r.Context(), sess.UserID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "查询失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, newSettingsResponse(settings))
+}
+
+// setUserIntegrations 保存当前用户的集成配置；普通值与敏感三态命令分开提交。
+func (s *Server) setUserIntegrations(w http.ResponseWriter, r *http.Request) {
+	// raw 保存显式 values/secrets 或兼容的顶层普通字段。
+	var raw map[string]json.RawMessage
+	// err 表示请求体解析失败或为空。
+	if err := decodeJSON(r, &raw); err != nil || len(raw) == 0 {
+		writeErr(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	// values 保存普通集成配置值。
+	values := make(map[string]string, len(raw))
+	// secrets 保存敏感集成配置的三态命令。
+	secrets := make(map[string]settingsapp.SecretChange)
+	// valuesRaw、ok 是普通设置对象原文与是否存在。
+	if valuesRaw, ok := raw["values"]; ok {
+		// explicitValues 是显式请求中的普通字段。
+		var explicitValues map[string]json.RawMessage
+		// err 表示普通设置对象解析失败。
+		if err := json.Unmarshal(valuesRaw, &explicitValues); err != nil {
+			writeErr(w, http.StatusBadRequest, "普通设置格式错误")
+			return
+		}
+		// key 是当前待校验的普通设置键。
+		for key := range explicitValues {
+			if !s.settingsApplication().IsUserIntegrationSettingKey(key) || s.settingsApplication().IsSensitiveSettingKey(key) {
+				writeErr(w, http.StatusBadRequest, "集成配置键无效")
+				return
+			}
+		}
+		// err 表示普通设置值归类失败。
+		if err := collectSystemSettingValues(explicitValues, values, s.settingsApplication().IsSensitiveSettingKey); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	// secretsRaw、ok 是敏感命令对象原文与是否存在。
+	if secretsRaw, ok := raw["secrets"]; ok {
+		// explicitSecrets 是显式请求中的敏感三态命令。
+		var explicitSecrets map[string]systemSettingSecretChangeRequest
+		// err 表示敏感命令对象解析失败。
+		if err := json.Unmarshal(secretsRaw, &explicitSecrets); err != nil {
+			writeErr(w, http.StatusBadRequest, "敏感设置命令格式错误")
+			return
+		}
+		// key、change 是当前待解析的敏感键与命令原文。
+		for key, change := range explicitSecrets {
+			key = strings.TrimSpace(key)
+			if !s.settingsApplication().IsUserIntegrationSettingKey(key) || !s.settingsApplication().IsSensitiveSettingKey(key) ||
+				!validSecretSettingAction(change.Action) || change.Action == "replace" && strings.TrimSpace(change.Value) == "" {
+				writeErr(w, http.StatusBadRequest, "敏感设置命令无效")
+				return
+			}
+			secrets[key] = settingsapp.SecretChange{Action: change.Action, Value: change.Value}
+		}
+	}
+	// 兼容前端无秘密时直接提交顶层 values 的形态。
+	for key, rawValue := range raw {
+		if key == "values" || key == "secrets" {
+			continue
+		}
+		if !s.settingsApplication().IsUserIntegrationSettingKey(key) || s.settingsApplication().IsSensitiveSettingKey(key) {
+			writeErr(w, http.StatusBadRequest, "集成配置键无效")
+			return
+		}
+		// err 表示兼容顶层设置归档失败。
+		if err := collectSystemSettingValues(map[string]json.RawMessage{key: rawValue}, values, s.settingsApplication().IsSensitiveSettingKey); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if len(values) == 0 && len(secrets) == 0 {
+		writeErr(w, http.StatusBadRequest, "设置不能为空")
+		return
+	}
+	// sess 保存当前登录用户，用于按用户保存与审计。
+	sess := authSess(r)
+	if sess == nil {
+		writeErr(w, http.StatusInternalServerError, "审计失败")
+		return
+	}
+	// err 表示用户集成配置保存失败。
+	if err := s.settingsApplication().ApplyUserIntegrationChanges(r.Context(), sess.UserID, values, secrets); err != nil {
+		writeSettingsWriteError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, operationResponse{Success: true})
 }

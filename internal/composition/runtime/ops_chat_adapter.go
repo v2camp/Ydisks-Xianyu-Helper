@@ -37,6 +37,8 @@ func opsChatErrorKind(err error) string {
 type opsChatRecorder struct {
 	// service 是运营对话应用服务；nil 时记录操作保持无副作用。
 	service *opschatapp.Service
+	// userID 是消息所属本地用户，决定会话隔离范围。
+	userID int64
 	// logger 记录留痕失败，只带会话主键与错误类别。
 	logger *slog.Logger
 }
@@ -63,7 +65,7 @@ func (r opsChatRecorder) RecordInbound(ctx context.Context, message qqbot.Record
 	target, isGroup := opsChatRecordTarget(message)
 	// stored、inserted、recordErr 是写入后的消息、是否新增与失败原因。
 	stored, inserted, recordErr := r.service.RecordInbound(ctx, opschatapp.InboundRecord{
-		Channel: "qq", TargetOpenID: target, PlatformMsgID: message.MsgID, Content: message.Content,
+		UserID: r.userID, Channel: "qq", TargetOpenID: target, PlatformMsgID: message.MsgID, Content: message.Content,
 		IsGroup: isGroup, At: message.At.UnixMilli(),
 	})
 	if recordErr != nil {
@@ -82,7 +84,7 @@ func (r opsChatRecorder) RecordOutbound(ctx context.Context, message qqbot.Recor
 	target, isGroup := opsChatRecordTarget(message)
 	// stored、conversation、recordErr 是写入后的消息、会话快照与失败原因。
 	_, conversation, recordErr := r.service.RecordOutbound(ctx, opschatapp.OutboundRecord{
-		Channel: "qq", TargetOpenID: target, Content: message.Content, IsGroup: isGroup, At: message.At.UnixMilli(),
+		UserID: r.userID, Channel: "qq", TargetOpenID: target, Content: message.Content, IsGroup: isGroup, At: message.At.UnixMilli(),
 	})
 	if recordErr != nil {
 		r.warn("QQ 运营出站消息记录失败", conversation.ID, recordErr)
@@ -136,16 +138,16 @@ func buildOpsChatSender(store *db.Store, lifecycleContext func() context.Context
 // SendText 读取当前用户的 QQ 凭据并发送纯文本消息。
 // 凭据缺失返回 ErrChannelNotConfigured；平台失败由应用层转换为 ErrSendFailed。
 func (s *opsQQSender) SendText(ctx context.Context, userID int64, targetOpenID string, isGroup bool, content string) error {
-	if s == nil || s.store == nil || s.store.Settings == nil {
+	if s == nil || s.store == nil || s.store.UserSettings == nil {
 		return opschatapp.ErrChannelNotConfigured
 	}
 	// appID 是机器人接入标识；读取失败或缺失按渠道未配置处理。
-	appID, appIDErr := s.store.Settings.Get(ctx, settingQQBotAppID)
+	appID, appIDErr := s.store.UserSettings.GetForUser(ctx, userID, settingQQBotAppID)
 	if appIDErr != nil || strings.TrimSpace(appID) == "" {
 		return opschatapp.ErrChannelNotConfigured
 	}
 	// appSecret 是机器人接入密钥，属敏感键必须带审计读取，禁止写入日志。
-	appSecret, secretErr := s.store.ReadSensitiveSetting(ctx, userID, settingQQBotAppSecret, "settings.use", "qqbot")
+	appSecret, secretErr := s.store.ReadSensitiveUserSetting(ctx, userID, settingQQBotAppSecret, "settings.use", "qqbot")
 	if secretErr != nil || strings.TrimSpace(appSecret) == "" {
 		return opschatapp.ErrChannelNotConfigured
 	}

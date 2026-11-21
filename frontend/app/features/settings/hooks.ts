@@ -1,10 +1,9 @@
 import type React from 'react';
 import { useCallback,useEffect,useRef,useState } from 'react';
 import type { SystemSettings } from './api';
-import { fetchAIModels,getSystemSettings,testAIConnection,updateLoginCredentials,updateSystemSettings,verifySession } from './api';
-import { DEFAULT_AI_API_URL } from './constants';
-import { buildPersistableSettings,createCredentials,createCredentialsMessage,isCurrentAIConnectionTest,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage,validateCredentials } from './state';
-import type { ConnectionTestMessage,CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
+import { getSystemSettings,updateLoginCredentials,updateSystemSettings,verifySession } from './api';
+import { buildPersistableSettings,createCredentials,createCredentialsMessage,isCurrentSettingsRequest,isSettingsAbortError,settingsErrorMessage,validateCredentials } from './state';
+import type { CredentialsForm,CredentialsMessage,SettingsFeatureState,SettingsRequestStatus,SettingsScope } from './types';
 import { appDialog } from '../../../shared/ui/dialog';
 
 /** SCOPE_SAVED_LABELS 是各保存范围对应的成功提示文案，避免新增范围时回落到错误文案。 */
@@ -30,24 +29,14 @@ export interface SettingsSaveFunction {
 
 /** Settings feature 的 Hook 返回值。 */
 export type UseSettingsResult = SettingsFeatureState & {
-  /** 模型选择器 DOM 引用。 */
-  modelPickerRef: React.RefObject<HTMLDivElement | null>;
-  /** 重新加载系统配置与模型。 */
+  /** 重新加载实例级系统配置。 */
   loadSettings: () => void;
-  /** 加载模型列表。 */
-  loadAIModels: (source?: SystemSettings | null, openAfterLoad?: boolean) => void;
-  /** 测试 AI 连接。 */
-  testConnection: () => void;
   /** 保存系统配置；返回是否保存成功，供调用方选择弹窗之外的反馈方式。 */
   handleSave: SettingsSaveFunction;
   /** 保存登录凭据。 */
   handleCredentialsSave: (event: React.FormEvent) => Promise<void>;
   /** 更新配置草稿。 */
   setSettings: React.Dispatch<React.SetStateAction<SystemSettings | null>>;
-  /** 更新模型下拉框状态。 */
-  setModelDropdownOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  /** 更新敏感字段显示状态。 */
-  setShowApiKey: React.Dispatch<React.SetStateAction<boolean>>;
   /** 更新远程秘钥显示状态。 */
   setShowCaptchaSecret: React.Dispatch<React.SetStateAction<boolean>>;
   /** 更新当前密码显示状态。 */
@@ -60,7 +49,7 @@ export type UseSettingsResult = SettingsFeatureState & {
   setCredentialsMessage: React.Dispatch<React.SetStateAction<CredentialsMessage>>;
 };
 
-/** 管理设置草稿、AI 模型和登录凭据的请求与表单状态；scope 决定保存白名单，并限定模型发现与连接测试仅在 AI 范围发起。 */
+/** 管理实例级设置草稿与登录凭据的请求和表单状态；scope 决定保存白名单。 */
 export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   // settings 保存当前系统配置草稿。
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -72,16 +61,6 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   const [saving, setSaving] = useState(false);
   // saveError 保存系统配置保存失败信息。
   const [saveError, setSaveError] = useState('');
-  // aiModels 保存远端模型发现结果。
-  const [aiModels, setAiModels] = useState<string[]>([]);
-  // modelsLoading 表示模型发现请求是否进行中。
-  const [modelsLoading, setModelsLoading] = useState(false);
-  // modelError 保存模型发现失败信息。
-  const [modelError, setModelError] = useState('');
-  // modelDropdownOpen 表示模型选择下拉框是否展开。
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  // showApiKey 控制 AI API Key 是否明文显示。
-  const [showApiKey, setShowApiKey] = useState(false);
   // showCaptchaSecret 控制远程验证秘钥是否明文显示。
   const [showCaptchaSecret, setShowCaptchaSecret] = useState(false);
   // showCurrentPassword 控制当前密码是否明文显示。
@@ -96,10 +75,6 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   const [credentials, setCredentials] = useState<CredentialsForm>(/* 当前回调处理用户交互或异步状态变化。 */ () => createCredentials());
   // requestStatus 表示最近一次设置请求的阶段。
   const [requestStatus, setRequestStatus] = useState<SettingsRequestStatus>('idle');
-  // modelPickerRef 指向模型选择器根节点。
-  const modelPickerRef = useRef<HTMLDivElement>(null);
-  // settingsRef 保存最新配置供稳定回调读取。
-  const settingsRef = useRef<SystemSettings | null>(null);
   // requestSequence 隔离刷新产生的旧响应。
   const requestSequence = useRef(0);
   // requestController 保存当前可取消的设置请求。
@@ -108,21 +83,6 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   const credentialsRequestSequence = useRef(0);
   // credentialsRequestController 保存当前可取消的登录凭据保存请求。
   const credentialsRequestController = useRef<AbortController | null>(null);
-  // modelRequestSequence 隔离模型发现的旧响应，防止其覆盖新配置对应的列表。
-  const modelRequestSequence = useRef(0);
-  // modelRequestController 保存当前模型发现请求的专属取消控制器。
-  const modelRequestController = useRef<AbortController | null>(null);
-  // connectionTestLoading 表示 AI 连接测试是否进行中。
-  const [connectionTestLoading, setConnectionTestLoading] = useState(false);
-  // connectionTestMessage 保存 AI 连接测试结果提示。
-  const [connectionTestMessage, setConnectionTestMessage] = useState<ConnectionTestMessage>(null);
-  // testRequestSequence 隔离连接测试的旧响应。
-  const testRequestSequence = useRef(0);
-  // testRequestController 保存当前连接测试请求的取消控制器。
-  const testRequestController = useRef<AbortController | null>(null);
-
-  // settingsRef 保存最新配置，供稳定的模型加载回调读取。
-  settingsRef.current = settings;
 
   /** 取消当前设置请求并创建新的请求控制器。 */
   const beginRequest = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ () => {
@@ -145,102 +105,10 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
     return { controller, sequence: credentialsRequestSequence.current };
   }, []);
 
-  /** 取消旧模型发现并创建当前唯一有效的模型发现请求。 */
-  const beginModelRequest = useCallback(/* 当前回调封装模型发现独立代次和取消生命周期。 */ () => {
-    modelRequestController.current?.abort();
-    // controller 保存本次模型发现请求的独立取消控制器。
-    const controller = new AbortController();
-    modelRequestController.current = controller;
-    modelRequestSequence.current += 1;
-    return { controller, sequence: modelRequestSequence.current };
-  }, []);
-
-  /** 使当前模型发现请求失效并停止其网络活动。 */
-  const cancelModelRequest = useCallback(/* 当前回调用于设置刷新和组件卸载时终止旧模型请求。 */ () => {
-    modelRequestSequence.current += 1;
-    modelRequestController.current?.abort();
-    modelRequestController.current = null;
-  }, []);
-
-  // loadAIModels 加载当前数据（AIModels）；仅 ai 范围发起模型发现请求。
-  const loadAIModels = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (source?: SystemSettings | null, openAfterLoad = false) => {
-    // system 范围不涉及模型发现，直接返回避免发出无关请求。
-    if (scope !== 'ai') return;
-    // current 是本次模型发现使用的配置快照。
-    const current = source || settingsRef.current;
-    // baseUrl 是兼容模型发现接口的服务地址。
-    const baseUrl = current?.ai_api_url || current?.ai_base_url || DEFAULT_AI_API_URL;
-	// request 保存本次模型发现独立的代次和取消控制器。
-	const request = beginModelRequest();
-    setModelsLoading(true);
-    setModelError('');
-    try {
-      // models 模型列表。
-      const models = await fetchAIModels(baseUrl, current?.ai_api_key || '', { signal: request.controller.signal });
-      if (!isCurrentSettingsRequest(modelRequestSequence.current, request.sequence, request.controller.signal)) return;
-      setAiModels(models);
-      setModelDropdownOpen(openAfterLoad && models.length > 0);
-      if (!current?.ai_model && models.length > 0) {
-        setSettings(/* 当前回调处理用户交互或异步状态变化。 */ previous => previous ? { ...previous, ai_model: models[0] } : previous);
-      }
-    } catch (/* error 保存模型发现请求的失败原因；取消请求不会进入页面错误状态。 */ error) {
-      if (!isCurrentSettingsRequest(modelRequestSequence.current, request.sequence, request.controller.signal) || isSettingsAbortError(error)) return;
-      setAiModels([]);
-      setModelDropdownOpen(false);
-      setModelError(settingsErrorMessage(error, '读取模型失败'));
-    } finally {
-      if (isCurrentSettingsRequest(modelRequestSequence.current, request.sequence, request.controller.signal)) setModelsLoading(false);
-    }
-  }, [beginModelRequest, scope]);
-
-  // testConnection 发送一次最小对话请求验证 AI API 可用性；仅 ai 范围发起连接测试。
-  const testConnection = useCallback(/* 当前回调由用户点击触发，使用取消器与配置快照拒绝旧测试结果。 */ async () => {
-    // system 范围不涉及连接测试，直接返回避免发出无关请求。
-    if (scope !== 'ai') return;
-    // current 是用户点击按钮时的配置草稿，后续响应必须与其保持一致才可显示。
-    const current = settingsRef.current;
-    if (!current || connectionTestLoading) return;
-    // snapshot 绑定本次连接测试的端点、密钥和模型，避免编辑后仍展示旧配置结果。
-    const baseUrl = current.ai_api_url || current.ai_base_url || DEFAULT_AI_API_URL;
-    // apiKey 是本次连接测试使用的临时或已保存 API Key；它只进入请求作用域。
-    const apiKey = current.ai_api_key || '';
-    // model 是本次连接测试使用的模型名称，空值交由服务端回退默认模型。
-    const model = current.ai_model || '';
-    // snapshot 用于在响应到达时确认当前配置没有被编辑。
-    const snapshot = { baseURL: baseUrl, apiKey, model };
-    testRequestController.current?.abort();
-    // controller 只管理本次连接测试，组件卸载或后续测试会取消它。
-    const controller = new AbortController();
-    testRequestController.current = controller;
-    testRequestSequence.current += 1;
-    // sequence 隔离连续点击或卸载后的旧响应。
-    const sequence = testRequestSequence.current;
-    setConnectionTestLoading(true);
-    setConnectionTestMessage(null);
-    try {
-      // result 是服务端确认实际完成一次 chat completion 后返回的诊断摘要。
-      const result = await testAIConnection(baseUrl, apiKey, model, { signal: controller.signal });
-      if (testRequestSequence.current !== sequence || !isCurrentAIConnectionTest(settingsRef.current, snapshot, DEFAULT_AI_API_URL)) return;
-      setConnectionTestMessage({ type: 'success', text: `连接正常 · 模型 ${result.model} · 耗时 ${(result.latency_ms / 1000).toFixed(1)}s · 回复：${result.reply}` });
-    } catch (/* error 是连接测试的上游、网络或取消错误；过期和主动取消请求不展示提示。 */ error) {
-      if (testRequestSequence.current !== sequence || isSettingsAbortError(error)) return;
-      setConnectionTestMessage({ type: 'error', text: settingsErrorMessage(error, '连接失败') });
-    } finally {
-      if (testRequestSequence.current === sequence) setConnectionTestLoading(false);
-    }
-  }, [connectionTestLoading, scope]);
-
   // loadSettings 加载当前数据（设置）。
   const loadSettings = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ () => {
     // request 是本次设置读取的代次与控制器。
     const { controller, sequence } = beginRequest();
-    // testSequence 使重新读取设置前尚未完成的连接测试结果失效。
-    testRequestSequence.current += 1;
-    testRequestController.current?.abort();
-    testRequestController.current = null;
-    setConnectionTestLoading(false);
-    setConnectionTestMessage(null);
-    cancelModelRequest();
     setLoading(true);
     setRequestStatus('loading');
     setLoadError('');
@@ -251,8 +119,6 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) return;
       setSettings(data);
       if (session.username) setCredentials(/* 当前回调处理用户交互或异步状态变化。 */ previous => ({ ...previous, new_username: session.username || '' }));
-      // 模型发现仅归属 AI 设置范围，system 范围加载完成后不再触发该请求。
-      if (scope === 'ai') void loadAIModels(data, false);
       setRequestStatus('success');
     }).catch(/* 当前回调处理用户交互或异步状态变化。 */ error => {
       if (!isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal) || isSettingsAbortError(error)) return;
@@ -262,44 +128,20 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
     }).finally(/* 当前回调处理用户交互或异步状态变化。 */ () => {
       if (isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) setLoading(false);
     });
-  }, [beginRequest, cancelModelRequest, loadAIModels, scope]);
+  }, [beginRequest]);
 
   useEffect(/* 当前回调同步 React 副作用和资源生命周期。 */ () => {
     loadSettings();
     return /* 当前回调处理用户交互或异步状态变化。 */ () => {
       requestController.current?.abort();
       credentialsRequestController.current?.abort();
-      cancelModelRequest();
-      testRequestController.current?.abort();
-      testRequestSequence.current += 1;
-      testRequestController.current = null;
     };
-  }, [cancelModelRequest, loadSettings]);
-
-  useEffect(/* 当前回调同步 React 副作用和资源生命周期。 */ () => {
-    // handlePointerDown 负责点击模型选择器外部时关闭下拉框。
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!modelPickerRef.current?.contains(event.target as Node)) setModelDropdownOpen(false);
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    return /* 当前回调处理用户交互或异步状态变化。 */ () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+  }, [loadSettings]);
 
   // handleSave 提交当前配置草稿并返回保存结果；silentSuccess 让调用方用内联提示替代成功弹窗。
   const handleSave = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (options?: SettingsSaveOptions): Promise<boolean> => {
     // handleSave 提交当前配置草稿并保护过期响应；草稿缺失或正在保存时视为未成功。
     if (!settings || saving) return false;
-    // testSequence 使保存前基于旧草稿发出的连接测试不再影响新的已保存配置。
-    testRequestSequence.current += 1;
-    testRequestController.current?.abort();
-    testRequestController.current = null;
-    setConnectionTestLoading(false);
-    setConnectionTestMessage(null);
-    cancelModelRequest();
-    setAiModels([]);
-    setModelsLoading(false);
-    setModelDropdownOpen(false);
-    setModelError('');
     // request 是本次保存动作的代次与控制器。
     const { controller, sequence } = beginRequest();
     setSaving(true);
@@ -318,7 +160,7 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
     } finally {
       if (isCurrentSettingsRequest(requestSequence.current, sequence, controller.signal)) setSaving(false);
     }
-  }, [beginRequest, cancelModelRequest, saving, scope, settings]);
+  }, [beginRequest, saving, scope, settings]);
 
   // handleCredentialsSave 处理当前用户操作（CredentialsSave）。
   const handleCredentialsSave = useCallback(/* 当前回调封装可复用的交互处理逻辑。 */ async (event: React.FormEvent) => {
@@ -357,11 +199,10 @@ export const useSettings = (scope: SettingsScope): UseSettingsResult => {
   }, [beginCredentialsRequest, credentials]);
 
   return {
-    settings, loading, loadError, saving, saveError, aiModels, modelsLoading, modelError, modelDropdownOpen,
-    showApiKey, showCaptchaSecret, showCurrentPassword, showNewPassword, credentialsSaving, credentialsMessage,
-    credentials, requestStatus, modelPickerRef, loadSettings, loadAIModels: /* source 是可选设置快照；openAfterLoad 指定成功后是否展开下拉列表。 */ (source, openAfterLoad) => void loadAIModels(source, openAfterLoad),
-    testConnection, connectionTestLoading, connectionTestMessage, handleSave, handleCredentialsSave,
-    setSettings, setModelDropdownOpen, setShowApiKey, setShowCaptchaSecret,
+    settings, loading, loadError, saving, saveError,
+    showCaptchaSecret, showCurrentPassword, showNewPassword, credentialsSaving, credentialsMessage,
+    credentials, requestStatus, loadSettings, handleSave, handleCredentialsSave,
+    setSettings, setShowCaptchaSecret,
     setShowCurrentPassword, setShowNewPassword, setCredentials, setCredentialsMessage,
   };
 };

@@ -100,7 +100,7 @@ func NewStore(db *sql.DB, dialect Dialect) *Store {
 		AIReply:           &AIReply{DB: db, Dialect: dialect},
 		Notifications:     &Notifications{DB: db, Dialect: dialect, codec: codec},
 		Settings:          &SystemSettings{DB: db, Dialect: dialect, codec: codec},
-		UserSettings:      &UserSettings{DB: db, Dialect: dialect},
+		UserSettings:      &UserSettings{DB: db, Dialect: dialect, codec: codec},
 		WSMessages:        &WSMessageStore{DB: db},
 		PublishBatches:    &ItemPublishBatches{DB: db},
 		Tokens:            &AccountTokens{DB: db, Dialect: dialect, codec: codec},
@@ -155,8 +155,8 @@ func (s *Store) ReadSensitiveSetting(ctx context.Context, userID int64, key, act
 	return value, nil
 }
 
-// ReadSensitiveSettingForAccount 按账号所有者读取敏感系统设置并记录访问审计。
-// 账号所有者通过非敏感账号 ID 查询得到，调用方无需持有或传递登录 Cookie、密码等凭证字段。
+// ReadSensitiveSettingForAccount 按账号所有者读取敏感设置并记录访问审计。
+// 用户级集成键走用户作用域；其余敏感键保持系统级读取，保证验证码等既有行为不变。
 func (s *Store) ReadSensitiveSettingForAccount(ctx context.Context, cookieID, key, action, resource string) (string, error) {
 	if s == nil || s.Cookies == nil {
 		return "", errors.New("账号凭证存储未初始化")
@@ -165,6 +165,9 @@ func (s *Store) ReadSensitiveSettingForAccount(ctx context.Context, cookieID, ke
 	ownerID, ownerErr := s.Cookies.GetOwnerID(ctx, strings.TrimSpace(cookieID))
 	if ownerErr != nil {
 		return "", fmt.Errorf("读取敏感设置所属账号失败: %w", ownerErr)
+	}
+	if IsUserIntegrationSettingKey(key) {
+		return s.ReadSensitiveUserSetting(ctx, ownerID, key, action, resource)
 	}
 	return s.ReadSensitiveSetting(ctx, ownerID, key, action, resource)
 }

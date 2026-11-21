@@ -108,19 +108,23 @@ describe('frontend navigation routing', () => {
 
     expect(app).toContain('const { isLoggedIn, isAdmin, signOut } = useSession();');
     expect(sessionProvider).toContain('setIsAdmin(response.is_admin === true)');
-    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent', 'ops-agent'];");
+    expect(app).toContain("const adminOnlyRoutes: readonly AppRoute[] = ['settings', 'customer-agent'];");
     expect(app).toContain('adminOnlyRoutes.includes(activeRoute)');
     expect(app).toContain('adminOnlyRoutes.includes(route)');
     expect(shell).toContain('isAdmin ? <Settings /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <CustomerAgent /> : <Dashboard />');
-    expect(shell).toContain('isAdmin ? <OpsAgent onNavigate={onNavigate} /> : <Dashboard />');
+    expect(shell).toContain('isAdmin ? <CustomerAgent onNavigate={onNavigate} /> : <Dashboard />');
+    // 运营 Agent 属于所有登录用户，壳层不再按管理员分流。
+    expect(shell).toContain('case \'ops-agent\': return <OpsAgent onNavigate={onNavigate} />;');
     expect(sidebar).toContain('isAdmin = false');
     expect(sidebar).toContain("...(isAdmin ? [{ id: 'settings'");
     expect(sidebar).toContain("{ id: 'customer-agent', icon: Bot, label: '客服 Agent' }");
-    expect(sidebar).toContain("{ id: 'ops-agent', icon: Radio, label: '运营 Agent' }");
+    // 运营 Agent 在通用菜单中，不再受管理员菜单条件限制。
+    expect(sidebar).toContain("{ id: 'ops-agent', icon: Radio, label: '运营 Agent' },");
     expect(settingsHook).toContain('setLoadError');
-    expect(settingsHook).toContain("scope === 'ai'");
     expect(settingsHook).toContain('buildPersistableSettings(settings, scope)');
+    // 模型与密钥已迁到连接器页，系统设置 Hook 不再发起模型发现或连接测试。
+    expect(settingsHook).not.toContain('loadAIModels');
+    expect(settingsHook).not.toContain('testConnection');
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);
 
   test('admin configuration pages each own a distinct route mapping', () => {
@@ -195,28 +199,19 @@ describe('frontend navigation routing', () => {
     expect(opsAgent).toContain('启用运营 Agent（QQ 入站）');
   } /* 测试回调断言 QQ 入站命令开关与白名单已从连接器迁到运营 Agent 页。 */);
 
-  test('email notification config separates system and custom SMTP modes', () => {
+  test('email notification config uses the current user integration SMTP', () => {
     const notifications = readFrontendFile('app/features/connectors/pages/Connectors.tsx'); /* notifications 表示连接器页源码。 */
     const notificationState = readFrontendFile('app/features/connectors/state.ts'); /* notificationState 表示连接器页纯函数源码。 */
     const notificationModal = readFrontendFile('app/features/connectors/components/NotificationChannelModal.tsx'); /* notificationModal 表示渠道编辑弹窗源码。 */
 
-    expect(notifications).toContain('interface ConnectorsProps');
-    // smtpIndex 是 SMTP 面板在页面源码中的位置。
-    const smtpIndex = notifications.indexOf('<NotificationSmtpSettings');
-    // gateIndex 是系统级分区唯一的管理员条件位置，平台连接器与 SMTP 共用这一道门禁。
-    const gateIndex = notifications.indexOf('{isAdmin && (');
-    expect(smtpIndex).toBeGreaterThan(-1);
-    // 系统级配置只应有一处管理员条件：拆成两处说明分区被重新打散，缺失说明普通用户会看到系统配置。
-    expect(notifications.match(/\{isAdmin && \(/g)).toHaveLength(1);
-    expect(gateIndex).toBeGreaterThan(-1);
-    // 平台连接器与 SMTP 面板都落在同一道门禁之后，说明两者同属系统级分区。
-    expect(notifications.indexOf('<ConnectorCard')).toBeGreaterThan(gateIndex);
-    expect(smtpIndex).toBeGreaterThan(gateIndex);
-    // 包裹 SMTP 面板的异步容器也在管理员条件之后，说明加载与错误态同样不会暴露给普通用户。
-    expect(notifications.lastIndexOf('<AsyncSection', smtpIndex)).toBeGreaterThan(gateIndex);
+    // SMTP 面板与用户集成配置都直接渲染给当前用户，不再有管理员门禁。
+    expect(notifications).toContain('<NotificationSmtpSettings');
+    expect(notifications).toContain('useUserIntegrations');
+    expect(notifications).not.toContain('isAdmin');
     expect(notificationState).toContain("key: 'to_email'");
-    expect(notificationModal).toContain('完整继承系统 SMTP');
-    expect(notificationModal).toContain('use_custom_smtp');
+    expect(notificationModal).toContain('邮件渠道使用');
+    // 渠道弹窗不再出现独立 SMTP 模式或 SMTP 凭据字段。
+    expect(notificationModal).not.toContain('use_custom_smtp');
     expect(notificationState).not.toContain("key: 'from'");
     expect(notifications).not.toContain('注册验证码');
   } /* 测试回调断言已登录应用的路由、访问控制或延迟加载契约。 */);

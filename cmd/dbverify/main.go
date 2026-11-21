@@ -149,18 +149,14 @@ func main() {
 	}
 	fmt.Printf("✅ 追加卡密 %d 个\n", added)
 
-	// 8) 通知渠道 + 绑定（dialectUpsert）
+	// 8) 通知渠道（渠道归属本地用户，账号自动接收全部启用渠道）
 	chID, err := store.Notifications.CreateChannel(ctx, &db.NotificationChannelRow{
 		Name: "测试渠道", Type: "webhook", Config: `{"webhook_url":"http://x"}`, Enabled: false, UserID: userID,
 	})
 	if err != nil {
 		fail("❌ 创建通知渠道失败: %v\n", err)
 	}
-	if // err 用于本次流程后续判断的err
-	err := store.Notifications.SetBindings(ctx, accountID, []int64{chID}); err != nil {
-		fail("❌ 绑定通知渠道失败: %v\n", err)
-	}
-	fmt.Printf("✅ 通知渠道 + 绑定 OK (channel=%d)\n", chID)
+	fmt.Printf("✅ 通知渠道 OK (channel=%d)\n", chID)
 
 	// 9) 自动化规则（TryStartRun 用 INSERT IGNORE + UNIQUE 防重）
 	ruleID, err := store.Automation.Create(ctx, db.AutomationRuleInput{
@@ -314,7 +310,6 @@ func cleanupVerifyData(ctx context.Context, store *db.Store, ids verifyIDs) erro
 		{`DELETE FROM automation_runs WHERE trigger_key=? OR cookie_id=?`, []any{ids.orderID, ids.accountID}},
 		{`DELETE FROM automation_rule_actions WHERE rule_id IN (SELECT id FROM automation_rules WHERE cookie_id=? OR user_id=?)`, []any{ids.accountID, userID}},
 		{`DELETE FROM automation_rules WHERE cookie_id=? OR user_id=?`, []any{ids.accountID, userID}},
-		{`DELETE FROM message_notifications WHERE cookie_id=? OR channel_id IN (SELECT id FROM notification_channels WHERE user_id=? AND name=?)`, []any{ids.accountID, userID, "测试渠道"}},
 		{`DELETE FROM notification_channels WHERE user_id=? AND name=?`, []any{userID, "测试渠道"}},
 		{`DELETE FROM cards WHERE user_id=? AND name=?`, []any{userID, "测试卡组"}},
 		{`DELETE FROM item_info WHERE cookie_id=? AND item_id=?`, []any{ids.accountID, ids.itemID}},

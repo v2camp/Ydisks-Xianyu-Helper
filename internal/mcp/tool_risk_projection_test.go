@@ -112,7 +112,7 @@ func TestDestructiveToolSetSizeFrozen(t *testing.T) {
 		}
 	}
 	// want 是标注危险等级之前就有的破坏性工具数量，本阶段必须保持不变。
-	const want = 39
+	const want = 37
 	if destructiveCount != want {
 		t.Fatalf("破坏性工具数量发生变化：got=%d want=%d", destructiveCount, want)
 	}

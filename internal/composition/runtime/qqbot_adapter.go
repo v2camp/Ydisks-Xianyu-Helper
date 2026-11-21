@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -364,10 +365,12 @@ func (r qqIdentityResolver) AdminUserID(ctx context.Context) (int64, error) {
 	return admin.ID, nil
 }
 
-// qqAuthorizer 依据系统设置判断入站命令是否对当前发送者开放。
+// qqAuthorizer 依据用户级设置判断入站命令是否对当前发送者开放。
 type qqAuthorizer struct {
-	// store 提供系统设置读取。
+	// store 提供用户级设置读取。
 	store *db.Store
+	// userID 是网关所属本地用户，决定开关与白名单归属。
+	userID int64
 	// logger 记录设置读取失败，避免静默拒绝。
 	logger *slog.Logger
 }
@@ -403,15 +406,15 @@ func (a qqAuthorizer) Allowed(ctx context.Context, openID string) bool {
 	return false
 }
 
-// readSetting 读取系统设置并在失败时记录告警。
+// readSetting 读取用户级设置并在失败时记录告警。
 func (a qqAuthorizer) readSetting(ctx context.Context, key string) (string, error) {
-	if a.store == nil || a.store.Settings == nil {
-		return "", fmt.Errorf("系统设置仓储未装配")
+	if a.store == nil || a.store.UserSettings == nil {
+		return "", fmt.Errorf("用户设置仓储未装配")
 	}
 	// raw 是设置原文。
-	raw, err := a.store.Settings.Get(ctx, key)
+	raw, err := a.store.UserSettings.GetForUser(ctx, a.userID, key)
 	if err != nil && a.logger != nil {
-		a.logger.Warn("QQ 入站命令读取设置失败", "key", key, "err", err)
+		a.logger.Warn("QQ 入站命令读取设置失败", "key", key, "user_id", a.userID, "err", err)
 	}
 	return raw, err
 }
@@ -428,12 +431,7 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 	if clock == nil {
 		clock = time.Now
 	}
-	// authorizer 依据系统设置决定是否开放命令。
-	authorizer := qqAuthorizer{store: dependencies.Store, logger: dependencies.Logger}
-	if !authorizer.Enabled(ctx) {
-		return nil
-	}
-	// userID 是命令使用的固定管理员身份；解析失败时不得启动网关。
+	// userID 是命令使用的固定本地用户身份；解析失败时不得启动网关。
 	userID, err := qqIdentityResolver{store: dependencies.Store}.AdminUserID(ctx)
 	if err != nil {
 		if dependencies.Logger != nil {
@@ -441,10 +439,15 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 		}
 		return nil
 	}
+	// authorizer 依据该用户的设置决定是否开放命令。
+	authorizer := qqAuthorizer{store: dependencies.Store, userID: userID, logger: dependencies.Logger}
+	if !authorizer.Enabled(ctx) {
+		return nil
+	}
 	// appID 是机器人接入标识；缺失时不得启动网关。
-	appID, _ := dependencies.Store.Settings.Get(ctx, settingQQBotAppID)
+	appID, _ := dependencies.Store.UserSettings.GetForUser(ctx, userID, settingQQBotAppID)
 	// appSecret 是机器人接入密钥，属敏感键必须带审计读取，禁止写入日志。
-	appSecret, secretErr := dependencies.Store.ReadSensitiveSetting(ctx, userID, settingQQBotAppSecret, "settings.use", "qqbot")
+	appSecret, secretErr := dependencies.Store.ReadSensitiveUserSetting(ctx, userID, settingQQBotAppSecret, "settings.use", "qqbot")
 	if strings.TrimSpace(appID) == "" || secretErr != nil || strings.TrimSpace(appSecret) == "" {
 		if dependencies.Logger != nil {
 			dependencies.Logger.Warn("QQ 入站命令未启用：机器人凭据不完整")
@@ -474,15 +477,13 @@ func NewQQBotGateway(ctx context.Context, dependencies QQBotDependencies) *qqbot
 	gateway := qqbot.NewGateway(appID, appSecret, service)
 	// 运营对话服务已装配时注入留痕端口；未装配时保持 nil，命令行为不变。
 	if dependencies.OpsChat != nil {
-		gateway.SetRecorder(opsChatRecorder{service: dependencies.OpsChat, logger: dependencies.Logger})
+		gateway.SetRecorder(opsChatRecorder{service: dependencies.OpsChat, userID: userID, logger: dependencies.Logger})
 	}
 	return gateway
 }
 
-// addQQBotGatewayComponent 在入站命令启用时把 QQ 网关登记为生命周期组件。
-// coordinator 提供进程生命周期上下文与组件登记能力；infrastructure 提供数据库与日志；
-// ports 是已完成构造的应用服务引用；ping 探测数据库连通性。
-// 未启用或凭据不完整时不登记任何组件，返回 nil，保证默认零外部连接。
+// addQQBotGatewayComponent 把用户级 QQ 网关管理器登记为生命周期组件。
+// 管理器按用户配置启停网关，未配置或关闭的用户不会产生任何外部连接。
 func addQQBotGatewayComponent(coordinator *lifecycle.Coordinator, infrastructure RuntimeInfrastructure, ports composition.TransportPorts, ping func(context.Context) error) error {
 	if coordinator == nil || infrastructure.Store == nil {
 		return nil
@@ -492,29 +493,171 @@ func addQQBotGatewayComponent(coordinator *lifecycle.Coordinator, infrastructure
 	if ctx == nil {
 		return nil
 	}
-	// gateway 是装配出的入站网关；nil 表示未启用。
-	gateway := NewQQBotGateway(ctx, QQBotDependencies{
+	// dependencies 是每个用户网关共享的窄依赖集合。
+	dependencies := QQBotDependencies{
 		Store: infrastructure.Store, Analytics: ports.Analytics, Summaries: ports.AccountSummaries,
 		Chat: ports.Chat, AccountRuntime: ports.AccountRuntime, Issues: ports.AutomationIssues,
 		DatabaseHealth: ping, Logger: infrastructure.Logger, OpsChat: ports.OpsChat,
-	})
-	if gateway == nil {
-		return nil
 	}
-	// addErr 是生命周期组件登记失败原因；网关自带阻塞循环，故用 goroutine 启动。
-	if addErr := coordinator.Add(lifecycle.NamedComponent{Name: "qqbot-gateway", Component: lifecycle.FuncComponent{
-		StartFunc: /* 网关在生命周期上下文内持续重连运行，直到进程关闭。 */ func(ctx context.Context) error {
-			go func() {
-				// 单次 Run 退出后由退避守护接管重连；否则一次网络抖动或凭据错误会让入站命令永久失效。
-				serveWithRestart(ctx, "QQ 入站网关", gateway, infrastructure.Logger)
-			}()
+	// manager 是用户级 QQ 网关的唯一拥有者。
+	manager := qqbot.NewManager(
+		qqUserConfigSource{store: infrastructure.Store},
+		/* build 按用户配置构造独立网关。 */ func(ctx context.Context, cfg qqbot.ManagedUserConfig) (*qqbot.Gateway, error) {
+			return buildQQBotGatewayForUser(ctx, cfg, dependencies)
+		},
+		infrastructure.Logger,
+		15*time.Second,
+	)
+	if ports.Settings != nil {
+		ports.Settings.SetUserIntegrationChangeListener(qqManagerListener{manager: manager})
+	}
+	// addErr 是生命周期组件登记失败原因。
+	if addErr := coordinator.Add(lifecycle.NamedComponent{Name: "qqbot-manager", Component: lifecycle.FuncComponent{
+		StartFunc: manager.Start,
+		CloseFunc: /* 停止所有用户网关并等待运行协程退出。 */ func(context.Context) error {
+			manager.Stop()
 			return nil
 		},
-		CloseFunc:/* 网关随生命周期上下文取消而退出，无额外资源需要释放。 */ func(context.Context) error { return nil },
 	}}); addErr != nil {
-		return fmt.Errorf("登记 QQ 入站网关生命周期组件失败: %w", addErr)
+		return fmt.Errorf("登记 QQ 用户网关管理器失败: %w", addErr)
 	}
 	return nil
+}
+
+// fixedIdentity 把网关所属用户作为命令执行身份，避免回落到全局管理员。
+type fixedIdentity int64
+
+// AdminUserID 返回网关所属用户标识。
+func (f fixedIdentity) AdminUserID(context.Context) (int64, error) {
+	if f <= 0 {
+		return 0, fmt.Errorf("QQ 网关缺少用户身份")
+	}
+	return int64(f), nil
+}
+
+// buildQQBotGatewayForUser 为单个本地用户构造独立 QQ 网关。
+func buildQQBotGatewayForUser(ctx context.Context, cfg qqbot.ManagedUserConfig, dependencies QQBotDependencies) (*qqbot.Gateway, error) {
+	if cfg.UserID <= 0 || strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
+		return nil, fmt.Errorf("QQ 用户网关配置不完整")
+	}
+	// catalog 是平台内置能力目录；构造失败时不得启动网关。
+	catalog, catalogErr := capability.PlatformCatalog()
+	if catalogErr != nil {
+		return nil, fmt.Errorf("平台能力目录构造失败: %w", catalogErr)
+	}
+	// authorizer 依据该用户的开关与白名单放行命令。
+	authorizer := qqAuthorizer{store: dependencies.Store, userID: cfg.UserID, logger: dependencies.Logger}
+	// service 是该用户独立命令服务。
+	service := qqbot.NewService(
+		qqSalesReader{analytics: dependencies.Analytics, summaries: dependencies.Summaries, clock: dependencies.Clock},
+		qqHealthReader{store: dependencies.Store, summaries: dependencies.Summaries, runtime: dependencies.AccountRuntime, issues: dependencies.Issues, ping: dependencies.DatabaseHealth, clock: dependencies.Clock},
+		qqChatReader{chat: dependencies.Chat, summaries: dependencies.Summaries},
+		fixedIdentity(cfg.UserID),
+		authorizer,
+		qqbot.NewCatalogPolicy(catalog),
+	)
+	service.SetClock(dependencies.Clock)
+	// gateway 是该用户独立入站网关。
+	gateway := qqbot.NewGateway(cfg.AppID, cfg.AppSecret, service)
+	if dependencies.OpsChat != nil {
+		gateway.SetRecorder(opsChatRecorder{service: dependencies.OpsChat, userID: cfg.UserID, logger: dependencies.Logger})
+	}
+	return gateway, nil
+}
+
+// qqManagerListener 在用户集成配置写入后触发网关对齐。
+type qqManagerListener struct {
+	// manager 是用户网关管理器。
+	manager *qqbot.Manager
+}
+
+// OnUserIntegrationChanged 只对 QQ 相关键触发对齐，避免无关设置写入重建网关。
+func (l qqManagerListener) OnUserIntegrationChanged(ctx context.Context, _ int64, keys []string) {
+	if l.manager == nil {
+		return
+	}
+	// key 是当前待判定的设置键。
+	for _, key := range keys {
+		if strings.HasPrefix(key, "qqbot.") {
+			// err 表示 QQ 网关对齐失败。
+			if err := l.manager.Reconcile(ctx); err != nil {
+				// 对齐失败由管理器的定期兜底重试，不向设置写入方返回错误。
+				_ = err
+			}
+			return
+		}
+	}
+}
+
+
+// qqUserConfigSource 从用户级设置读取所有应运行的 QQ 网关期望状态。
+type qqUserConfigSource struct {
+	// store 提供用户列表与用户级设置读取。
+	store *db.Store
+}
+
+// 编译期断言：配置源必须满足 qqbot 管理器的窄端口。
+var _ qqbot.ConfigSource = qqUserConfigSource{}
+
+// ListManagedUsers 返回已启用、凭据完整且白名单非空的用户网关配置。
+func (s qqUserConfigSource) ListManagedUsers(ctx context.Context) ([]qqbot.ManagedUserConfig, error) {
+	if s.store == nil || s.store.DB == nil || s.store.UserSettings == nil {
+		return nil, fmt.Errorf("QQ 用户配置源未初始化")
+	}
+	// activeExpr 按方言归一用户启用状态。
+	activeExpr := "COALESCE(is_active,1) <> 0"
+	if s.store.Dialect == db.DialectPostgres {
+		activeExpr = "COALESCE(is_active,TRUE) = TRUE"
+	}
+	// rows 是全部启用用户 ID。
+	rows, err := s.store.DB.QueryContext(ctx, `SELECT id FROM users WHERE `+activeExpr+` ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	// userIDs 保存当前启用用户。
+	userIDs := make([]int64, 0)
+	for rows.Next() {
+		// id 是当前启用用户主键。
+		var id int64
+		// err 表示扫描当前用户主键失败。
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, id)
+	}
+	// err 表示遍历用户结果集失败。
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// configs 保存满足条件的用户网关配置。
+	configs := make([]qqbot.ManagedUserConfig, 0, len(userIDs))
+	// userID 是当前待检查的启用用户。
+	for _, userID := range userIDs {
+		// enabled 是该用户的入站命令总开关。
+		enabled, readErr := s.store.UserSettings.GetForUser(ctx, userID, settingQQBotCommandsEnabled)
+		if readErr != nil || !isTruthySetting(enabled) {
+			continue
+		}
+		// appID 是机器人接入标识；缺失时跳过该用户。
+		appID, appIDErr := s.store.UserSettings.GetForUser(ctx, userID, settingQQBotAppID)
+		if appIDErr != nil || strings.TrimSpace(appID) == "" {
+			continue
+		}
+		// appSecret 是敏感密钥，只在本方法内短暂存在，禁止写入日志。
+		appSecret, secretErr := s.store.ReadSensitiveUserSetting(ctx, userID, settingQQBotAppSecret, "settings.use", "qqbot_manager")
+		if secretErr != nil || strings.TrimSpace(appSecret) == "" {
+			continue
+		}
+		// openIDs 是白名单原文；空白名单仍启动网关但拒绝所有发送者，保持既有语义。
+		openIDs, _ := s.store.UserSettings.GetForUser(ctx, userID, settingQQBotCommandOpenIDs)
+		// fingerprint 只保存哈希，避免把密钥写入可观察状态。
+		fingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.TrimSpace(appID)+"\x00"+strings.TrimSpace(appSecret)+"\x00"+openIDs)))
+		configs = append(configs, qqbot.ManagedUserConfig{
+			UserID: userID, AppID: strings.TrimSpace(appID), AppSecret: strings.TrimSpace(appSecret), Fingerprint: fingerprint,
+		})
+	}
+	return configs, nil
 }
 
 // currentClockTime 返回当前时刻；未注入时间源时回落系统时间。

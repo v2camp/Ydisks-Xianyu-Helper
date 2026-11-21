@@ -40,8 +40,8 @@ type SettingsUpdateInput struct {
 	Password *string
 	// ShowBrowser 是可选的密码登录浏览器显示开关。
 	ShowBrowser *bool
-	// ChannelIDs 是可选的通知渠道绑定集合；空切片表示解绑全部渠道。
-	ChannelIDs *[]int64
+	// NotificationsDisabled 是账号级通知静音开关；nil 表示保持原值。
+	NotificationsDisabled *bool
 }
 
 // LoginInfoUpdateInput 是账号登录信息用例的输入，不暴露既有密码读取能力。

@@ -117,15 +117,15 @@ func readModelConfigFromDB(ctx context.Context, store *db.Store) (ModelConfig, e
 		return ModelConfig{}, fmt.Errorf("读取数据库模型密钥失败: %w", err)
 	}
 	if strings.TrimSpace(apiKey) == "" {
-		return ModelConfig{}, errors.New("数据库未配置模型密钥（ai_api_key），请在系统设置中配置或改用 EVAL_API_KEY")
+		return ModelConfig{}, errors.New("数据库未配置模型密钥（ai_api_key），请在连接器页为账号所有者配置或改用 EVAL_API_KEY")
 	}
-	// baseURL、readErr 是数据库中的接口地址与本次读取的失败原因。
-	baseURL, readErr := store.Settings.Get(ctx, "ai_api_url")
+	// baseURL、readErr 是账号所有者用户级接口地址与本次读取的失败原因。
+	baseURL, readErr := store.GetUserSettingForAccount(ctx, cookieID, "ai_api_url")
 	if readErr != nil {
 		return ModelConfig{}, fmt.Errorf("读取数据库模型地址失败: %w", readErr)
 	}
-	// model 是数据库中的模型名；readErr 复用为本次读取的失败原因。
-	model, readErr := store.Settings.Get(ctx, "ai_model")
+	// model 是账号所有者用户级模型名；readErr 复用为本次读取的失败原因。
+	model, readErr := store.GetUserSettingForAccount(ctx, cookieID, "ai_model")
 	if readErr != nil {
 		return ModelConfig{}, fmt.Errorf("读取数据库模型名失败: %w", readErr)
 	}

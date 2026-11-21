@@ -30,6 +30,8 @@ export interface AccountDetail {
   login_password_configured?: boolean;
   /** 是否在密码登录时显示浏览器。 */
   show_browser?: boolean;
+  /** 是否静音该账号的全部通知。 */
+  notifications_disabled?: boolean;
   // Frontend helpers
   /** 平台账号昵称。 */
   nickname?: string;
@@ -161,48 +163,6 @@ export interface AIReplySettings {
   custom_prompts: string;
 }
 
-/** 由当前 feature adapter 归一后的 NotificationChannelType UI 模型；不直接暴露 HTTP DTO。 */
-export type NotificationChannelType = 'dingtalk' | 'feishu' | 'bark' | 'webhook' | 'wechat' | 'telegram' | 'email';
-/** 由当前 feature adapter 归一后的 NotificationEventType UI 模型；不直接暴露 HTTP DTO。 */
-export type NotificationEventType =
-  | 'account_offline'
-  | 'account_recovered'
-  | 'account_disabled'
-  | 'security_verification'
-  | 'token_renewal'
-  | 'delivery_result'
-  | 'manual_intervention_required'
-  | 'system_error';
-
-/** 由当前 feature adapter 归一后的 NotificationChannel UI 模型；不直接暴露 HTTP DTO。 */
-export interface NotificationChannel {
-  /** 通知渠道标识。 */
-  id: string;
-  /** 通知渠道名称。 */
-  name: string;
-  /** 通知渠道类型。 */
-  type: NotificationChannelType;
-  /** 通知渠道配置。 */
-  config: Record<string, unknown>;
-  /** 渠道绑定的事件类型。 */
-  event_types?: NotificationEventType[];
-  /** 通知渠道是否启用。 */
-  enabled: boolean;
-  /** 创建时间。 */
-  created_at?: string;
-  /** 更新时间。 */
-  updated_at?: string;
-}
-
-/** 账号编辑器读取的通知渠道传输结果，仅用于适配为 NotificationChannel UI 模型。 */
-export interface NotificationChannelResponse {
-  /** 通知渠道数值标识。 */ id: number;
-  /** 用户可见渠道名称。 */ name: string;
-  /** 服务端保存的渠道类型。 */ type: string;
-  /** 兼容 JSON 文本的事件订阅列表。 */ event_types?: string;
-  /** 渠道是否参与投递。 */ enabled: boolean;
-}
-
 /** 账号列表接口返回的非敏感具名 DTO。 */
 /** 由当前 feature adapter 归一后的 AccountSummaryResponse UI 模型；不直接暴露 HTTP DTO。 */
 export interface AccountSummaryResponse {
@@ -232,6 +192,8 @@ export interface AccountSummaryResponse {
   username: string;
   /** 是否允许密码登录显示浏览器；兼容旧服务端的 0/1 字符串值。 */
   show_browser: boolean | number | string;
+  /** 是否静音该账号的全部通知。 */
+  notifications_disabled?: boolean | number | string;
   /** 平台昵称缓存。 */
   nickname: string;
   /** 平台头像地址。 */
@@ -343,15 +305,6 @@ export interface NotificationBinding {
   channel_name: string;
   /** 绑定是否启用。 */
   enabled: boolean;
-}
-
-/** 账号通知渠道绑定查询响应。 */
-/** 由当前 feature adapter 归一后的 AccountBindingsResponse UI 模型；不直接暴露 HTTP DTO。 */
-export interface AccountBindingsResponse {
-  /** 账号稳定标识。 */
-  cookie_id: string;
-  /** 已绑定通知渠道主键列表。 */
-  channel_ids: number[];
 }
 
 /** 简单资源创建接口的数值主键响应。 */

@@ -183,14 +183,10 @@ func TestNotifyDelivery_WithChannel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// 插入一个 webhook 渠道 + 绑定。
-	res, _ := s.DB.ExecContext(ctx,
+	// 插入一个 webhook 渠道；渠道按本地用户归属，账号无需逐条绑定。
+	_, _ = s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,enabled,user_id) VALUES ('测试','webhook',?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`"}`)
-	// chID 用于本次流程后续判断的chID
-	chID, _ := res.LastInsertId()
-	s.DB.ExecContext(ctx,
-		`INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES ('cid',?,1)`, chID)
 
 	// n 用于本次流程后续判断的n
 	n := New("cid", s, nil)
@@ -221,30 +217,18 @@ func TestNotifyEvent_FiltersByChannelEventTypes(t *testing.T) {
 	defer srv.Close()
 
 	// resOffline、err 用于本次流程后续判断的响应Offline、err
-	resOffline, err := s.DB.ExecContext(ctx,
+	_, err := s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,event_types,enabled,user_id) VALUES ('掉线','webhook',?,?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`/offline"}`, `["`+EventAccountOffline+`"]`)
 	if err != nil {
 		t.Fatalf("insert offline channel: %v", err)
 	}
-	// offlineID 用于本次流程后续判断的offlineID
-	offlineID, _ := resOffline.LastInsertId()
 	// resDisabled、err 用于本次流程后续判断的响应Disabled、err
-	resDisabled, err := s.DB.ExecContext(ctx,
+	_, err = s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,event_types,enabled,user_id) VALUES ('禁用','webhook',?,?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`/disabled"}`, `["`+EventAccountDisabled+`"]`)
 	if err != nil {
 		t.Fatalf("insert disabled channel: %v", err)
-	}
-	// disabledID 用于本次流程后续判断的disabledID
-	disabledID, _ := resDisabled.LastInsertId()
-	// id 表示当前遍历过程中的标识
-	for _, id := range []int64{offlineID, disabledID} {
-		if // err 用于本次流程后续判断的err
-		_, err := s.DB.ExecContext(ctx,
-			`INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES ('cid',?,1)`, id); err != nil {
-			t.Fatalf("insert binding: %v", err)
-		}
 	}
 
 	// n 用于本次流程后续判断的n
@@ -276,31 +260,20 @@ func TestNotifyAccountAlertClassifiesLegacyAlerts(t *testing.T) {
 	defer srv.Close()
 
 	// resSecurity、err 用于本次流程后续判断的响应Security、err
-	resSecurity, err := s.DB.ExecContext(ctx,
+	_, err := s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,event_types,enabled,user_id) VALUES ('风控','webhook',?,?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`/security"}`, `["`+EventSecurityVerification+`"]`)
 	if err != nil {
 		t.Fatalf("insert security channel: %v", err)
 	}
-	// securityID 用于本次流程后续判断的securityID
-	securityID, _ := resSecurity.LastInsertId()
 	// resToken、err 用于本次流程后续判断的响应Token、err
-	resToken, err := s.DB.ExecContext(ctx,
+	_, err = s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,event_types,enabled,user_id) VALUES ('续期','webhook',?,?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`/token"}`, `["`+EventTokenRenewal+`"]`)
 	if err != nil {
 		t.Fatalf("insert token channel: %v", err)
 	}
-	// tokenID 用于本次流程后续判断的令牌ID
-	tokenID, _ := resToken.LastInsertId()
-	// id 表示当前遍历过程中的标识
-	for _, id := range []int64{securityID, tokenID} {
-		if // err 用于本次流程后续判断的err
-		_, err := s.DB.ExecContext(ctx,
-			`INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES ('cid',?,1)`, id); err != nil {
-			t.Fatalf("insert binding: %v", err)
-		}
-	}
+	// 渠道按本地用户归属，安全告警只受渠道事件订阅过滤。
 
 	// n 用于本次流程后续判断的n
 	n := New("cid", s, nil)
@@ -331,18 +304,11 @@ func TestNotifyEventRejectsMalformedEventTypes(t *testing.T) {
 	defer srv.Close()
 
 	// res、err 用于本次流程后续判断的res、err
-	res, err := s.DB.ExecContext(ctx,
+	_, err := s.DB.ExecContext(ctx,
 		`INSERT INTO notification_channels (name,type,config,event_types,enabled,user_id) VALUES ('坏配置','webhook',?,?,1,1)`,
 		`{"webhook_url":"`+srv.URL+`"}`, `["`+EventAccountOffline+`"`)
 	if err != nil {
 		t.Fatalf("insert malformed channel: %v", err)
-	}
-	// channelID 用于本次流程后续判断的渠道ID
-	channelID, _ := res.LastInsertId()
-	if // err 用于本次流程后续判断的err
-	_, err := s.DB.ExecContext(ctx,
-		`INSERT INTO message_notifications (cookie_id,channel_id,enabled) VALUES ('cid',?,1)`, channelID); err != nil {
-		t.Fatalf("insert binding: %v", err)
 	}
 
 	// n 用于本次流程后续判断的n

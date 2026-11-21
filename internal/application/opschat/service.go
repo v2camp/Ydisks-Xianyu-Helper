@@ -46,6 +46,8 @@ const (
 type Conversation struct {
 	// ID 是会话主键。
 	ID int64
+	// UserID 是会话所属本地用户，决定数据隔离范围。
+	UserID int64
 	// Channel 是渠道标识，当前为 qq。
 	Channel string
 	// TargetOpenID 是平台会话目标 openid。
@@ -96,6 +98,8 @@ type MessagePage struct {
 
 // InboundRecord 是一次入站消息的留痕输入。
 type InboundRecord struct {
+	// UserID 是消息所属本地用户；零值表示调用方未提供归属。
+	UserID int64
 	// Channel 是渠道标识，空白时按 qq 处理。
 	Channel string
 	// TargetOpenID 是平台会话目标 openid。
@@ -112,6 +116,8 @@ type InboundRecord struct {
 
 // OutboundRecord 是一次出站消息的留痕输入。
 type OutboundRecord struct {
+	// UserID 是消息所属本地用户；零值表示调用方未提供归属。
+	UserID int64
 	// Channel 是渠道标识，空白时按 qq 处理。
 	Channel string
 	// TargetOpenID 是平台会话目标 openid。
@@ -138,16 +144,16 @@ type SendInput struct {
 type Repository interface {
 	// RecordInbound 幂等写入入站消息，返回消息与是否为新增记录。
 	RecordInbound(context.Context, InboundRecord) (Message, bool, error)
-	// AppendOutbound 按会话主键写入出站消息并更新会话摘要。
-	AppendOutbound(context.Context, int64, string, string, int64) (Message, Conversation, error)
-	// AppendOutboundByTarget 按渠道与目标 openid 写入出站消息，供命令回复留痕使用。
-	AppendOutboundByTarget(context.Context, string, string, string, string, int64) (Message, Conversation, error)
-	// ListConversations 分页读取会话列表与总数。
-	ListConversations(context.Context, int, int) (ConversationPage, error)
-	// GetConversation 按主键读取会话，不存在时返回 ErrConversationNotFound。
-	GetConversation(context.Context, int64) (Conversation, error)
-	// ListMessages 按会话与游标读取消息页。
-	ListMessages(context.Context, int64, int64, int) (MessagePage, error)
+	// AppendOutbound 按用户与会话主键写入出站消息并更新会话摘要。
+	AppendOutbound(context.Context, int64, int64, string, string, int64) (Message, Conversation, error)
+	// AppendOutboundByTarget 按用户、渠道与目标 openid 写入出站消息，供命令回复留痕使用。
+	AppendOutboundByTarget(context.Context, int64, string, string, string, string, int64) (Message, Conversation, error)
+	// ListConversations 分页读取指定用户的会话列表与总数。
+	ListConversations(context.Context, int64, int, int) (ConversationPage, error)
+	// GetConversation 按用户与会话主键读取会话，不存在时返回 ErrConversationNotFound。
+	GetConversation(context.Context, int64, int64) (Conversation, error)
+	// ListMessages 按用户、会话与游标读取消息页。
+	ListMessages(context.Context, int64, int64, int64, int) (MessagePage, error)
 }
 
 // Sender 定义运营渠道的文本发送能力；实现负责读取凭据，应用层不接触秘密。
@@ -211,6 +217,9 @@ func (s *Service) RecordInbound(ctx context.Context, record InboundRecord) (Mess
 	if s == nil || s.repository == nil {
 		return Message{}, false, ErrChannelNotConfigured
 	}
+	if record.UserID <= 0 {
+		return Message{}, false, ErrConversationNotFound
+	}
 	// normalized 是补齐渠道与时间后的入站记录。
 	normalized := record
 	normalized.Channel = normalizeChannel(record.Channel)
@@ -230,6 +239,9 @@ func (s *Service) RecordOutbound(ctx context.Context, record OutboundRecord) (Me
 	if s == nil || s.repository == nil {
 		return Message{}, Conversation{}, ErrChannelNotConfigured
 	}
+	if record.UserID <= 0 {
+		return Message{}, Conversation{}, ErrConversationNotFound
+	}
 	// normalized 是补齐渠道与时间后的出站记录。
 	normalized := record
 	normalized.Channel = normalizeChannel(record.Channel)
@@ -240,12 +252,12 @@ func (s *Service) RecordOutbound(ctx context.Context, record OutboundRecord) (Me
 	if normalized.At <= 0 {
 		normalized.At = s.now().UnixMilli()
 	}
-	return s.repository.AppendOutboundByTarget(ctx, normalized.Channel, normalized.TargetOpenID, record.Content, preview(record.Content), normalized.At)
+	return s.repository.AppendOutboundByTarget(ctx, normalized.UserID, normalized.Channel, normalized.TargetOpenID, record.Content, preview(record.Content), normalized.At)
 }
 
-// List 分页读取运营会话；page 最小为 1，page_size 默认 20、上限 100。
-func (s *Service) List(ctx context.Context, page, pageSize int) (ConversationPage, error) {
-	if s == nil || s.repository == nil {
+// List 分页读取当前用户的运营会话；page 最小为 1，page_size 默认 20、上限 100。
+func (s *Service) List(ctx context.Context, userID int64, page, pageSize int) (ConversationPage, error) {
+	if s == nil || s.repository == nil || userID <= 0 {
 		return ConversationPage{}, ErrChannelNotConfigured
 	}
 	if page < 1 {
@@ -258,7 +270,7 @@ func (s *Service) List(ctx context.Context, page, pageSize int) (ConversationPag
 		pageSize = maxConversationPageSize
 	}
 	// result、listErr 保存会话分页结果及查询错误。
-	result, listErr := s.repository.ListConversations(ctx, page, pageSize)
+	result, listErr := s.repository.ListConversations(ctx, userID, page, pageSize)
 	if listErr != nil {
 		return ConversationPage{}, listErr
 	}
@@ -267,13 +279,13 @@ func (s *Service) List(ctx context.Context, page, pageSize int) (ConversationPag
 	return result, nil
 }
 
-// Messages 读取指定会话的消息页；会话不存在时返回 ErrConversationNotFound。
-func (s *Service) Messages(ctx context.Context, conversationID, beforeID int64, limit int) (MessagePage, error) {
-	if s == nil || s.repository == nil || conversationID <= 0 {
+// Messages 读取指定用户会话的消息页；会话不存在或不属于该用户时返回 ErrConversationNotFound。
+func (s *Service) Messages(ctx context.Context, userID, conversationID, beforeID int64, limit int) (MessagePage, error) {
+	if s == nil || s.repository == nil || userID <= 0 || conversationID <= 0 {
 		return MessagePage{}, ErrConversationNotFound
 	}
 	// lookupErr 是会话存在性校验结果。
-	_, lookupErr := s.repository.GetConversation(ctx, conversationID)
+	_, lookupErr := s.repository.GetConversation(ctx, userID, conversationID)
 	if lookupErr != nil {
 		return MessagePage{}, lookupErr
 	}
@@ -283,7 +295,7 @@ func (s *Service) Messages(ctx context.Context, conversationID, beforeID int64, 
 	if limit > maxMessageLimit {
 		limit = maxMessageLimit
 	}
-	return s.repository.ListMessages(ctx, conversationID, beforeID, limit)
+	return s.repository.ListMessages(ctx, userID, conversationID, beforeID, limit)
 }
 
 // Send 发送一条 Web 人工消息：先校验内容，再确认会话与渠道，平台发送成功后才落库。
@@ -297,11 +309,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (Message, Conversat
 	if content == "" || utf8.RuneCountInString(content) > qqbot.MaxReplyRunes {
 		return Message{}, Conversation{}, ErrInvalidContent
 	}
-	if input.ConversationID <= 0 {
+	if input.ConversationID <= 0 || input.UserID <= 0 {
 		return Message{}, Conversation{}, ErrConversationNotFound
 	}
 	// conversation、lookupErr 保存目标会话快照及读取错误。
-	conversation, lookupErr := s.repository.GetConversation(ctx, input.ConversationID)
+	conversation, lookupErr := s.repository.GetConversation(ctx, input.UserID, input.ConversationID)
 	if lookupErr != nil {
 		return Message{}, Conversation{}, lookupErr
 	}
@@ -313,7 +325,7 @@ func (s *Service) Send(ctx context.Context, input SendInput) (Message, Conversat
 		return Message{}, Conversation{}, fmt.Errorf("%w: %v", ErrSendFailed, sendErr)
 	}
 	// message、updated、appendErr 是落库后的出站消息、会话快照及写入错误。
-	message, updated, appendErr := s.repository.AppendOutbound(ctx, conversation.ID, content, preview(content), s.now().UnixMilli())
+	message, updated, appendErr := s.repository.AppendOutbound(ctx, input.UserID, conversation.ID, content, preview(content), s.now().UnixMilli())
 	if appendErr != nil {
 		return Message{}, Conversation{}, appendErr
 	}

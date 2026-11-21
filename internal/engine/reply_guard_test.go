@@ -225,11 +225,11 @@ func TestAIReply_DeflectionGuardRewritesReply(t *testing.T) {
 		t.Fatalf("插入商品: %v", err)
 	}
 	// err 是密钥写入失败原因；缺密钥会直接跳过 AI 通道。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// err 是模型地址写入失败原因；不指向 mock 会打到真实端点。
-	if err := s.Settings.Set(ctx, "ai_api_url", srv.URL); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_url", srv.URL); err != nil {
 		t.Fatalf("写入模型地址: %v", err)
 	}
 	// a 是待测 AI 实现。
@@ -543,11 +543,11 @@ func TestAIReply_ComplianceGuardRewritesForbiddenRefund(t *testing.T) {
 		t.Fatalf("插入商品: %v", err)
 	}
 	// err 是密钥写入失败原因；缺密钥会直接跳过 AI 通道。
-	if err := s.Settings.Set(ctx, "ai_api_key", "sk-test"); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_key", "sk-test"); err != nil {
 		t.Fatalf("写入密钥: %v", err)
 	}
 	// err 是模型地址写入失败原因；不指向 mock 会打到真实端点。
-	if err := s.Settings.Set(ctx, "ai_api_url", srv.URL); err != nil {
+	if err := setUserAISettingForTest(s, "ai_api_url", srv.URL); err != nil {
 		t.Fatalf("写入模型地址: %v", err)
 	}
 	// a 是待测 AI 实现。

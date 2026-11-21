@@ -290,8 +290,8 @@ func TestDeliveryAnswerConstraintInPrompt(t *testing.T) {
 	// srv、rec 是记录 system prompt 的 mock 模型。
 	srv, rec := aiContentMockServer(t, "不同商品发货方式不同哦")
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 	// a 是待测 AI 实现。
 	a := NewAIReplier("cid", s, nil)
 	// res 是完整回复链路结果。

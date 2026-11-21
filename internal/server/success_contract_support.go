@@ -148,29 +148,6 @@ func newNotificationChannelResponses(channels []notificationsapp.ChannelSummary)
 	return result
 }
 
-// notificationBindingResponse 是单条账号通知绑定的具名 DTO。
-type notificationBindingResponse struct {
-	// ID 是绑定记录稳定标识。
-	ID int64 `json:"id"`
-	// ChannelID 是通知渠道标识。
-	ChannelID int64 `json:"channel_id"`
-	// ChannelName 是通知渠道名称。
-	ChannelName string `json:"channel_name"`
-	// Enabled 表示该账号绑定是否启用。
-	Enabled bool `json:"enabled"`
-}
-
-// notificationBindingListResponse 是按账号分组的通知绑定响应 DTO。
-type notificationBindingListResponse map[string][]notificationBindingResponse
-
-// accountBindingsResponse 是账号与通知渠道绑定查询接口的具名响应 DTO。
-type accountBindingsResponse struct {
-	// CookieID 是账号稳定标识。
-	CookieID string `json:"cookie_id"`
-	// ChannelIDs 是当前账号绑定的通知渠道标识列表。
-	ChannelIDs []int64 `json:"channel_ids"`
-}
-
 // notificationUncertainOutboxItem 是不确定通知的非敏感运维摘要。
 // 该 DTO 不包含通知正文、渠道配置、凭证或最后错误原文。
 type notificationUncertainOutboxItem struct {

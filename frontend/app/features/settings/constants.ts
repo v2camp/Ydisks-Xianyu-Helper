@@ -60,11 +60,8 @@ export const BACKUP_INTERVAL_OPTIONS = [
   { value: '0', label: '关闭定时备份' },
 ];
 
-/** AI 设置页允许保存的字段白名单；命中后仍会经过省略键与空值过滤。 */
+/** AI 设置页允许保存的字段白名单；模型与密钥已迁到连接器页，不在系统设置中保存。 */
 export const AI_SETTING_KEYS = new Set([
-  'ai_api_url',
-  'ai_api_key',
-  'ai_model',
   'ai_master_enabled',
   'ai_scope_config',
   'ai_knowledge_config',

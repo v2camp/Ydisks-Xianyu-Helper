@@ -292,8 +292,8 @@ func TestAIReplyScopeKnowledgeIntegration(t *testing.T) {
 	s.DB.ExecContext(ctx, `INSERT INTO ai_reply_settings (cookie_id, ai_enabled, custom_prompts) VALUES ('cid', 1, '')`)
 	s.Settings.Set(ctx, settingAIScopeKey, cfg)
 	s.Settings.Set(ctx, settingAIKnowledgeKey, knowledge)
-	s.Settings.Set(ctx, "ai_api_key", "sk-test")
-	s.Settings.Set(ctx, "ai_api_url", srv.URL)
+	setUserAISettingForTest(s, "ai_api_key", "sk-test")
+	setUserAISettingForTest(s, "ai_api_url", srv.URL)
 	// a 是待测 AI 实现。
 	a := NewAIReplier("cid", s, nil)
 

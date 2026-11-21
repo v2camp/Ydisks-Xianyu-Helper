@@ -19,8 +19,6 @@ func (s *Server) mountVersionedSettingsCardNotificationRoutes(r chi.Router) {
 		r.Get("/api/v1/settings/system", s.allSettings)
 		r.Put("/api/v1/settings/system", s.setSettings)
 		r.Put("/api/v1/settings/system/{key}", s.setSetting)
-		r.Post("/api/v1/settings/ai-models", s.listAIModels)
-		r.Post("/api/v1/settings/ai-test", s.testAIConnection)
 		r.Get("/api/v1/admin/notifications/outbox/uncertain", s.listAdminUncertainNotifications)
 	})
 
@@ -33,6 +31,10 @@ func (s *Server) mountVersionedSettingsCardNotificationRoutes(r chi.Router) {
 		r.Get("/api/v1/settings/ai-reply/{cookie_id}", s.getAIReply)
 		r.Put("/api/v1/settings/ai-reply/{cookie_id}", s.setAIReply)
 		r.Get("/api/v1/settings/user", s.listUserSettings)
+		r.Get("/api/v1/settings/user/integrations", s.getUserIntegrations)
+		r.Put("/api/v1/settings/user/integrations", s.setUserIntegrations)
+		r.Post("/api/v1/settings/user/ai-models", s.listAIModels)
+		r.Post("/api/v1/settings/user/ai-test", s.testAIConnection)
 		r.Put("/api/v1/settings/user/{key}", s.setUserSetting)
 		r.Get("/api/v1/settings/user/{key}", s.getUserSetting)
 
@@ -52,11 +54,6 @@ func (s *Server) mountVersionedSettingsCardNotificationRoutes(r chi.Router) {
 		r.Put("/api/v1/notifications/channels/{channel_id}", s.updateChannel)
 		r.Delete("/api/v1/notifications/channels/{channel_id}", s.deleteChannel)
 		r.Post("/api/v1/notifications/channels/{channel_id}/test", s.testChannel)
-		r.Get("/api/v1/notifications/messages", s.listMessageNotifications)
 		r.Get("/api/v1/notifications/outbox/uncertain", s.listUncertainNotifications)
-		r.Delete("/api/v1/notifications/messages/account/{cid}", s.deleteAccountNotifications)
-		r.Delete("/api/v1/notifications/messages/{notification_id}", s.deleteMessageNotification)
-		r.Get("/api/v1/notifications/accounts/{cid}/bindings", s.getAccountBindings)
-		r.Post("/api/v1/notifications/accounts/{cid}/bindings", s.setAccountBindings)
 	})
 }

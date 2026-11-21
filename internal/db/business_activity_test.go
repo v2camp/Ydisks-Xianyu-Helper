@@ -102,23 +102,23 @@ func TestParseBusinessActivityTime_Formats(t *testing.T) {
 	}
 }
 
-// TestAccountIDsWithEnabledChannels 验证宿主账号查询只返回绑定已启用渠道且绑定启用的账号，并按 ID 稳定排序。
+// TestAccountIDsWithEnabledChannels 验证宿主账号查询只返回所有者有启用渠道且未静音的账号，并按 ID 稳定排序。
 func TestAccountIDsWithEnabledChannels(t *testing.T) {
 	// s、cleanup 用于本次流程后续判断的s、cleanup
 	s, cleanup := newTestDB(t)
 	defer cleanup()
 	// ctx 用于本次流程后续判断的ctx
 	ctx := context.Background()
-	// fixtures 建测试用户、三个账号、两个渠道与多条绑定：acct-a 绑定启用渠道，acct-b 绑定禁用渠道，acct-c 无绑定。
+	// fixtures 建两个测试用户与三个账号：acct-a 未静音且有启用渠道，acct-b 已静音，acct-c 归另一个有启用渠道的用户。
 	fixtures := []string{
 		"INSERT INTO users (username, email, password_hash) VALUES ('watchdog-admin', 'watchdog@example.com', 'pw')",
+		"INSERT INTO users (username, email, password_hash) VALUES ('watchdog-other', 'watchdog-other@example.com', 'pw')",
 		"INSERT INTO cookies (id, value, user_id) SELECT 'acct-a', 'v', id FROM users WHERE username='watchdog-admin'",
-		"INSERT INTO cookies (id, value, user_id) SELECT 'acct-b', 'v', id FROM users WHERE username='watchdog-admin'",
-		"INSERT INTO cookies (id, value, user_id) SELECT 'acct-c', 'v', id FROM users WHERE username='watchdog-admin'",
+		"INSERT INTO cookies (id, value, user_id, notifications_disabled) SELECT 'acct-b', 'v', id, 1 FROM users WHERE username='watchdog-admin'",
+		"INSERT INTO cookies (id, value, user_id) SELECT 'acct-c', 'v', id FROM users WHERE username='watchdog-other'",
 		"INSERT INTO notification_channels (name, type, config, enabled, user_id) SELECT 'ch-on', 'webhook', '{}', 1, id FROM users WHERE username='watchdog-admin'",
 		"INSERT INTO notification_channels (name, type, config, enabled, user_id) SELECT 'ch-off', 'webhook', '{}', 0, id FROM users WHERE username='watchdog-admin'",
-		"INSERT INTO message_notifications (cookie_id, channel_id, enabled) VALUES ('acct-a', 1, 1)",
-		"INSERT INTO message_notifications (cookie_id, channel_id, enabled) VALUES ('acct-b', 2, 1)",
+		"INSERT INTO notification_channels (name, type, config, enabled, user_id) SELECT 'ch-other', 'webhook', '{}', 1, id FROM users WHERE username='watchdog-other'",
 	}
 	for // fixture 表示当前遍历过程中的夹具写入语句。
 	_, fixture := range fixtures {
@@ -132,7 +132,7 @@ func TestAccountIDsWithEnabledChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("查询宿主账号: %v", err)
 	}
-	if len(hosts) != 1 || hosts[0] != "acct-a" {
-		t.Fatalf("宿主账号 = %v, want [acct-a]", hosts)
+	if len(hosts) != 2 || hosts[0] != "acct-a" || hosts[1] != "acct-c" {
+		t.Fatalf("宿主账号 = %v, want [acct-a acct-c]", hosts)
 	}
 }

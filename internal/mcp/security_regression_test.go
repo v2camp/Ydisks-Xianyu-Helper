@@ -74,8 +74,6 @@ var fr13Inventory = map[string][]string{
 	"notifications": {
 		"notification_channel_list", "notification_channel_get", "notification_channel_create",
 		"notification_channel_update", "notification_channel_delete", "notification_channel_test",
-		"notification_binding_list", "notification_binding_get", "notification_binding_set",
-		"notification_binding_toggle", "notification_binding_delete", "notification_binding_clear_account",
 		"notification_uncertain_list", "notification_uncertain_list_all",
 	},
 	// 9. AI 与系统设置。
